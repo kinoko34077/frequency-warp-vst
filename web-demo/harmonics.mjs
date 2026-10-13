@@ -41,7 +41,7 @@ export function mapAtFrequency(f,
     if(rationalEnabled)transformed=pitchRatio*transformed+shiftHz;
     const pivotInside=axisPivot>=low&&axisPivot<=high;
     const pivotBase=pivotInside?warp(axisPivot,low,high,curvature,invert,mode):axisPivot;
-    const sourceAnchor=rationalEnabled?pitchRatio*pivotBase+shiftHz:pivotBase;
+    const sourceAnchor=pivotBase;
     transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
   }
   if(!Number.isFinite(transformed))return {f,inside,outputs:[],reason:"座標計算不能"};
