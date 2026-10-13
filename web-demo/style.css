@@ -177,3 +177,7 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .listening-guide{font-size:9px}
   .axis-mode-hint{font-size:9px}
 }
+
+.axis-numeric-label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:5px;font-size:10px;color:#99c2bc}
+.axis-numeric-label input{width:74px;max-width:50%;background:#0a2227;border:1px solid #48716c;color:#b8f0dc;border-radius:7px;padding:5px;text-align:right;font:12px ui-monospace,monospace}
+@media(max-width:450px){.axis-numeric-label{flex-wrap:wrap}.axis-numeric-label input{width:100%;max-width:100%}}
