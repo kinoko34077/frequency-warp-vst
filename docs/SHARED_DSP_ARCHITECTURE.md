@@ -66,3 +66,32 @@ implements any audio FFT/STFT engine.
   or external audio processing service.
 - Pages deploys only the static browser assets and wasm binary, not
   the research corpus or test audio.
+
+## 2026-10-13 Web effect controls (Issue #12)
+- L/H are user-controlled research analysis bounds. The Web sliders are logarithmic
+  20Hz–20kHz with high limited to 45% of the file's current decode sample rate
+  and a small strictly-positive separation between L and H.
+- Three invert-progress modes are controlled by the SAME Rust DSP. The signed
+  normalized coordinate advances towards H for mode 0, towards L for mode 2,
+  and frequency blending is mode 1. At invert=1 all three arrive at the same
+  endpoint-exchanging inversion; at intermediate invert they differ. Mode 1
+  can substantially collapse/compress energy near invert=.5.
+- Input frequencies **outside [L,H]**: Pass vs Kill are now explicit user
+  options. In Pass mode the **complementary FFT spectral bins** are
+  reconstructed with a real inverse FFT, then overlap-added, rather than
+  mixing the raw full-band original into the wet output. Near L/H cutoffs
+  the finite FFT window permits leakage; no perfect brickwall selection is
+  claimed. Untracked in-band residual remains an R2-quality limitation.
+  This decision is wholly separate from 0Hz-or-negative target
+  Reflect/Kill/Fade, which has NOT been implemented yet.
+- `warp_process_f32_ex` extends the old ABI with trailing `outside`
+  mode (0=Kill, 1=Pass). The old `warp_process_f32` remains available and
+  defaults to legacy Kill. `warp_map_frequency` accepts mode 0=Fold H,
+  1=Blend, 2=Fold L.
+- Web auto-update is **asynchronous re-rendering** of the full recording
+  on every settled parameter change, then a short aligned crossfade on
+  its looping playback. Wet is changed immediately using AudioContext
+  gains. This is NOT AudioWorklet streaming / sample-accurate realtime
+  DSP and it may be noticeably delayed for longer audio and High quality.
+  The full offline Rust core, rather than a separate JS DSP, is still
+  used for every update.

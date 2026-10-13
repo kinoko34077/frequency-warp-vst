@@ -11,7 +11,7 @@ async function core() {
       const bytes=await response.arrayBuffer();
       const {instance}=await WebAssembly.instantiate(bytes,{});
       const e=instance.exports;
-      for(const name of ["memory","warp_alloc_f32","warp_free_f32","warp_process_f32","warp_map_frequency"]){
+      for(const name of ["memory","warp_alloc_f32","warp_free_f32","warp_process_f32","warp_process_f32_ex","warp_map_frequency"]){
         if(!e[name])throw new Error("WASM ABI不一致: "+name);
       }
       return e;
@@ -42,9 +42,10 @@ self.onmessage=async ({data})=>{
     self.postMessage({type:"progress",value:0});
     const options=data.settings;
     const start=performance.now();
-    const result=exports.warp_process_f32(src,dst,frames,channels.length,
+    const result=exports.warp_process_f32_ex(src,dst,frames,channels.length,
       data.sampleRate,options.low,options.high,options.curvature,options.invert,
-      options.mode==="blend"?1:0,options.qualityIndex);
+      options.mode==="blend"?1:options.mode==="fold-l"?2:0,options.qualityIndex,
+      options.outside==="pass"?1:0);
     if(result!==0)throw new Error("共通DSPの処理に失敗: status "+result);
     const output=new Float32Array(exports.memory.buffer,dst,count);
     const rendered=channels.map((_,c)=>new Float32Array(output.slice(c*frames,(c+1)*frames)));

@@ -8,7 +8,7 @@ use std::f64::consts::PI;
 const TAU: f64 = PI * 2.0;
 
 #[derive(Clone, Copy, Debug)]
-pub enum Progression { Fold, Blend }
+pub enum Progression { FoldHigh, Blend, FoldLow }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Settings {
@@ -60,8 +60,9 @@ pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
     let result = match s.mode {
         Progression::Blend => (1.0 - s.invert) * f +
             s.invert * inverse_coordinate(d - x, s.low, s.curvature),
-        Progression::Fold => {
-            let v = (x + s.invert * d).rem_euclid(2.0 * d);
+        Progression::FoldHigh | Progression::FoldLow => {
+            let offset = if matches!(s.mode, Progression::FoldLow) { -s.invert } else { s.invert };
+            let v = (x + offset * d).rem_euclid(2.0 * d);
             inverse_coordinate(d - (v - d).abs(), s.low, s.curvature).clamp(s.low, s.high)
         }
     };
@@ -116,6 +117,14 @@ pub struct ResultAudio { pub channels: Vec<Vec<f32>>, pub frames: usize, pub pea
 /// Offline whole-buffer processing, not realtime safe.
 /// Channels must have matching sample counts and source rate.
 pub fn process(source: &[Vec<f32>], sample_rate: f64, s: Settings) -> Result<ResultAudio, &'static str> {
+    process_with_outside(source, sample_rate, s, 0)
+}
+
+/// Outside band 0=Kill (research previous behavior); 1=Pass unaffected spectral material.
+/// Outside-band Pass uses the complement of the STFT input spectrum. It is not
+/// a separate raw Dry overlay (which would duplicate the transformed band).
+pub fn process_with_outside(source: &[Vec<f32>], sample_rate: f64, s: Settings, outside: u32) -> Result<ResultAudio, &'static str> {
+    if outside > 1 { return Err("invalid outside band mode"); }
     if source.is_empty() || source.len() > 2 ||
         !sample_rate.is_finite() || sample_rate <= 0.0 ||
         !s.high.is_finite() || s.high >= sample_rate/2.0 ||
@@ -232,6 +241,23 @@ pub fn process(source: &[Vec<f32>], sample_rate: f64, s: Settings) -> Result<Res
                 }
             }
         }
+        // Optional out-of-band passthrough: complementary input spectrum.
+        // Reconstruct real IFFT using symmetric bins. Bins within the mapped
+        // band are never also passed through, avoiding large duplicated energy.
+        if outside == 1 {
+            for c in 0..channel_count {
+                let mut complement = vec![Complex::ZERO; q.n];
+                for k in 0..=half {
+                    let frequency = k as f64 * bin_width;
+                    if frequency < s.low || frequency > s.high {
+                        complement[k] = spectra[c][k];
+                        if k > 0 && k < half { complement[q.n-k] = spectra[c][q.n-k]; }
+                    }
+                }
+                fft(&mut complement, true);
+                for i in 0..q.n { frame_output[c][i] += complement[i].r; }
+            }
+        }
         for i in 0..q.n {
             let place=start+i; let w=window[i];
             weights[place]+=w*w;
@@ -264,7 +290,7 @@ fn interpolated_frequency(k:usize,magnitude:&[f64],bin_width:f64)->f64 {
 #[no_mangle]
 pub extern "C" fn warp_map_frequency(f:f64,low:f64,high:f64,p:f64,amount:f64,mode:u32)->f64 {
     map_frequency(f,Settings{low,high,curvature:p,invert:amount,
-        mode:if mode==1 {Progression::Blend} else {Progression::Fold},quality:1})
+        mode:match mode {1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},quality:1})
         .unwrap_or(f64::NAN)
 }
 #[no_mangle]
@@ -292,6 +318,18 @@ pub unsafe extern "C" fn warp_process_f32(
     sample_rate:f64, low:f64, high:f64, curvature:f64,
     invert:f64, mode:u32, quality_index:u32,
 )->i32 {
+    warp_process_f32_ex(input,output,frames,channels,sample_rate,low,high,curvature,invert,mode,quality_index,0)
+}
+
+/// Same native/wasm DSP core with selectable outside-band handling.
+/// # Safety
+/// Inputs and outputs must be non-overlapping valid planar f32 buffers.
+#[no_mangle]
+pub unsafe extern "C" fn warp_process_f32_ex(
+    input:*const f32, output:*mut f32, frames:u32, channels:u32,
+    sample_rate:f64, low:f64, high:f64, curvature:f64,
+    invert:f64, mode:u32, quality_index:u32, outside:u32,
+)->i32 {
     if input.is_null() || output.is_null() || frames==0 || !(1..=2).contains(&channels)
        || (frames as usize).saturating_mul(channels as usize)>40_000_000 { return -1; }
     let len=frames as usize;
@@ -300,9 +338,9 @@ pub unsafe extern "C" fn warp_process_f32(
         input[c*len..(c+1)*len].to_vec()
     }).collect::<Vec<_>>();
     let settings=Settings{low,high,curvature,invert,
-        mode:if mode==1 {Progression::Blend} else {Progression::Fold},
+        mode:match mode {1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},
         quality:quality_index};
-    match process(&channels_in,sample_rate,settings) {
+    match process_with_outside(&channels_in,sample_rate,settings,outside) {
         Err(_)=>-2,
         Ok(rendered)=>{
             let dest=std::slice::from_raw_parts_mut(output,len*channels as usize);
@@ -318,7 +356,7 @@ mod tests {
     use super::*;
     fn config()->Settings {
         Settings{low:20.0,high:3000.0,curvature:1.0,invert:1.0,
-            mode:Progression::Fold,quality:0}
+            mode:Progression::FoldHigh,quality:0}
     }
     fn tone(freq:f64,phase:f64,gain:f64,n:usize)->Vec<f32>{
         (0..n).map(|i| (gain*(TAU*freq*i as f64/8192.0+phase).cos()) as f32).collect()
@@ -351,6 +389,30 @@ mod tests {
         let b=right[peak].angle();
         let phase=(b-a+PI).rem_euclid(TAU)-PI;
         assert!((phase-0.5).abs()<0.12,"stereo phase mismatch: {phase}");
+    }
+    #[test]
+    fn h_and_l_folds_have_same_endpoints_but_different_midpoint() {
+        let s=config();
+        let value=200.0;
+        for mode in [Progression::FoldHigh, Progression::FoldLow, Progression::Blend] {
+            let initial=map_frequency(value,Settings{mode,invert:0.0,..s}).unwrap();
+            let full=map_frequency(value,Settings{mode,invert:1.0,..s}).unwrap();
+            assert!((initial-value).abs()<1e-7);
+            assert!((full-(s.low+s.high-value)).abs()<1e-7);
+        }
+        let at_half=Settings{invert:0.5,..s};
+        let hi=map_frequency(value,at_half).unwrap();
+        let lo=map_frequency(value,Settings{mode:Progression::FoldLow,..at_half}).unwrap();
+        assert!((hi-lo).abs()>100.0);
+    }
+    #[test]
+    fn outside_pass_preserves_a_high_outside_tone_while_kill_removes_it() {
+        let original=vec![tone(3700.0,0.0,0.5,4096)];
+        let no=process_with_outside(&original,8192.0,config(),0).unwrap();
+        let yes=process_with_outside(&original,8192.0,config(),1).unwrap();
+        let rms=|x:&Vec<f32>| (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>()/x.len() as f64).sqrt();
+        assert!(rms(&no.channels[0]) < 0.06);
+        assert!(rms(&yes.channels[0]) > 0.28);
     }
     #[test]
     fn c_abi_works() {

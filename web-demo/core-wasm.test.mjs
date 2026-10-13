@@ -49,3 +49,30 @@ test("native-shared Rust wasm transforms real audio data without JS spectral DSP
     e.warp_free_f32(src,count);e.warp_free_f32(dst,count);
   }
 });
+
+test("shared WASM exposes both folds and outside-band Pass/Kill",async ()=>{
+  const e=await load();
+  assert.ok(e.warp_process_f32_ex,"WASM extended ABI missing");
+  const f=700;
+  const foldH=e.warp_map_frequency(f,20,3000,1,.3,0);
+  const foldL=e.warp_map_frequency(f,20,3000,1,.3,2);
+  assert.ok(Math.abs(foldH-foldL)>50);
+  assert.ok(Math.abs(e.warp_map_frequency(f,20,3000,1,1,0)-
+    e.warp_map_frequency(f,20,3000,1,1,2))<1e-7);
+  const fs=8192,n=4096;
+  const a=e.warp_alloc_f32(n),b=e.warp_alloc_f32(n);
+  try {
+    const source=new Float32Array(e.memory.buffer,a,n);
+    for(let i=0;i<n;i++)source[i]=.5*Math.cos(2*Math.PI*3700*i/fs);
+    assert.equal(e.warp_process_f32_ex(a,b,n,1,fs,20,3000,1,1,0,0,0),0);
+    const kill=new Float32Array(e.memory.buffer,b,n);
+    let rmsKill=Math.sqrt(kill.reduce((sum,x)=>sum+x*x,0)/n);
+    assert.equal(e.warp_process_f32_ex(a,b,n,1,fs,20,3000,1,1,0,0,1),0);
+    const pass=new Float32Array(e.memory.buffer,b,n);
+    let rmsPass=Math.sqrt(pass.reduce((sum,x)=>sum+x*x,0)/n);
+    assert.ok(rmsKill<.08,"Kill leak "+rmsKill);
+    assert.ok(rmsPass>.28,"Pass energy dropped "+rmsPass);
+  } finally {
+    e.warp_free_f32(a,n);e.warp_free_f32(b,n);
+  }
+});

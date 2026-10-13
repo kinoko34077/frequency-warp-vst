@@ -56,7 +56,22 @@ test("Pages-style browser serves Rust wasm and converts >10sec audio",async ()=>
     assert.equal(await page.$eval("#progress",e=>e.value),100);
     assert.equal(await page.$eval("#download",e=>e.disabled),false);
     const status=await page.$eval("#status",e=>e.textContent);
-    assert.match(status,/共通Rust\/WASMエンジンで変換完了/);
+    assert.match(status,/処理反映済み/);
+    assert.equal(await page.$eval("#auto-update",e=>e.checked),true);
+    assert.equal(await page.$eval("#outside",e=>e.value),"pass");
+    assert.equal(await page.$eval("#mode",e=>e.value),"fold-h");
+    await page.click("#play-wet");
+    assert.equal(await page.$eval("#stop",e=>e.disabled),false);
+    await page.select("#mode","fold-l");
+    await page.select("#outside","kill");
+    await page.$eval("#low",e=>{e.value="400";e.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#high",e=>{e.value="800";e.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.waitForFunction(()=>document.querySelector("#status").textContent.includes("処理反映済み")&&
+      !document.querySelector("#render").disabled,{timeout:120000});
+    assert.equal(await page.$eval("#stop",e=>e.disabled),false,"live re-render stopped playback");
+    assert.equal(await page.$eval("#low-value",e=>e.textContent.length>0),true);
+    assert.equal(await page.$eval("#high-value",e=>e.textContent.length>0),true);
+    await page.click("#stop");
     assert.deepEqual(errors,[]);
     await page.close();
   } finally {
