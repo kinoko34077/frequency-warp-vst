@@ -398,6 +398,59 @@ pub unsafe extern "C" fn warp_stream_set_ext(
         engine,pitch_ratio,shift_hz,carrier_hz,zero_mode){Ok(_)=>0,Err(_)=>-2}
 }
 
+/// Render a whole file through the *identical* persistent DSP stream used
+/// by the Web AudioWorklet and future native host: optional WAV export adapter.
+/// Input and output are non-overlapping planar contiguous f32 buffers.
+/// Offline allocations are permitted here, but NOT in the realtime process.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,
+)->i32{
+    if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
+       ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
+    let settings=params(low,high,p,amount,mode,quality_id);
+    let mut st=match Stream::new_extended(rate,channels as usize,settings,outside,
+        engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div) {
+        Ok(st)=>st,Err(_)=>return -2
+    };
+    let total=frames as usize,channel_count=channels as usize;
+    let source=std::slice::from_raw_parts(input,total*channel_count);
+    let dest=std::slice::from_raw_parts_mut(output,total*channel_count);
+    let latency=st.latency();
+    let chunk=128;
+    let mut work_in=vec![0.0f32;chunk*channel_count];
+    let mut work_out=vec![0.0f32;chunk*channel_count];
+    // The stream's latency is compensated for exported WAV: the first
+    // latency samples are dropped; zero input flushes remaining output.
+    let mut t=0usize;
+    while t<total+latency{
+        let length=(total+latency-t).min(chunk);
+        work_in.fill(0.0);
+        work_out.fill(0.0);
+        for c in 0..channel_count{
+            for j in 0..length{
+                let index=t+j;
+                if index<total {work_in[c*length+j]=source[c*total+index];}
+            }
+        }
+        if st.process(&work_in[..length*channel_count],
+            &mut work_out[..length*channel_count],length).is_err(){return -3;}
+        for c in 0..channel_count{
+            for j in 0..length{
+                let render=t+j;
+                if render>=latency&&render-latency<total {
+                    dest[c*total+render-latency]=work_out[c*length+j];
+                }
+            }
+        }
+        t+=length;
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -475,6 +528,17 @@ mod tests{
                 assert!(out.iter().all(|x|x.is_finite()));
             }
         }
+    }
+    #[test]
+    fn offline_export_and_live_stream_share_same_ring_dsp_and_no_extra_silence(){
+        let rate=8192.0;let frames=4096usize;
+        let input=(0..frames).map(|i|(TAU*400.0*i as f64/rate).cos() as f32).collect::<Vec<_>>();
+        let mut output=vec![0.0f32;frames];
+        let status=unsafe{warp_stream_render_f32_ext(input.as_ptr(),output.as_mut_ptr(),
+            frames as u32,1,rate,20.0,3000.0,1.0,1.0,0,0,1,
+            2,1.0,0.0,0.0,0,4)};
+        assert_eq!(status,0);
+        assert!(output.iter().zip(&input).map(|(a,b)|(a-b).abs()).sum::<f32>()/frames as f32<1e-5);
     }
     #[test]
     fn stream_parameter_changes_and_reset(){
