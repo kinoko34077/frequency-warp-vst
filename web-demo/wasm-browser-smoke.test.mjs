@@ -42,6 +42,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(r=>setTimeout(r,250));
     }
     assert.ok(okay,"page not served");
+    await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
+      document.querySelector("#math-results")?.textContent.includes("仮想基音"),{timeout:16000})
+      .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
+        math:document.querySelector("#math-results")?.textContent,curve:[
+          document.querySelector("#curve").width,document.querySelector("#curve").height],
+        errors:errors.join(";")
+      })))+" | "+err.message);});
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.match(await page.$eval("#math-results",el=>el.textContent),/H = F \/ m = 87.5 Hz/);
