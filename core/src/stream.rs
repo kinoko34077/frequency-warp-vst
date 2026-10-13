@@ -13,6 +13,12 @@ pub struct Stream {
     floor:f64,
     settings:Settings,
     outside:u32,
+    engine:u32, // 0 peak oscillator, 1 FFT bin relocation, 2 Ring Mod, 3 harmonic pitch->shift
+    pitch_ratio:f64,
+    shift_hz:f64,
+    carrier_hz:f64,
+    ring_phase:f64,
+    zero_mode:u32, // 0=reflect,1=kill,2=fade
     received:u64,
     input:Vec<Vec<f64>>,
     output:Vec<Vec<f64>>,
@@ -27,18 +33,32 @@ pub struct Stream {
     next_tracks:Vec<Track>,
     used:Vec<bool>,
     complement:Vec<Complex>,
+    relocated:Vec<Complex>,
 }
 
 impl Stream {
     pub fn new(sample_rate:f64, channels:usize, settings:Settings, outside:u32)->Result<Self,&'static str>{
+        Self::new_extended(sample_rate,channels,settings,outside,0,1.0,0.0,350.0,0,4)
+    }
+    pub fn new_extended(sample_rate:f64,channels:usize,settings:Settings,outside:u32,
+        engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,zero_mode:u32,hop_div:u32)
+        ->Result<Self,&'static str>{
+        if engine>3||zero_mode>2||![4,8].contains(&hop_div)||
+           !pitch_ratio.is_finite()||pitch_ratio<=0.0||pitch_ratio>4.0||
+           !shift_hz.is_finite()||shift_hz.abs()>20000.0||
+           !carrier_hz.is_finite()||carrier_hz<0.0||carrier_hz>20000.0 {
+            return Err("invalid streaming engine settings");
+        }
         if !sample_rate.is_finite()||sample_rate<=0.0||!(1..=2).contains(&channels)
            ||settings.high>=sample_rate*0.5||outside>1 {return Err("invalid stream config");}
         map_frequency(settings.low,settings)?;
         let q=quality(settings.quality).ok_or("invalid streaming quality")?;
+        let hop=q.n / hop_div as usize;
         // Per-block processing has no persistent large file buffer.
         Ok(Self{
-            sample_rate,channels,n:q.n,hop:q.hop,max_peaks:q.max_peaks,
-            floor:q.floor,settings,outside,received:0,
+            sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
+            floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
+            ring_phase:0.0,zero_mode,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
             weights:vec![0.0;q.n*2],
@@ -54,9 +74,10 @@ impl Stream {
             next_tracks:Vec::with_capacity(q.max_peaks),
             used:vec![false;q.max_peaks],
             complement:vec![Complex::ZERO;q.n],
+            relocated:vec![Complex::ZERO;q.n],
         })
     }
-    pub fn latency(&self)->usize{self.n-1}
+    pub fn latency(&self)->usize{if self.engine==2 {0} else {self.n-1}}
     pub fn configure(&mut self,settings:Settings,outside:u32)->Result<(),&'static str>{
         if settings.quality!=self.settings.quality{
             return Err("quality change requires stream rebuild");
@@ -67,8 +88,20 @@ impl Stream {
         self.outside=outside;
         Ok(())
     }
+    pub fn configure_extended(&mut self,settings:Settings,outside:u32,engine:u32,
+        pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,zero_mode:u32)->Result<(),&'static str>{
+        if engine>3||zero_mode>2||!pitch_ratio.is_finite()||pitch_ratio<=0.0||pitch_ratio>4.0||
+           !shift_hz.is_finite()||shift_hz.abs()>20000.0||
+           !carrier_hz.is_finite()||carrier_hz<0.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
+        self.configure(settings,outside)?;
+        if self.engine!=engine {self.reset();}
+        self.engine=engine;self.pitch_ratio=pitch_ratio;self.shift_hz=shift_hz;
+        self.carrier_hz=carrier_hz;self.zero_mode=zero_mode;
+        Ok(())
+    }
     pub fn reset(&mut self){
         self.received=0;
+        self.ring_phase=0.0;
         for x in &mut self.input{x.fill(0.0);}
         for x in &mut self.output{x.fill(0.0);}
         for x in &mut self.spectrum{x.fill(Complex::ZERO);}
@@ -79,6 +112,17 @@ impl Stream {
     pub fn process(&mut self,input:&[f32],output:&mut [f32],frames:usize)->Result<(),&'static str>{
         if frames==0||frames>2048||input.len()!=frames*self.channels||output.len()!=input.len(){
             return Err("invalid streaming planar block");
+        }
+        // Engine 2 is a true sample-by-sample ring modulator, without FFT lookahead.
+        if self.engine==2 {
+            let inc=TAU*self.carrier_hz/self.sample_rate;
+            for i in 0..frames {
+                let carrier=self.ring_phase.cos() as f32;
+                for c in 0..self.channels {output[c*frames+i]=input[c*frames+i]*carrier;}
+                self.ring_phase=(self.ring_phase+inc).rem_euclid(TAU);
+            }
+            self.received+=frames as u64;
+            return Ok(());
         }
         // Input and output layout: [channel0 frames][channel1 frames].
         for i in 0..frames {
@@ -126,6 +170,32 @@ impl Stream {
             self.mag[k]=m.sqrt();
             greatest=greatest.max(self.mag[k]);
         }
+        if self.engine==1 {
+            // FFT-bin spectral relocation. Distinct from partial/oscillator synthesis:
+            // bin grid quantization and imperfect phase continuity are known limits.
+            for c in 0..self.channels {
+                self.relocated.fill(Complex::ZERO);
+                for k in 1..half {
+                    let f=k as f64*step;
+                    let target=if f>=self.settings.low&&f<=self.settings.high {
+                        map_frequency(f,self.settings).unwrap_or(f)
+                    }else if self.outside==1 {f} else {continue};
+                    if target<=0.0||target>=self.sample_rate*0.5 {continue;}
+                    let dest=(target/step).round() as usize;
+                    if dest==0||dest>=half {continue;}
+                    self.relocated[dest].r+=self.spectrum[c][k].r;
+                    self.relocated[dest].i+=self.spectrum[c][k].i;
+                }
+                fft(&mut self.relocated,true);
+                for i in 0..self.n {
+                    let slot=(start+i)%(self.n*2);
+                    self.output[c][slot]+=2.0*self.relocated[i].r*self.window_sq[i].sqrt();
+                }
+            }
+            for i in 0..self.n {let slot=(start+i)%(self.n*2);self.weights[slot]+=self.window_sq[i];}
+            std::mem::swap(&mut self.previous,&mut self.spectrum);
+            return;
+        }
         let threshold=(greatest*self.floor).max(1e-10);
         self.candidates.clear();
         for k in 2..half-1{
@@ -155,7 +225,20 @@ impl Stream {
                 self.interpolate(k,step)
             };
             if !frequency.is_finite() ||frequency<self.settings.low||frequency>self.settings.high{continue;}
-            let target=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
+            let target=if self.engine==3 {
+                // #16 ideal harmonic spacing model: Pitch first, then constant Hz shift.
+                // Negative target handled by explicit 0Hz policy below.
+                self.pitch_ratio*frequency+self.shift_hz
+            }else{
+                match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue}
+            };
+            let target=if target<0.0 {
+                match self.zero_mode {
+                    0=>target.abs(), // Reflect about 0Hz
+                    1=>continue, // Kill negative output
+                    _=>{ if target.abs()>step {continue;} 0.0 } // rudimentary fade edge
+                }
+            }else{target};
             if !(target>0.0&&target<self.sample_rate/2.0){continue;}
             let diff=target-frequency;
             let mut closest=None;
@@ -282,6 +365,33 @@ pub unsafe extern "C" fn warp_stream_process(
     match stream.process(inp,out,frames as usize){Ok(_)=>0,Err(_)=>-2}
 }
 
+
+/* Extended native/WASM streaming ABI: old entry points remain binary compatible.
+ * engine: 0=tracked STFT,1=FFT-bin relocation,2=Ring Mod,3=Pitch->Frequency Shift.
+ * quality 0=1024,1=2048,2=4096; hop_div 4 or 8.
+ * F, n/m are host-side parameter math only; shiftHz is passed explicitly.
+ */
+#[no_mangle]
+pub extern "C" fn warp_stream_create_ext(
+    rate:f64,channels:u32,low:f64,high:f64,p:f64,amount:f64,mode:u32,
+    quality_id:u32,outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,
+    carrier_hz:f64,zero_mode:u32,hop_div:u32
+)->*mut Stream{
+    match Stream::new_extended(rate,channels as usize,params(low,high,p,amount,mode,quality_id),
+        outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div){
+        Ok(st)=>Box::into_raw(Box::new(st)),Err(_)=>std::ptr::null_mut()
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_ext(
+    ptr:*mut Stream,low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,zero_mode:u32
+)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).configure_extended(params(low,high,p,amount,mode,quality_id),outside,
+        engine,pitch_ratio,shift_hz,carrier_hz,zero_mode){Ok(_)=>0,Err(_)=>-2}
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -320,6 +430,29 @@ mod tests{
         let original=magnitude(500.0);
         assert!(warped>original*4.0,"peak shift missing: warped={warped}, original={original}");
         assert!(warped>150.0,"unexpectedly low shifted energy {warped}");
+    }
+    #[test]
+    fn ring_is_samplewise_true_modulation_and_has_zero_fft_latency(){
+        let mut st=Stream::new_extended(8192.0,1,settings(),1,2,1.0,0.0,300.0,0,4).unwrap();
+        let inp:Vec<f32>=(0..128).map(|i|(TAU*500.0*i as f64/8192.0).cos() as f32).collect();
+        let mut out=vec![0.0;128];
+        st.process(&inp,&mut out,128).unwrap();
+        assert_eq!(st.latency(),0);
+        assert!((out[0]-1.0).abs()<1e-5);
+        assert!((out[1]-(TAU*500.0/8192.0).cos() as f32*(TAU*300.0/8192.0).cos() as f32).abs()<1e-5);
+        st.configure_extended(settings(),1,2,1.0,0.0,600.0,0).unwrap();
+    }
+    #[test]
+    fn alternate_spectral_and_harmonic_engines_stream(){
+        for engine in [1u32,3u32]{
+            let mut st=Stream::new_extended(8192.0,1,settings(),1,engine,1.0,-75.0,300.0,0,8).unwrap();
+            let mut out=vec![0.0;128];
+            for block in 0..65{
+                let input=(0..128).map(|j|(0.5*(TAU*500.0*(block*128+j) as f64/8192.0).cos()) as f32).collect::<Vec<_>>();
+                st.process(&input,&mut out,128).unwrap();
+                assert!(out.iter().all(|x|x.is_finite()));
+            }
+        }
     }
     #[test]
     fn stream_parameter_changes_and_reset(){
