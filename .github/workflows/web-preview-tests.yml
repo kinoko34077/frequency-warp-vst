@@ -1,13 +1,15 @@
-name: Browser audio preview tests
+name: Browser audio preview and shared Rust/WASM CI
 
 on:
   pull_request:
     paths:
+      - 'core/**'
       - 'web-demo/**'
       - '.github/workflows/web-preview-tests.yml'
   push:
     branches: [main]
     paths:
+      - 'core/**'
       - 'web-demo/**'
       - '.github/workflows/web-preview-tests.yml'
 
@@ -22,14 +24,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check actual JS FFT/STFT output and stereo phase
+      - name: Configure native Rust and WASM toolchain
+        run: rustup target add wasm32-unknown-unknown
+      - name: Native Rust core tests
+        run: cargo test --manifest-path core/Cargo.toml
+      - name: Build exact same Rust DSP for WASM
+        run: |
+          cargo build --manifest-path core/Cargo.toml --release --target wasm32-unknown-unknown
+          cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm web-demo/dsp_core.wasm
+          test -s web-demo/dsp_core.wasm
+      - name: UI-only helper checks
         run: node --test web-demo/dsp.test.mjs
-      # Full browser/WASM integration is checked in shared-core-tests.yml.
-      - name: Check browser resources exist
+      - name: Shared WASM math and real audio output checks
+        run: node --test web-demo/core-wasm.test.mjs
+      - name: Install headless Chrome client
+        run: |
+          npm install --no-save --no-package-lock puppeteer-core@24
+          command -v google-chrome
+      - name: Chrome end-to-end 12-second audio warp
+        run: node --test web-demo/wasm-browser-smoke.test.mjs
+      - name: Check browser resource wiring
         run: |
           test -s web-demo/index.html
           test -s web-demo/app.mjs
           test -s web-demo/processor.worker.mjs
           test -s web-demo/style.css
-          grep -q './app.mjs' web-demo/index.html
           grep -q './processor.worker.mjs' web-demo/app.mjs
+          grep -q './dsp_core.wasm' web-demo/processor.worker.mjs
