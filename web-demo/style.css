@@ -221,3 +221,99 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .sine-meta .inline-value{width:80px!important}
   .mini-heading{overflow-wrap:anywhere}
 }
+
+/* 2026-10-14 user-first compact layout: avoid dead vertical space. */
+.studio{padding-top:10px;padding-bottom:16px}
+.header{margin-bottom:9px}
+.logo{width:34px;height:34px;font-size:22px}
+.brand h1{font-size:21px}
+.workspace-grid,.workspace-left{gap:9px}
+.panel{padding:12px;border-radius:11px;box-shadow:none}
+.section-header{margin-bottom:7px}
+.section-header h2{font-size:16px}
+.eyebrow{font-size:9px;margin-bottom:1px}
+.drop{min-height:58px;padding:9px;gap:6px 9px}
+.drop small{margin-top:0;padding-left:0;flex-basis:auto}
+.meta{margin:5px 0}
+.wave-wrap{height:84px;padding:5px}
+.wave-wrap canvas{height:72px}
+.playhead{top:5px;bottom:5px}
+.actions{margin-top:7px;gap:6px}
+.actions button{padding:9px 6px}
+.rt-indicator{margin-top:7px;padding:4px 8px;font-size:10px}
+.status{margin-top:4px}
+.control-grid{gap:8px 12px}
+.control-heading{margin-bottom:3px}
+.control-heading label{font-size:12px}
+.control-cue{min-height:0;padding:6px;gap:2px}
+.control input[type=range]{height:20px}
+.ends{margin-top:1px;font-size:9px}
+.axis-explainer,.axis-mode-hint{margin-top:0;font-size:9px}
+.bounds{display:block;margin-top:9px;padding-top:9px}
+.dual-band-head{display:flex;gap:7px;justify-content:space-between;align-items:center}
+.dual-band-head label{font-size:12px;font-weight:650}
+.dual-values{display:flex;align-items:center;gap:4px}
+.dual-values .inline-value{width:72px;max-width:72px}
+.dual-track{height:34px;margin:4px 9px;position:relative}
+.band-rail,.band-fill{position:absolute;top:15px;height:4px;border-radius:4px}
+.band-rail{left:0;right:0;background:#315b59}
+.band-fill{background:#59d6b5;left:0;width:96.8%;pointer-events:none}
+.dual-track input[type=range]{position:absolute;inset:0;margin:0;width:100%;height:34px;appearance:none;background:transparent;pointer-events:none}
+.dual-track input[type=range]::-webkit-slider-runnable-track{height:4px;background:transparent;border:0}
+.dual-track input[type=range]::-moz-range-track{height:4px;background:transparent;border:0}
+.dual-track input[type=range]::-webkit-slider-thumb{appearance:none;pointer-events:auto;width:22px;height:22px;margin-top:-9px;background:#a5f0d5;border:2px solid #175d50;border-radius:50%;cursor:ew-resize}
+.dual-track input[type=range]::-moz-range-thumb{pointer-events:auto;width:22px;height:22px;background:#a5f0d5;border:2px solid #175d50;border-radius:50%;cursor:ew-resize}
+.dual-track #low{z-index:3}
+.dual-track #high{z-index:2}
+.effects-group{margin-top:8px;padding-top:8px;border-top:1px solid #2b464b;display:grid;gap:7px}
+.effects-heading{font-weight:650;font-size:12px}
+.effect-block{display:grid;gap:5px;border:1px solid #294b4c;border-radius:8px;padding:7px}
+.effect-block .setting-checkbox{font-size:12px}
+.effect-block .link-carrier{margin:0;padding:3px;background:transparent;border:0}
+.effect-block .link-carrier strong{font-size:10px}
+.effect-block .link-carrier small{font-size:9px}
+.effect-block .math-field{display:grid;grid-template-columns:1fr auto;gap:4px}
+.effect-block .math-field label{font-size:11px;margin:0}
+.effect-block .math-input{grid-column:1/-1}
+.effect-block .settings-pair{gap:8px}
+.effect-block .settings-pair label{font-size:10px}
+.effect-block .settings-pair input[type=range],.engine-a-options input[type=range]{width:100%;accent-color:#58dcb6}
+.engine-a-options{margin-top:8px;padding:8px;background:#0c2529;border-radius:8px}
+.engine-a-options .settings-pair label{font-size:11px}
+.engine-a-options .setting-help{margin-top:4px}
+.panel-tabs{padding:2px;margin-bottom:7px}
+.panel-tabs button{padding:5px 3px}
+.graph-title{margin-bottom:4px}
+.graph-legend{margin:5px 0 0}
+.graph-note{margin-top:2px;font-size:9px}
+.harmonic-mini{margin-top:7px;padding-top:6px}
+.math-results{white-space:normal;font:inherit;background:transparent;border:0;padding:0;line-height:1.45}
+.formula-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.formula-card{border:1px solid #355457;border-radius:7px;padding:7px;background:#10282a;min-width:0}
+.formula-card strong{display:block;font-size:11px;margin-bottom:5px}
+.formula-card math{font-size:clamp(12px,1.2vw,17px);overflow:auto;max-width:100%}
+.variable-table{border-collapse:collapse;width:100%;font-size:11px}
+.variable-table caption{text-align:left;font-weight:650;padding:8px 0 4px}
+.variable-table th,.variable-table td{border-bottom:1px solid #2b4a4c;padding:5px;text-align:left;vertical-align:top}
+.variable-table td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.math-details{margin:5px 0}.math-details summary{cursor:pointer;font-size:11px}
+.math-summary{font-size:12px;color:#acdbc8;margin:3px 0 7px}
+.math-note{margin:4px 0 8px}
+.math-controls{gap:8px}
+.math-field label{margin-bottom:3px}
+.link-carrier{min-height:0}
+.workspace-right{min-height:0}
+.sine-monitor .section-header{margin-bottom:4px}
+.offline-tool{padding:9px}
+.below-workspace{margin-top:7px}
+footer{padding:9px 3px;margin-top:7px}
+@media(max-width:800px){
+  .workspace-grid{row-gap:6px;column-gap:6px}
+  .quick-panel,.workspace-right{padding:8px}
+  .quick-panel .control-grid{gap:9px}
+  .quick-panel .bounds{margin-top:7px;padding-top:7px}
+  .dual-values .inline-value{width:52px!important;max-width:52px}
+  .effect-block .settings-pair{grid-template-columns:1fr}
+  .formula-grid{grid-template-columns:1fr}
+  .workspace-right .mini-harmonics div{padding:3px}
+}
