@@ -189,3 +189,6 @@ UNVERIFIED pending physical testing.
 - All actual audio frequency-coordinate transforms and negative
   frequency rules execute in shared native/WASM Rust; graph uses the
   exported Rust operator for its frequency movement.
+
+## 操作の整理（2026-10-14）
+傾きはHz間隔の倍率。起点0Hz・傾き2×・移動0で全成分が2倍（曲率0～1のどちらでも成立）。曲率は別の移動操作の対数／線形を選ぶもの。数値は各スライダーの右側をタップして直接編集。グラフをタップすると2kHz／20kHzを切り替え、細線の透明度にMixが反映されます。通常表示は短い変換例と再生状態に限定し、数式と処理情報は展開可能。Media Session対応によるバックグラウンド操作を追加（iPhoneロック画面での連続処理は実機未検証）。

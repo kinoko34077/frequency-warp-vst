@@ -331,3 +331,33 @@ test("pivot/slope and signed 0Hz policies are shared WASM audio operations",asyn
    }
  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("zero pivot physical slope makes an octave in both FFT and peak audio paths",async()=>{
+ const e=await load();
+ assert.equal(typeof e.warp_translate_frequency_controls,"function");
+ for(const p of [0,0.5,1]){
+   for(const f of [125,500,1000]){
+     assert.ok(Math.abs(e.warp_translate_frequency_controls(f,0,2,350,p,0)-2*f)<1e-7);
+   }
+ }
+ const n=16384,rate=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+ try{
+   new Float32Array(e.memory.buffer,src,n).forEach((_,i,a)=>a[i]=.45*Math.cos(2*Math.PI*500*i/rate));
+   for(const engine of [0,1]){
+     const rc=e.warp_stream_render_f32_geometry_ext(src,dst,n,1,rate,
+       20,3000,1,0,0,0,0,engine,1,0,0,0,4,0,1,0,350,0,0,0,2);
+     assert.equal(rc,0);
+     const pcm=new Float32Array(e.memory.buffer,dst,n);
+     const peak=hz=>{
+       let re=0,im=0;
+       for(let i=4000;i<12000;i++){
+         const a=2*Math.PI*hz*i/rate;
+         re+=pcm[i]*Math.cos(a);im+=pcm[i]*Math.sin(a);
+       }
+       return Math.hypot(re,im);
+     };
+     const high=peak(1000),low=peak(500);
+     assert.ok(high>10 && high>low*2,"engine "+engine+" must pitch 500Hz to 1000Hz by slope alone: "+high+"/"+low);
+   }
+ }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
