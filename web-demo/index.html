@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Frequency Warp — Audio Preview</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <header class="header">
+      <div class="brand"><span class="logo">∿</span><div><h1>Frequency Warp</h1><p>Audio Preview · R2.1 Research</p></div></div>
+      <span class="phase">Experimental</span>
+    </header>
+    <section class="panel upload-section">
+      <div class="eyebrow">01 / SOURCE AUDIO</div>
+      <div id="drop" class="drop" tabindex="0" role="button" aria-label="音声ファイルを選択またはドロップ">
+        <div class="upload-icon">♫</div>
+        <strong>音声ファイルを読み込む</strong>
+        <p>クリックまたはドラッグ＆ドロップ</p>
+        <small>WAV / MP3 などブラウザ対応の音声 · 最大75MB · 先頭10秒を解析</small>
+        <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac">
+      </div>
+      <p id="file-meta" class="meta" aria-live="polite">音声未選択</p>
+      <div class="wave-wrap"><canvas id="wave" aria-label="音声波形"></canvas></div>
+    </section>
+    <section class="panel">
+      <div class="eyebrow">02 / SPECTRAL MAPPING</div>
+      <div class="panels">
+        <div class="controls">
+          <div class="control"><div class="control-heading"><label for="curvature">Curvature</label><output id="curvature-value">1.00</output></div>
+            <input id="curvature" type="range" min="0" max="1" step=".01" value="1">
+            <div class="ends"><span>Logarithmic</span><span>Linear</span></div>
+          </div>
+          <div class="control"><div class="control-heading"><label for="invert">Invert</label><output id="invert-value">100%</output></div>
+            <input id="invert" type="range" min="0" max="1" step=".01" value="1">
+            <div class="ends"><span>Normal</span><span>Inverted</span></div>
+          </div>
+          <div class="control"><div class="control-heading"><label for="wet">Wet</label><output id="wet-value">100%</output></div>
+            <input id="wet" type="range" min="0" max="1" step=".01" value="1">
+            <div class="ends"><span>Original</span><span>Processed</span></div>
+          </div>
+          <div class="selectors">
+            <div><label for="mode">Invert Mode</label><select id="mode"><option value="fold" selected>Fold / L-H 折返し</option><option value="blend">Blend / 単純補間</option></select></div>
+            <div><label for="quality">Quality</label><select id="quality"><option value="eco">Eco / Fast</option><option value="standard" selected>Standard</option><option value="high">High / Slow</option></select></div>
+          </div>
+        </div>
+        <div class="curve-panel">
+          <div class="graph-title">FREQUENCY MAPPING <span>f → f′</span></div>
+          <canvas id="curve" aria-label="周波数変換曲線"></canvas>
+          <div class="ends"><span>Input: 20Hz</span><span>20kHz</span></div>
+          <p class="graph-note">グラフは理論写像。実音のDSP品質とは異なります。</p>
+        </div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="eyebrow">03 / RENDER & LISTEN</div>
+      <button class="primary" id="render" disabled>音声を変換する</button>
+      <progress id="progress" value="0" max="100" aria-label="変換進捗"></progress>
+      <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを読み込んでください。</div>
+      <div class="actions">
+        <button id="play-dry" disabled>▶ 原音</button>
+        <button id="play-wet" disabled>▶ 変換後</button>
+        <button id="stop" disabled>■ 停止</button>
+        <button id="download" disabled>↓ WAV保存</button>
+      </div>
+    </section>
+    <section class="notice">
+      <strong>研究用プレビューについて</strong>
+      <p>現在のR2.1 STFTアルゴリズムをJavaScriptで試聴する版です。処理は端末内で完結し、音声はサーバーへ送信されません。リアルタイム処理や完成VSTではありません。</p>
+      <p>ノイズ・残響・複雑な音では成分欠落、位相ずれ、音量変化が発生します。テスト対象帯域は20Hz〜min(16kHz, サンプルレート×0.45)で、この帯域外や未追跡成分は試作上出力されません。これは製品仕様として採用した帯域外ルールではありません。</p>
+      <p>Qualityの段階はこのブラウザ試作品専用の計算設定であり、完成版VST3の品質段階とは異なります。</p>
+    </section>
+    <footer><a href="https://github.com/kinoko34077/frequency-warp-vst">Source / frequency-warp-vst</a><span>Local-only DSP · No upload</span></footer>
+  </main>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
