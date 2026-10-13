@@ -29,15 +29,19 @@ export function graphSegments({low,high,curvature,invert,mode,outside,engine,pit
   for(let i=0;i<=512;i++){
     const f=f0+(f1-f0)*i/512,inside=f>=low&&f<=high;
     let outputs=[];
+    const base=inside?[warp(f,low,high,curvature,invert,mode)]
+      :outside==="pass"?[f]:[];
     if(engine===2){
-      outputs=[f+carrierHz,Math.abs(f-carrierHz)];
+      // Same order as Rust Stream::process: nonlinear warp, then Ring.
+      outputs=base.flatMap(v=>[v+carrierHz,Math.abs(v-carrierHz)]);
     }else if(engine===3){
-      const destination=pitchRatio*f+shiftHz;
-      outputs=inside?(destination>=0?[destination]:settingsZeroMode(zeroMode,destination))
-        :outside==="pass"?[f]:[];
-    }else{
-      outputs=inside?[warp(f,low,high,curvature,invert,mode)]:outside==="pass"?[f]:[];
-    }
+      // Pitch and signed-Hz are applied to in-band warped partials;
+      // outside Pass is reconstructed unchanged by the Rust core.
+      outputs=inside?base.flatMap(v=>{
+        const target=pitchRatio*v+shiftHz;
+        return target>=0?[target]:settingsZeroMode(zeroMode,target);
+      }):base;
+    }else{outputs=base;}
     values.push({f,inside,outputs:outputs.filter(y=>Number.isFinite(y)&&y>=f0&&y<=f1)});
   }
   return values;
