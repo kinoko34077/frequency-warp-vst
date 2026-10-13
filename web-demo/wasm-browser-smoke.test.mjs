@@ -125,7 +125,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
     await page.click("#settings-open");
     // Ring and rational layout are *effects*, not synthesis engines.
-    assert.deepEqual(await page.$eval("#engine option:not(:disabled)",nodes=>nodes.map(n=>n.value)),["0","1"]);
+    assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll("#engine option:not(:disabled)")).map(n=>n.value)),["0","1"]);
     await page.click("#ring-enabled");
     assert.match(await page.$eval("#engine-description",el=>el.textContent),/Ring Mod/);
     await page.click("#rational-enabled");
