@@ -252,6 +252,7 @@ impl Stream {
     fn process_frame(&mut self,start:usize){
         let half=self.n/2;
         let step=self.sample_rate/self.n as f64;
+        let source_anchor=self.source_pivot_anchor();
         for c in 0..self.channels{
             for i in 0..self.n{
                 let ring=(start+i)%self.n;
@@ -284,7 +285,7 @@ impl Stream {
                             self.pitch_ratio*base+self.shift_hz
                         }else{base};
                         if old<=0.0 {old}else{
-                            translate_frequency_anchored(old,self.source_pivot_anchor(),
+                            translate_frequency_anchored(old,source_anchor,
                                 self.axis_pivot,self.axis_slope,
                                 self.axis_reference,self.settings.curvature,self.axis_shift)
                         }
@@ -349,7 +350,7 @@ impl Stream {
                 self.pitch_ratio*mapped+self.shift_hz
             }else{mapped};
             let target=if staged<=0.0 {staged}else {
-                translate_frequency_anchored(staged,self.source_pivot_anchor(),
+                translate_frequency_anchored(staged,source_anchor,
                     self.axis_pivot,self.axis_slope,
                     self.axis_reference,self.settings.curvature,self.axis_shift)
             };
