@@ -144,7 +144,14 @@ impl Stream {
            || !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
             return Err("invalid A options");
         }
-        self.a_min_hz=min_hz;self.a_reverb_amount=reverb as f32;Ok(())
+        self.a_min_hz=min_hz;
+        if reverb==0.0 && self.a_reverb_amount>0.0{
+            for channel in &mut self.a_reverb_delays{
+                for delay in channel{delay.fill(0.0);}
+            }
+            self.a_reverb_pos=[0;3];
+        }
+        self.a_reverb_amount=reverb as f32;Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
@@ -541,6 +548,12 @@ pub unsafe extern "C" fn warp_stream_set_transform(ptr:*mut Stream,shift:f64,
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_a_options(ptr:*mut Stream,min_hz:f64,reverb:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_a_options(min_hz,reverb){Ok(())=>0,Err(_)=>-2}
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slope:f64)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_geometry(pivot,slope){Ok(())=>0,Err(_)=>-2}
@@ -551,12 +564,13 @@ pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slop
 /// Input and output are non-overlapping planar contiguous f32 buffers.
 /// Offline allocations are permitted here, but NOT in the realtime process.
 #[no_mangle]
-pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
+pub unsafe extern "C" fn warp_stream_render_f32_a_ext(
     input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
     low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -567,7 +581,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
     };
     if st.set_crusher(crusher_bits,crusher_hold).is_err()||
        st.set_transform(axis_shift,axis_reference,ring,rational).is_err()||
-       st.set_geometry(axis_pivot,axis_slope).is_err(){return -2;}
+       st.set_geometry(axis_pivot,axis_slope).is_err()||
+       st.set_a_options(a_min_hz,a_reverb).is_err(){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -604,6 +619,19 @@ pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
     0
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+)->i32{
+    warp_stream_render_f32_a_ext(input,output,frames,channels,rate,
+        low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,
+        shift_hz,carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,
+        axis_shift,axis_reference,ring,rational,axis_pivot,axis_slope,20.0,0.0)
+}
 #[no_mangle]
 pub unsafe extern "C" fn warp_stream_render_f32_axis_ext(
     input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
@@ -751,6 +779,25 @@ mod tests{
         a.set_transform(0.0,400.0,0,0).unwrap();
         assert!(!a.ring_enabled);
         assert!(a.set_transform(0.0,0.0,0,0).is_err());
+    }
+    #[test]
+    fn a_minimum_frequency_and_reverb_are_independent_options(){
+        let stg=Settings{low:20.0,high:3000.0,curvature:1.0,invert:0.0,
+            mode:Progression::FoldHigh,quality:0};
+        let mut a=Stream::new_extended(8192.0,1,stg,0,0,1.0,0.0,0.0,0,4).unwrap();
+        let mut b=Stream::new_extended(8192.0,1,stg,0,1,1.0,0.0,0.0,0,4).unwrap();
+        assert!(a.set_a_options(900.0,0.4).is_ok());
+        assert_eq!(a.a_min_hz,900.0);
+        assert!((a.a_reverb_amount-0.4).abs()<0.00001);
+        assert!(a.set_a_options(2.0,1.0).is_err());
+        b.set_a_options(900.0,1.0).unwrap();
+        let mut aa=vec![0.0f32;128];aa[0]=0.7;
+        let mut bb=aa.clone();
+        a.post_process(&mut aa,128);
+        b.post_process(&mut bb,128);
+        assert!(aa[0]<bb[0]);
+        a.reset();assert_eq!(a.a_reverb_pos,[0;3]);
+        assert!(a.a_reverb_delays[0][0].iter().all(|v|*v==0.0));
     }
     #[test]
     fn physical_slope_zero_pivot_is_uniform_pitch_in_both_engines(){
