@@ -221,3 +221,123 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .sine-meta .inline-value{width:80px!important}
   .mini-heading{overflow-wrap:anywhere}
 }
+
+/* Compact user-first workbench: frequent controls, result and effects together */
+.studio{padding-top:10px;padding-bottom:20px}
+.header{margin-bottom:8px}
+.logo{width:38px;height:38px;font-size:24px;border-radius:10px}
+.header h1{font-size:21px}
+.gear{padding:6px 9px;min-width:72px}
+.workspace-grid,.workspace-left{gap:9px}
+.panel{padding:11px 12px;border-radius:11px;box-shadow:none}
+.section-header{margin-bottom:7px}
+.section-header h2{font-size:16px}
+.eyebrow{font-size:9px;margin-bottom:2px}
+.drop{min-height:48px;padding:7px 10px;gap:5px 8px}
+.drop strong{font-size:12px}
+.drop small{margin:0;padding:0;font-size:10px;flex-basis:auto}
+.meta{margin:5px 0;font-size:10px}
+.wave-wrap{height:84px;padding:5px}
+.wave-wrap canvas{height:72px}
+.playhead{top:5px;bottom:5px}
+.actions{margin-top:7px;gap:5px}
+.actions button{padding:8px 5px;font-size:11px;min-height:32px}
+.rt-indicator{margin-top:5px;padding:4px 8px;font-size:10px}
+.status{min-height:0;margin-top:4px;font-size:10px}
+.control-grid{gap:9px 11px}
+.control-heading{margin-bottom:2px;gap:5px}
+.control-heading label,.bounds-heading{font-size:11px}
+.control input[type=range]{margin:0;height:18px}
+.ends{margin-top:0;font-size:9px}
+.control-cue{grid-column:1/-1;display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;min-height:0;padding:5px 8px;gap:7px}
+.control-cue strong,.control-cue span{font-size:10px}
+.axis-mode-hint:empty{display:none}
+.axis-explainer{margin-top:2px;font-size:9px}
+.zero-button{padding:2px 4px}
+.bounds{display:block;margin-top:9px;padding-top:9px;border-top:1px solid #294447}
+.bounds-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;margin-bottom:7px}
+.bounds-heading strong{font-size:11px}
+.bounds-heading label{display:flex;align-items:center;gap:3px;color:#aec8c8;font-size:10px}
+.bounds-heading input.inline-value{width:65px!important;max-width:none;font-size:10px}
+.dual-range{position:relative;height:22px;margin:0 3px;background:linear-gradient(to right,#344e53 0%,#344e53 var(--lo),#66dcb9 var(--lo),#66dcb9 var(--hi),#344e53 var(--hi),#344e53 100%) center /100% 4px no-repeat;border-radius:5px}
+.dual-range input[type=range]{position:absolute;inset:0;width:100%;height:22px;margin:0;pointer-events:none;appearance:none;-webkit-appearance:none;background:transparent;touch-action:none}
+.dual-range #low{z-index:2}
+.dual-range #high{z-index:3}
+.dual-range input::-webkit-slider-runnable-track{height:4px;background:transparent}
+.dual-range input::-moz-range-track{height:4px;background:transparent}
+.dual-range input::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;border:2px solid #bdfde5;background:#214941;pointer-events:auto;cursor:grab}
+.dual-range input::-moz-range-thumb{width:14px;height:14px;border-radius:50%;border:2px solid #bdfde5;background:#214941;pointer-events:auto;cursor:grab}
+.effects-panel{border-top:1px solid #294447;margin-top:10px;padding-top:9px;display:grid;gap:6px}
+.effects-panel h3{font-size:11px;color:#82cab2;font-weight:650;margin:0}
+.fx-item{border-radius:7px;background:#0e2429;border:1px solid #284247;padding:7px 8px}
+.fx-toggle{display:flex;align-items:center;gap:7px;font-size:11px;cursor:pointer}
+.fx-toggle input{accent-color:#6ddcbd}
+.fx-body{padding:6px 0 0}
+.fx-body input[type=range],.fx-pair input[type=range]{width:100%;height:20px;accent-color:#62d6b6}
+.fx-body .link-carrier{display:flex;align-items:center;gap:5px;margin:0;padding:3px;border:0;background:none;font-size:10px}
+.fx-help{font-size:9px;color:#a0c1b5}
+.fx-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:5px}
+.fx-pair .inline-value{width:44px}
+.fx-item:not(:has(.fx-toggle>input:checked))>.fx-body,
+.fx-item:not(:has(.fx-toggle>input:checked))>.fx-pair{display:none}
+.fx-more{font-size:10px;color:#a4c5bb}
+.fx-more summary{cursor:pointer}
+.math-note{margin:4px 0 7px;font-size:10px;line-height:1.45}
+.math-caption{padding:5px 6px;border:1px solid #345f58;border-radius:7px;font-size:11px;color:#bbefdf;margin-bottom:7px}
+.math-debug{font-size:10px;margin:7px 0}
+.math-debug summary{cursor:pointer}
+.formula-section{border-top:1px solid #2c484e;padding-top:9px;margin-top:9px}
+.formula-section h3{font-size:11px;color:#78d4b8;margin:7px 0}
+.formula-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.formula-grid math{min-width:0;background:#0d2025;border:1px solid #2b4c4b;border-radius:6px;padding:9px 4px;overflow-x:auto;font-size:15px;text-align:center}
+.variable-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 8px;margin:6px 0;font-size:11px}
+.variable-grid dt,.variable-grid dd{margin:0;padding:5px 3px;border-bottom:1px solid #263f43}
+.variable-grid dt{color:#a3c5c2}
+.variable-grid dd{text-align:right;color:#d9eee7;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.math-controls{gap:8px}
+.math-field label{margin:0 0 2px}
+.math-field>.math-input input[type=range]{height:18px}
+.panel-tabs{margin-bottom:7px;padding:2px}
+.panel-tabs button{padding:6px 5px;font-size:11px}
+.graph-title{margin-bottom:5px}
+.graph-legend{margin:6px 0 3px;font-size:10px}
+.graph-note{margin-top:3px;font-size:9px}
+.harmonic-mini{margin-top:8px;padding:7px 2px 0;gap:4px}
+.mini-harmonics div{padding:4px 3px;font-size:9px}
+.sine-monitor{padding:10px}
+.sine-monitor .section-header{margin-bottom:4px}
+.settings-head,.settings-foot{padding:9px 13px}
+.settings-head h2{font-size:18px}
+.settings-body{padding:6px 13px;max-height:calc(92dvh - 117px)}
+.settings-body fieldset{padding:6px 0 10px}
+.settings-body legend{padding:2px 0;font-size:12px}
+.settings-body label{margin:5px 0 3px}
+.settings-body select{padding:7px;font-size:12px}
+.setting-help{font-size:10px;line-height:1.4;margin-top:4px}
+@media(max-width:800px){
+.workspace-grid{row-gap:8px;column-gap:7px}
+.quick-panel .control-grid{gap:8px}
+.quick-panel .bounds{margin-top:9px;padding-top:8px}
+.quick-panel .control input[type=range]{min-height:18px}
+.workspace-right .panel-tabs button{padding:5px 3px}
+.workspace-right .mini-harmonics{gap:3px}
+.workspace-right .mini-harmonics div{padding:3px;font-size:9px}
+.formula-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:450px){
+.studio{padding:7px 7px 13px}
+.panel{padding:8px;border-radius:9px}
+.quick-panel .section-header h2{font-size:14px}
+.quick-panel .control-heading label{font-size:10px}
+.inline-value{width:52px!important;font-size:10px}
+.bounds-heading input.inline-value{width:55px!important}
+.quick-panel .control-cue{padding:4px;gap:4px}
+.quick-panel .control-cue span{display:none}
+.quick-panel .control-cue strong,.quick-panel .control-cue button{font-size:10px}
+.quick-panel .ends{font-size:8px}
+.quick-panel .fx-item{padding:5px}
+.quick-panel .fx-pair{grid-template-columns:1fr 1fr;gap:4px}
+.workspace-right .math-controls{gap:5px}
+.workspace-right .variable-grid{font-size:10px;gap:0 3px}
+.header{margin-bottom:6px}
+}
