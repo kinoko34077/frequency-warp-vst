@@ -54,6 +54,21 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#invert",el=>el.value),"0");
     assert.equal(await page.$eval("#engine",el=>el.value),"1","STFT B must be default");
     assert.equal(await page.$eval(".dual-range",el=>el.querySelectorAll("input[type=range]").length),2);
+    assert.equal(await page.$eval("#engine",el=>el.value),"1");
+    assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
+    assert.equal(await page.$eval("#math-results",el=>el.textContent.includes("|")),false);
+    assert.equal(await page.$eval("#ring-enabled",el=>el.closest(".effects-panel")!==null),true);
+    assert.equal(await page.$eval("#crusher-enabled",el=>el.closest(".effects-panel")!==null),true);
+    assert.equal(await page.$eval("#carrier",el=>el.closest(".effects-panel")!==null),true);
+    await page.$eval("#dual-range",el=>{
+      const r=el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,
+        clientX:r.x+r.width*.30,clientY:r.y+r.height/2}));
+    });
+    assert.ok(await page.$eval("#low",el=>Number(el.value))>0,
+      "tapping shared rail should move nearest threshold");
+    await page.$eval("#low",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
     for(const id of ["curvature","invert","wet"]){
       assert.ok(await page.$eval("#"+id,el=>Number(el.step))<=0.005,"percentage slider coarse: "+id);
