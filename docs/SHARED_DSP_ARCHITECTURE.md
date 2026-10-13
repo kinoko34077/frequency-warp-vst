@@ -43,8 +43,8 @@ not a nonlinear inversion.
 - 0: STFT peak-following / oscillator resynthesis. Tonal partials only;
   noise/residual handling incomplete.
 - 1: FFT-bin reassignment / inverse FFT. Quantization and phase artifacts.
-- 2: time-domain Ring Mod. Zero FFT lookahead, not a warp equivalent.
-- 3: pitch ratio plus signed Hz offset via tracked partials. The
+- 2: tracked STFT nonlinear Warp **then** time-domain Ring Mod. This preserves\n  Invert/Curvature, creates two sidebands and inherits the FFT N−1 lookahead.\n  An independent instantaneous Ring-only path is not selected by this engine.
+- 3: tracked STFT nonlinear Warp **then** pitch ratio plus signed Hz offset\n  for tracked in-band partials. The
   parameter F is entered manually, not auto-detected.
 - Unimplemented research paths (analytic linear invert, partial+noise
   residual R2.2, chirplet/nonuniform analysis) remain disabled in UI.
@@ -93,3 +93,48 @@ UI, processor Worker/Worklet and Rust-built dsp_core.wasm.
 History: PRs #11, #13, #15, #18; current UX/common refactor PR #20
 (Issue #19). Research Issue #5 and incomplete candidate Issue #17
 remain separate and are not automatically accepted by this UX change.
+
+## 2026-10-13 UI extension and five candidate families (Issue #22)
+
+Browser audition cap: 600 seconds (previously 120), source file size cap
+75MB. Decoded PCM can require hundreds of MB at 48 kHz stereo;
+full-buffer WAV export remains capped to 40,000,000 samples as a memory
+safety bound. This means a long high-rate stereo file can be previewed
+but its WAV may not be exportable from the browser; never present this
+as successful 600-second export.
+
+The mobile graph is capped to 255 CSS pixels, and its **inner frequency
+plot** is mathematically square with equal Hz-to-pixel scale on x/y.
+A 3-harmonic compact card is always visible immediately below the
+graph. Expandable detail retains the graph in view; 3/5/7/12/16/24/32
+harmonic count is controlled in Settings. Harmonic formulas remain an
+ideal manual-F theoretical model, not detected notes.
+
+A shared Rust DSP post-effect applies Bit Crusher quantization (2–16
+bit) and optional sample-and-hold rate reduction (1–32 input samples)
+to ANY selected engine. It is live-configurable via
+warp_stream_set_crusher, and uses the same setting when exporting WAV
+via warp_stream_render_f32_fx_ext; both preserve Rust native/WASM parity.
+Bitcrusher alters time-domain sample resolution/hold; graph remains a
+frequency-axis *ideal map* and does not draw broadband quantization noise.
+
+### Five proposed implementation categories — factual status
+
+| User candidate | Actual current implementation status | Boundary |
+|---|---|---|
+| Analytic signal + complex modulation (constant Hz shift, direct linear inversion) | **Offline R0/R1 reference only** (PR #4). NOT live Web Rust analytic conjugate engine | Has mathematically clean constant shift / linear conjugate path under analytic-band and Nyquist constraints, not general nonlinear mapping |
+| STFT + phase tracking | **Experimental implemented** (R2.1 offline Python, Rust streaming peak phase estimates) | Measured transient/phase/noise defects; not quality-approved |
+| Sinusoidal partial tracking + resynthesis | **Experimental implemented in part** (current Rust peak tracking and oscillator reconstruction) | Does NOT include phase-perfect tracking, noise/residual reconstruction (Issue #5 R2.2 pending) |
+| High-resolution time-frequency (chirplet/reassignment/nonuniform) | **NOT implemented** | Research candidate only; arbitrary increased FFT window is not a distinct verified high-resolution analysis architecture |
+| Whole-file Fourier transform + frequency relocation | **Offline reference/baseline only** and experimental *framewise* FFT-bin relocation | Current live FFT-bin engine is STFT window-by-window, NOT whole-file Fourier transform; whole-file method is not a selectable live engine |
+
+These are research algorithm **families**, not equivalent to four UI
+effect modes. Ring modulation and pitch+frequency shift are effects
+that transform component frequencies differently, not replacements for
+the five algorithm research paths. No fidelity/CPU winner established.
+
+Current known quantitative unresolved: long-file memory on physical
+iPhone; subjective sound of warp→Ring and pitch, crusher aliasing; FFT
+CPU budget on iPhone. User informally reported that previous iPhone
+version seemed to work; this does NOT verify 600-second worst-case
+memory and DSP cost across devices.
