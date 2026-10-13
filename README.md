@@ -40,3 +40,16 @@ cargo test --manifest-path core/Cargo.toml
 
 See `.github/workflows/web-preview-tests.yml` for native+WASM+Chrome
 integration tests.
+
+
+## 2026-10-13 browser engine comparison (Issue #17)
+The live [Pages demo](https://kinoko34077.github.io/frequency-warp-vst/)
+now provides a square fixed 20–2000Hz mapping graph, ideal harmonic
+equations/virtual fundamental calculator from Issue #16, and four
+**actual distinct** Rust/WASM realtime engines: partial oscillator,
+STFT bin relocation, ring modulation, and pitch→signed frequency shift.
+FFT 1024/2048/4096 and 4×/8× overlap are user-controlled, while WebAudio
+render quantum remains 128 samples. Other researched alternatives remain
+disabled until independently implemented and measured; R2.2 partial+noise
+residual comparison remains open in #5. The browser is a research audition
+and cannot yet determine the highest-quality engine.
