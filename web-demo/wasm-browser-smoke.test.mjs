@@ -271,8 +271,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         }));
         throw Error("600-second start: "+JSON.stringify(state)+" | "+err.message);
       });
-    const minute=await page.$eval("#elapsed",el=>Number(el.textContent.split(":")[0]));
-    assert.equal(minute,9,"600s seek failed");
+    const soughtSeconds=await page.$eval("#elapsed",el=>{
+      const [m,sec]=el.textContent.split(":").map(Number);
+      return m*60+sec;
+    });
+    assert.ok(Math.abs(soughtSeconds-540)<3,
+      "600s waveform seek should land near 9:00, got "+soughtSeconds);
     await page.click("#stop");
     await page.close();
   }finally{
