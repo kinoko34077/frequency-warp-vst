@@ -1,75 +1,57 @@
-# Frequency Warp — Browser Audio Preview
+# Frequency Warp — Web試聴版（共通Rust/WASM DSP）
 
-## Fastest way to listen (no server required)
+**GitHub Pages公開URL（デプロイ成功後有効）**:
+https://kinoko34077.github.io/frequency-warp-vst/
 
-Download [standalone.html](./standalone.html) using GitHub's **Download raw file**
-control, save it on your computer and double-click it in Chrome/Edge.
-It includes all scripts, styles, DSP and Web Worker in one HTML file.
-Audio stays local. If file:// workers are restricted by your browser policy,
-use the local-server method below instead.
+このページは **VST3アダプターと共通利用するRust音声処理コア** を
+WebAssemblyにコンパイルし、ブラウザのWeb Workerから実行する研究版。
+ブラウザはファイル読込、波形描画、原音／Wet再生、WAV保存を担当する。
+以前のJavaScript製独立STFTプロセッサは削除済み。
 
-A self-contained **research-only** front end for listening to nonlinear
-frequency warping with uploaded local audio. No backend, tracking or audio
-upload. Runs with native Web Audio, a module Web Worker and JavaScript.
+## 使い方
+1. Pagesを開き、WAV/MP3等の音声ファイルを選ぶ（アップロードは発生しない）。
+2. Curvature、Invert、Fold/Blend、Wet、Qualityを設定。
+3. 「音声を変換する」を押し、処理後に原音／変換音を聴き比べる。
+4. 必要ならWAV保存。Wetだけは変換後もすぐ混合割合を変えられる。
 
-## How to run
+**先頭最大120秒**を対象にする。長尺・高品質設定ではCPUとメモリ使用量が
+増え、処理完了まで時間を要する。現行処理はWorker上の一括実行で、
+中間の実進捗率は測れない。不要ならページ再読込で中止できる。
+5分以上などのさらに長い音声やストリーミングは今後の課題。
 
-Serve the repository with any local HTTP server (ES module Workers usually
-cannot be loaded reliably by double-clicking \`file://\` documents):
-
+## ローカル実行
+Rustツールチェーン、wasm32-unknown-unknown、Pythonが必要。
 \`\`\`sh
-python -m http.server 8000
+rustup target add wasm32-unknown-unknown
+cargo build --manifest-path core/Cargo.toml --release --target wasm32-unknown-unknown
+cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm web-demo/dsp_core.wasm
+python3 -m http.server 8000
 \`\`\`
+http://localhost:8000/web-demo/ を開く。単体 \`standalone.html\` は
+**旧JS独立版の提供を終了したためPagesへの案内**に変更した。
 
-Open **http://localhost:8000/web-demo/**. On Windows, Python may be named
-\`py\`; use \`py -m http.server 8000\` if necessary.
+## 音質・処理境界
+- 共通DSPは現時点で **R2.1のオフラインSTFT候補**。ノイズ・残響・交差音などの
+  成分欠落、位相・音量変化、トランジェントの劣化が残る。完成VST3でも
+  最終アルゴリズムでもない。
+- 解析の暫定範囲は20Hz〜min(16000,サンプルレート×0.45)。帯域外を消す
+  実装上の暫定挙動は製品要件の決定ではない。Reflect/Kill/Fadeも未実装。
+- Qualityは処理予算の暫定3段階であり、高品質ほど常に聴感が良いという保証はない。
+- AudioContext.decodeAudioDataによりブラウザの出力サンプルレートへ
+  リサンプルされる場合がある。このデモは入力フォーマットの完全な
+  ビット単位保存を保証しない。
+- Web上の試聴とVST側の最終サウンドが一致するためには、今後の
+  VST3アダプターも **同じRust DSP処理実装**へ接続する。
 
-1. Choose or drop an audio file (browser-decoding formats such as WAV/MP3).
-2. Select Curvature (0=log, 1=linear), Invert Amount (0=identity,
-   1=fully inverted), candidate progression (Fold vs Blend), Quality and Wet.
-3. Press "音声を変換する". This performs actual **offline** spectral processing
-   in a separate worker; file data stays on the device.
-4. A/B playback the original and processed mix or export 16-bit WAV.
-5. The Wet slider changes the blend of already-rendered Dry/Wet streams.
-   Other parameter changes require explicit re-render.
-
-## Important research boundaries
-
-This is a JavaScript port of the **R2.1 candidate**, not the final
-algorithm. It uses STFT peak/instantaneous-frequency estimation, peak
-neighborhood analytic-partial inverse FFT and tracked phase-continuous
-difference modulation for both channels. It is not 1:1 bit-identical
-to Python due to library FFT/numerical implementation differences;
-both versions use the same mapping and broad processing scheme.
-
-- Currently limited to **first 10 seconds** and **1–2 channels**.
-- Test-analysis band is **20Hz–min(16kHz, sampleRate×0.45)**. Unmatched
-  noise and out-of-band components may disappear in this research
-  prototype. This is NOT an adopted product band-outside policy;
-  the VST3 requirements leave that decision open.
-- Quality presets **Eco 1024/256**, **Standard 2048/256**,
-  **High 4096/512** define experimental FFT/hop plus peak budgets.
-  Their naming does not prove perceptual quality ranking.
-- Parameter movement is **not realtime automation**. No WebAudio Worklet
-  or DAW integration; the browser worker computes audio before playback.
-- Peak collisions, absolute phase, transients, smooth glides, complex
-  polyphony, noise/reverb/ambience and any Nyquist/alias protection
-  remain unsolved. Do not treat this page as a faithful final sound.
-- WAV writer clips to ±1 and saves 16-bit PCM; the normalized levels
-  are **not** automatically adjusted to hide gain errors.
-- The graph is a **mathematical** mapping [20,20000]Hz independent of
-  the dynamic sample-rate-dependent processing band.
-
-## Test
-
+## テスト
 \`\`\`sh
-node --test web-demo/dsp.test.mjs
+cargo test --manifest-path core/Cargo.toml
+node --test web-demo/core-wasm.test.mjs
+node --test web-demo/wasm-browser-smoke.test.mjs
 \`\`\`
+Node/WASMおよびChrome統合試験はコンパイル済み
+\`web-demo/dsp_core.wasm\` を要求する。正式CIは
+\`shared-core-tests.yml\`、公開ビルドは \`pages.yml\` に記録する。
 
-Tests verify FFT roundtrip, map endpoints/fold/blend, Wet,
-actual output sine-frequency movement and linked-channel phase.
-The GitHub workflow uses Node to run these; this is **not**
-a comprehensive browser device / listening acceptance test.
-
-Owner: [#8](https://github.com/kinoko34077/frequency-warp-vst/issues/8).
-Related research: [#5](https://github.com/kinoko34077/frequency-warp-vst/issues/5).
+設計正本: [#10](https://github.com/kinoko34077/frequency-warp-vst/issues/10) /
+[共通DSP設計](../docs/SHARED_DSP_ARCHITECTURE.md)。
