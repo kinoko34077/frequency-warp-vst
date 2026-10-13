@@ -101,3 +101,60 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .sine-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:7px;font:12px ui-monospace,monospace;color:#addbcf}
 .sine-meta strong{color:#71dfbc}
 @media(max-width:450px){.sine-monitor{padding:12px}.sine-meta{font-size:11px}.axis-explainer{font-size:9px}}
+
+/* Issue #27: use the freed horizontal space on phones rather than
+   shrinking the graph and stacking every control below it. */
+.axis-value-tools{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.zero-button{font-size:11px;padding:4px 7px;line-height:1.15;border-radius:7px;background:#213e3b;color:#b5efdc;border-color:#52867d}
+.axis-mode-hint{display:block;font-size:10px;line-height:1.5;color:#c0d4cc;margin-top:6px}
+@media(max-width:800px){
+  .workspace-grid{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(145px,43%);
+    grid-template-areas:"player player" "controls graph" "sine sine";
+    column-gap:8px;row-gap:10px;
+    align-items:start;
+  }
+  .workspace-left{display:contents}
+  .workspace-left>.player{grid-area:player;min-width:0}
+  .workspace-left>.quick-panel{grid-area:controls;min-width:0}
+  .workspace-left>.sine-monitor{grid-area:sine;min-width:0}
+  .workspace-right{grid-area:graph;position:static;min-width:0;max-width:none;min-height:0}
+  .quick-panel .control-grid{grid-template-columns:minmax(0,1fr);gap:14px}
+  .quick-panel .bounds{grid-template-columns:minmax(0,1fr);gap:12px;margin-top:12px;padding-top:12px}
+  .quick-panel .section-header{align-items:flex-start;flex-wrap:wrap}
+  .quick-panel .control-heading{align-items:center;flex-wrap:wrap}
+  .quick-panel .control input[type=range]{min-height:28px}
+  .quick-panel .control-cue{min-height:0}
+  .workspace-right .panel-tabs button{font-size:10px;padding:8px 3px}
+  .workspace-right .graph-title{display:grid;gap:3px}
+  .workspace-right .graph-title strong{font-size:11px}
+  .workspace-right .graph-legend{gap:4px;justify-content:flex-start;margin:7px 0}
+  .workspace-right .graph-legend span{font-size:9px}
+  .workspace-right .graph-note{font-size:9px;line-height:1.45}
+  .workspace-right .harmonic-mini{padding:9px 0 3px;margin-top:7px}
+  .workspace-right .mini-heading{display:grid;gap:3px;font-size:10px}
+  .workspace-right .mini-heading span{font-size:9px;overflow-wrap:anywhere}
+  .workspace-right .mini-harmonics{grid-template-columns:minmax(0,1fr);gap:4px}
+  .workspace-right .mini-harmonics div{font-size:9px;text-align:left;padding:5px 4px}
+  .workspace-right .harmonic-mini .text-button{font-size:10px;white-space:normal;text-align:left;max-width:100%}
+  .workspace-right .performance-summary{font-size:10px}
+  .workspace-right #engine-stats{font-size:9px}
+  .workspace-right .curve-panel{width:100%;max-width:100%}
+  .workspace-right .math-controls{grid-template-columns:minmax(0,1fr)}
+  .workspace-right .math-input{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:3px}
+  .workspace-right .math-input input[type=number]{width:64px}
+}
+@media(max-width:450px){
+  .workspace-grid{column-gap:7px;grid-template-columns:minmax(0,1fr) minmax(146px,44%)}
+  .quick-panel,.workspace-right{padding:10px}
+  .quick-panel .section-header h2{font-size:16px}
+  .quick-panel .micro-hint{font-size:9px}
+  .quick-panel .control-heading label{font-size:11px}
+  .quick-panel .control-heading output{font-size:10px}
+  .quick-panel .ends{font-size:9px}
+  .quick-panel .control-cue strong{font-size:10px}
+  .workspace-right .curve-panel{max-width:100%}
+  .workspace-right .math-input{grid-template-columns:minmax(0,1fr)}
+  .workspace-right .math-input input[type=number]{width:100%}
+}

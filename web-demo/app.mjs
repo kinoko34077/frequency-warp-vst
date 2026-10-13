@@ -72,6 +72,11 @@ function labels(id=""){
   const u=Number($("#axis-shift").value),p=Number($("#curvature").value);
   const ref=harmonicParameters().r*harmonicParameters().F;
   $("#axis-shift-value").textContent=(u>=0?"+":"")+u.toFixed(3);
+  $("#axis-mode-hint").textContent=Number($("#invert").value)>0?
+    "反転がONです。通常のピッチシフトは反転量0%で確認できます。":
+    p===0?"通常ピッチ移動：すべての成分を同じ倍率で移動":
+    p===1?"一定Hz移動：各部分音に同じ周波数差を加算":
+    "中間の非線形移動：通常のピッチシフトとは異なります";
   $("#axis-explainer").textContent=p===0?
     "対数移動: ×"+Math.exp(u).toFixed(3)+" / "+(1200*u/Math.log(2)).toFixed(1)+" cent":
     p===1?"線形移動: "+(u*ref>=0?"+":"")+(u*ref).toFixed(2)+" Hz":
@@ -369,6 +374,12 @@ for(const name of ["low","high","curvature","invert","axis-shift","mode","outsid
   $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#wet").addEventListener("input",()=>{labels();tuneWet();});
+$("#axis-zero").addEventListener("click",()=>{
+  $("#axis-shift").value="0";
+  updateParams("axis-shift");
+  updateEngineInfo();
+});
+
 for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
   $("#"+id).addEventListener("input",()=>{
     $("#crusher-bits-value").textContent=$("#crusher-bits").value+" bit";
@@ -494,7 +505,7 @@ dialog.addEventListener("click",event=>{
 });
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"0",high:"968",curvature:"1",invert:"1",wet:"1","axis-shift":"0",
+    low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"0",mode:"fold-h",outside:"pass",quality:"eco",
     overlap:"4","zero-mode":"0"
   };

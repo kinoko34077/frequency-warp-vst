@@ -51,6 +51,18 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       })))+" | "+err.message);});
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
+    assert.equal(await page.$eval("#invert",el=>el.value),"0","neutral mapping is the only default that allows ordinary pitch shift");
+    assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
+    await page.$eval("#curvature",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#axis-shift",el=>{el.value=".7";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/対数移動: ×2/);
+    assert.doesNotMatch(await page.$eval("#math-axis-note",el=>el.textContent),/準備中|未算出|計算中/);
+    assert.match(await page.$eval("#math-axis-note",el=>el.textContent),/上下移動後/);
+    await page.click("#axis-zero");
+    assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0);
+    assert.match(await page.$eval("#axis-shift-value",el=>el.textContent),/0\.000/);
+    await page.$eval("#curvature",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
+
     assert.match(await page.$eval("#math-results",el=>el.textContent),/H=F′\/m=87.5 Hz/);
     // Independent sine test can run before an audio file has been loaded.
     assert.equal(await page.$eval("#sine-hz",el=>el.textContent),"440.00 Hz");
@@ -163,14 +175,19 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
       settingsRect:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#settings-open").getBoundingClientRect()),
       curve:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#curve").getBoundingClientRect()),
+      leftPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".quick-panel").getBoundingClientRect()),
+      rightPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".workspace-right").getBoundingClientRect()),
+
       viewHidden:document.querySelector("#view-map").hidden,
       tabState:document.querySelector("#tab-map").getAttribute("aria-selected"),
       canvasSize:[document.querySelector("#curve").width,document.querySelector("#curve").height]
     }));
     assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
-    assert.ok(layout.curve.width>200,"Mobile graph layout "+JSON.stringify(layout));
+    assert.ok(layout.curve.width>115,"Mobile graph should fit in right column "+JSON.stringify(layout));
+    assert.ok(layout.leftPanel.right<=layout.rightPanel.x+3,"Controls must be LEFT of graph "+JSON.stringify(layout));
+    assert.ok(Math.abs(layout.leftPanel.top-layout.rightPanel.top)<12,"Controls and graph must SHARE ROW "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
-    assert.ok(layout.curve.width<=275,"Mobile graph should be compact "+JSON.stringify(layout));
+    assert.ok(layout.curve.width<=210,"Mobile graph should use freed space for sliders "+JSON.stringify(layout));
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/第3倍音/);
     await page.click("#settings-open");
