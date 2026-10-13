@@ -192,3 +192,25 @@ UNVERIFIED pending physical testing.
 
 ## 操作の整理（2026-10-14）
 傾きはHz間隔の倍率。起点0Hz・傾き2×・移動0で全成分が2倍（曲率0～1のどちらでも成立）。曲率は別の移動操作の対数／線形を選ぶもの。数値は各スライダーの右側をタップして直接編集。グラフをタップすると2kHz／20kHzを切り替え、細線の透明度にMixが反映されます。通常表示は短い変換例と再生状態に限定し、数式と処理情報は展開可能。Media Session対応によるバックグラウンド操作を追加（iPhoneロック画面での連続処理は実機未検証）。
+
+## 2026-10-14 exact direct-entry precision and cold-start decode (#37)
+
+All continuous numeric readouts (including main controls, threshold numbers,
+harmonic F/r/carrier, and reference-tone Hz/cents) allow **three decimal
+places when entered directly**. The underlying Rust/WASM audio parameter
+uses that stored value, even if the visually accompanying drag slider has
+a coarser step. On leaving a number field, the UI displays the value
+rounded to at most **two** decimal places; refocusing reveals the retained
+precise value. Moving the slider replaces that precise value with the
+slider's selected increment. Integer-valued parameters remain integers.
+
+The first iOS file-picker return can encounter a stalled WebAudio decoder.
+The offline decode attempt now has a 6.5-second watchdog and automatically
+tries a second, independently created **suspended** AudioContext decoder
+without awaiting AudioContext.resume(). File-byte reading and alternate
+decoder also have deadlines. Status text announces the fallback and
+reports failure instead of leaving an indefinite loading message. An
+automated Chrome test deliberately hangs the first decoder on a fresh
+page and checks that a single file selection recovers. This is Chrome
+evidence; hardware iOS codec/OS-specific behavior still needs an iPhone
+check to be considered independently verified.
