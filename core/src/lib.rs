@@ -5,6 +5,8 @@
 
 use std::f64::consts::PI;
 
+mod stream;
+
 const TAU: f64 = PI * 2.0;
 
 #[derive(Clone, Copy, Debug)]
