@@ -490,7 +490,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     return integer?Math.round(v):round3(v);
   };
   const toDsp=value=>range==="invert"||range==="wet"||range==="a-reverb"?
-    round3(value/100):normalized(value);
+    value/100:normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
     const raw=Number(field.value);
@@ -569,24 +569,47 @@ controls.wet.addEventListener("click",()=>play("wet"));
 controls.stop.addEventListener("click",()=>stop());
 window.addEventListener("resize",()=>{drawCurve();drawAudio();});
 window.addEventListener("pagehide",()=>{if(state.rebuildTimer)clearTimeout(state.rebuildTimer);stop();if(state.offlineWorker)state.offlineWorker.terminate();});
-// Decoding must NOT wait on AudioContext.resume(): after the iOS file
-// picker closes the resume promise can remain pending until another gesture.
-// OfflineAudioContext decodes independently of the real-time output lifecycle.
-async function decodeFileWithoutPlayback(file,token){
-  if(typeof OfflineAudioContext==="undefined"){
-    throw Error("このブラウザで音声の読み込みは利用できません");
-  }
-  const bytes=await file.arrayBuffer();
-  if(token!==state.loadToken)return null;
-  message("音声を解析中…");
-  const decoder=new OfflineAudioContext(1,1,44100);
+// Cold-start audio decode on iOS can stall after the file picker closes.
+// A single OfflineAudioContext promise with a 45s timeout produced the
+// reported "loading forever" appearance; do not require a second picker tap.
+async function withDecodeDeadline(promise,ms,phase){
   let timer;
   try{
-    const timeout=new Promise((_,reject)=>{
-      timer=setTimeout(()=>reject(Error("読み込みが時間切れです。もう一度ファイルを選んでください")),45000);
-    });
-    return await Promise.race([decoder.decodeAudioData(bytes),timeout]);
+    return await Promise.race([promise,new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(Error(phase+"が応答しませんでした")),ms);
+    })]);
   }finally{clearTimeout(timer);}
+}
+async function decodeFileWithoutPlayback(file,token){
+  // No AudioContext.resume(): playback still requires the later user gesture.
+  let firstFailure=null;
+  if(typeof OfflineAudioContext!=="undefined"){
+    try{
+      message("音声を解析中…");
+      const buffer=await withDecodeDeadline(file.arrayBuffer(),10000,"ファイル読み込み");
+      if(token!==state.loadToken)return null;
+      const offline=new OfflineAudioContext(1,1,44100);
+      return await withDecodeDeadline(offline.decodeAudioData(buffer),6500,"初回デコード");
+    }catch(error){firstFailure=error;}
+  }
+  if(token!==state.loadToken)return null;
+  message("別の読み込み方法に切り替えています…");
+  const Constructor=window.AudioContext||window.webkitAudioContext;
+  if(!Constructor)throw Error("このブラウザでは音声ファイルを解析できません");
+  let ctx,owned=false;
+  try{
+    // Create a decode-only context. decodeAudioData is allowed while it is
+    // suspended: do not await resume() and lose the picker gesture on iOS.
+    try{ctx=new Constructor();owned=true;}
+    catch(error){if(state.ctx)ctx=state.ctx;else throw error;}
+    const bytes=await withDecodeDeadline(file.arrayBuffer(),12000,"再読み込み");
+    if(token!==state.loadToken)return null;
+    return await withDecodeDeadline(ctx.decodeAudioData(bytes),16000,"代替デコード");
+  }catch(error){
+    throw Error((firstFailure?firstFailure.message+"。":"")+"代替経路も失敗: "+error.message);
+  }finally{
+    if(owned&&ctx?.close)void ctx.close().catch(()=>{});
+  }
 }
 async function load(file){
   if(!file)return;
