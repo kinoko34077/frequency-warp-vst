@@ -73,7 +73,31 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     for(const id of ["curvature","invert","wet"]){
       assert.ok(await page.$eval("#"+id,el=>Number(el.step))<=0.005,"percentage slider coarse: "+id);
     }
-    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.step)),0.05);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.step)),0.001);
+    // Direct numbers have finer precision than the existing drag step.
+    // Input 0.123 must reach the actual coordinate model (0.123*350=43.05 Hz),
+    // even when the slider itself snaps to 0.10 Hz-coordinate units.
+    await page.$eval("#axis-shift-value",el=>{
+      el.value="0.123";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0.1);
+    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/43\.05/);
+    await page.$eval("#axis-shift-value",el=>el.blur());
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.12);
+    await page.$eval("#axis-shift-value",el=>el.focus());
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
+    await page.$eval("#axis-shift-value",el=>el.blur());
+    // Percent-unit precision must survive the 1/100 normalization too.
+    await page.$eval("#invert-value",el=>{
+      el.value="0.123";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#invert-value",el=>el.blur());
+    await page.$eval("#invert-value",el=>el.focus());
+    assert.equal(await page.$eval("#invert-value",el=>Number(el.value)),0.123);
+    await page.$eval("#invert-value",el=>el.blur());
+    await page.$eval("#invert",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#axis-shift",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+
     // Frequency slope ×2 with ZERO physical pivot is a normal octave
     // at either curvature endpoint, not the old log-coordinate exponent.
     await page.$eval("#axis-pivot-value",el=>{
@@ -114,12 +138,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#math-axis-note",el=>el.textContent),/→/);
     await page.click("#axis-zero");
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0);
-    assert.match(await page.$eval("#axis-shift-value",el=>el.value),/0\.00/);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0);
     await page.$eval("#curvature",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
 
     assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
     // Independent sine test can run before an audio file has been loaded.
-    assert.equal(await page.$eval("#sine-hz",el=>el.value),"440.00");
+    assert.equal(await page.$eval("#sine-hz",el=>Number(el.value)),440);
     await page.click("#sine-enabled");
     assert.equal(await page.$eval("#sine-enabled",el=>el.checked),true);
     await page.$eval("#sine-pitch",el=>{el.value="69.5";el.dispatchEvent(new Event("input",{bubbles:true}));});
@@ -305,6 +329,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(Math.abs(soughtSeconds-540)<3,
       "600s waveform seek should land near 9:00, got "+soughtSeconds);
     await page.click("#stop");
+    // Reproduce a cold iOS decoder that never settles on its first path.
+    // The first file selection on a NEW page must recover on its own.
+    const coldPage=await browser.newPage();
+    await coldPage.goto("http://127.0.0.1:8765/index.html");
+    await coldPage.evaluate(()=>{
+      OfflineAudioContext.prototype.decodeAudioData=function(){
+        return new Promise(()=>{});
+      };
+    });
+    await (await coldPage.$("#audio-file")).uploadFile(wavPath);
+    await coldPage.waitForFunction(()=>!document.querySelector("#play-wet").disabled,
+      {timeout:21000}).catch(async err=>{
+      const status=await coldPage.$eval("#status",el=>el.textContent);
+      throw Error("cold-start recovery: "+status+" | "+err.message);
+    });
+    assert.match(await coldPage.$eval("#status",el=>el.textContent),/読み込み完了/);
+    assert.equal(await coldPage.$eval("#file-meta",el=>el.textContent.includes("12.0秒")),true);
+    await coldPage.close();
     await page.close();
   }finally{
     if(browser)await browser.close();
