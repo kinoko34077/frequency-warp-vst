@@ -7,6 +7,8 @@ const fmt=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
+const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
+const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log(20000);
 
 export function linkedCarrierRequested(){
   return $("#carrier-link").checked;
@@ -28,7 +30,7 @@ function syncPair(id){
   const parsed=Number(number.value);
   if(Number.isFinite(parsed)){
     const bounded=clamp(parsed,Number(number.min),Number(number.max));
-    range.value=String(bounded);
+    range.value=String(id==="carrier"?Math.round(sliderFromCarrierHz(bounded)):bounded);
   }
 }
 export function resolvedCarrierHz(foldPoint){
@@ -87,7 +89,7 @@ export function attachHarmonicPanel(onChange,foldPoint){
     // Preserve direct typing for exact values while making typical changes
     // a one-finger drag; invalid numbers are clamped on change.
     range.addEventListener("input",()=>{
-      number.value=range.value;
+      number.value=id==="carrier"?String(Math.round(carrierHzFromSlider(Number(range.value)))):range.value;
       respond(id);
     });
     number.addEventListener("input",()=>{

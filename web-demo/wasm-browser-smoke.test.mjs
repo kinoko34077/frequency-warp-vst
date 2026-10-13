@@ -59,6 +59,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     assert.equal(await page.$eval("#numerator",el=>el.value),"-3");
     assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\)F = -262.5 Hz/);
+    await page.$eval("#carrier-range",el=>{el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#carrier",el=>Number(el.value)),20000);
+    await page.$eval("#carrier-range",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
+    await page.$eval("#carrier-range",el=>{el.value="592";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.click("#carrier-link");
     await page.waitForFunction(()=>document.querySelector("#carrier-linked-value").textContent.includes("Hz") &&
       document.querySelector("#carrier").disabled,{timeout:10000});

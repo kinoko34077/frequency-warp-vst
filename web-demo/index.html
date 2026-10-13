@@ -84,7 +84,7 @@
           <div class="math-field"><label for="numerator">分子 n <small>符号付き</small></label><div class="math-input"><input id="numerator-range" type="range" min="-128" max="128" step="1" value="-3"><input id="numerator" type="number" min="-128" max="128" step="1" value="-3"></div></div>
           <div class="math-field"><label for="harmonic-index">折返す倍音 q</label><div class="math-input"><input id="harmonic-index-range" type="range" min="1" max="32" step="1" value="1"><input id="harmonic-index" type="number" min="1" max="32" step="1" value="1"></div></div>
           <div class="math-field"><label for="pitch-ratio">前段ピッチ比 r</label><div class="math-input"><input id="pitch-ratio-range" type="range" min=".25" max="4" step=".05" value="1"><input id="pitch-ratio" type="number" min=".25" max="4" step=".05" value="1"></div></div>
-          <div class="math-field"><label for="carrier">Ring搬送波 c <small>Hz</small></label><div class="math-input"><input id="carrier-range" type="range" min="0" max="2000" step="1" value="350"><input id="carrier" type="number" min="0" max="20000" step="1" value="350"></div></div>
+          <div class="math-field"><label for="carrier">Ring搬送波 c <small>Hz</small></label><div class="math-input"><input id="carrier-range" type="range" min="0" max="1000" step="1" value="592" aria-label="Ring搬送波 0Hz〜20kHz 対数スライダー"><input id="carrier" type="number" min="0" max="20000" step="1" value="350"></div></div>
         </div>
         <label class="link-carrier"><input id="carrier-link" type="checkbox"><span><strong>搬送波を変換の折返し点に連動</strong><small id="carrier-linked-value">オフ：手動設定中</small></span></label>
         <div id="math-results" class="math-results" aria-live="polite"></div>
