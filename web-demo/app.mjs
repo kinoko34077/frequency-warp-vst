@@ -14,7 +14,7 @@ const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",processing:false,
-  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null
+  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0
 };
 const hzFromScale=value=>20*Math.exp(Math.log(1000)*Number(value)/1000);
 const pivotFromScale=value=>Number(value)<=0?0:20*Math.exp(Math.log(1000)*(Number(value)-1)/999);
@@ -529,33 +529,59 @@ controls.wet.addEventListener("click",()=>play("wet"));
 controls.stop.addEventListener("click",()=>stop());
 window.addEventListener("resize",()=>{drawCurve();drawAudio();});
 window.addEventListener("pagehide",()=>{if(state.rebuildTimer)clearTimeout(state.rebuildTimer);stop();if(state.offlineWorker)state.offlineWorker.terminate();});
+// Decoding must NOT wait on AudioContext.resume(): after the iOS file
+// picker closes the resume promise can remain pending until another gesture.
+// OfflineAudioContext decodes independently of the real-time output lifecycle.
+async function decodeFileWithoutPlayback(file,token){
+  if(typeof OfflineAudioContext==="undefined"){
+    throw Error("このブラウザで音声の読み込みは利用できません");
+  }
+  const bytes=await file.arrayBuffer();
+  if(token!==state.loadToken)return null;
+  message("音声を解析中…");
+  const decoder=new OfflineAudioContext(1,1,44100);
+  let timer;
+  try{
+    const timeout=new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(Error("読み込みが時間切れです。もう一度ファイルを選んでください")),45000);
+    });
+    return await Promise.race([decoder.decodeAudioData(bytes),timeout]);
+  }finally{clearTimeout(timer);}
+}
 async function load(file){
   if(!file)return;
-  await stop();
-  if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
-  state.offline=null;state.decoded=null;state.dry=null;state.seek=0;
-  for(const node of [controls.dry,controls.wet,controls.render,controls.download])node.disabled=true;
-  message("音声をデコード中…");
+  const token=++state.loadToken;
   try{
-    if(file.size>75_000_000)throw Error("最大75MBです。");
-    const ctx=await context();
-    const data=await ctx.decodeAudioData(await file.arrayBuffer());
+    await stop();
+    if(token!==state.loadToken)return;
+    if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
+    state.offline=null;state.decoded=null;state.dry=null;state.seek=0;
+    for(const node of [controls.dry,controls.wet,controls.render,controls.download])node.disabled=true;
+    if(file.size>75_000_000)throw Error("最大75MBです");
+    $("#file-meta").textContent=file.name+" · 読み込み中";
+    message("音声を開いています…");
+    const data=await decodeFileWithoutPlayback(file,token);
+    if(token!==state.loadToken||!data)return;
     const count=Math.min(2,data.numberOfChannels);
     const length=Math.min(data.length,Math.floor(data.sampleRate*MAX_PREVIEW_SECONDS));
-    if(length<4096)throw Error("短すぎる音声です。");
-    state.dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice(0,length));
-    // Drop the browser decoder AudioBuffer reference after retaining only the
-    // requested segment to reduce iPhone peak resident memory.
-    state.decoded={sampleRate:data.sampleRate};
+    if(length<4096)throw Error("短すぎる音声です");
+    const dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice(0,length));
+    if(token!==state.loadToken)return;
+    state.dry=dry;state.decoded={sampleRate:data.sampleRate};
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
     $("#file-meta").textContent=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
     labels("high");drawCurve();drawAudio();refreshStatusSeek();
     controls.dry.disabled=false;controls.wet.disabled=false;controls.render.disabled=false;
-    message("音声の準備が完了しました。再生ボタンか波形上の位置を押してください。");
-  }catch(error){message("読み込み失敗: "+error.message,"error");}
+    message("読み込み完了。再生できます。");
+  }catch(error){
+    if(token!==state.loadToken)return;
+    $("#file-meta").textContent="読み込み失敗（ファイルを選び直せます）";
+    message("音声を開けませんでした: "+error.message,"error");
+  }
 }
-$("#audio-file").addEventListener("change",e=>load(e.target.files[0]));
+
+$("#audio-file").addEventListener("change",e=>{const file=e.target.files[0];e.target.value="";void load(file);});
 const drop=$("#drop");
 drop.addEventListener("click",e=>{if(e.target.id!=="audio-file")$("#audio-file").click();});
 drop.addEventListener("keydown",e=>{

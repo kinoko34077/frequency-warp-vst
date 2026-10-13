@@ -165,8 +165,20 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.select("#quality","eco");
     await page.click("#settings-done");
+    // Simulate iOS file-picker return where audible AudioContext.resume()
+    // never resolves. A first upload must still decode and enable play.
+    await page.evaluate(()=>{
+      window.__originalAudioResume=AudioContext.prototype.resume;
+      AudioContext.prototype.resume=function(){return new Promise(()=>{});};
+    });
     await (await page.$("#audio-file")).uploadFile(wavPath);
     await page.waitForFunction(()=>!document.querySelector("#play-wet").disabled,{timeout:20000});
+    assert.match(await page.$eval("#status",el=>el.textContent),/読み込み完了/);
+    await page.evaluate(()=>{
+      AudioContext.prototype.resume=window.__originalAudioResume;
+      delete window.__originalAudioResume;
+    });
+
     const metadata=await page.$eval("#file-meta",n=>n.textContent);
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
