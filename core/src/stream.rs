@@ -387,7 +387,7 @@ impl Stream {
                 }
             }
         }else{(target,1.0)};
-        if frequency<=0.0||frequency>=self.sample_rate*.5 {None}
+        if frequency<=0.0||frequency>=self.sample_rate*0.5 {None}
         else{Some((frequency,gain))}
     }
     fn interpolate(&self,k:usize,step:f64)->f64{
