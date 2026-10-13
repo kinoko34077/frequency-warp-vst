@@ -23,7 +23,9 @@
         <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac">
       </div>
       <p id="file-meta" class="meta" aria-live="polite">音声未選択</p>
-      <div class="wave-wrap"><canvas id="wave" aria-label="音声波形"></canvas></div>
+      <div class="wave-wrap"><canvas id="wave" aria-label="クリックまたはタップした位置から音声を再生" role="button" tabindex="0"></canvas><div id="playhead" class="playhead"></div></div>
+      <div class="transport"><span id="elapsed">0:00.0</span><span id="duration">0:00.0</span></div>
+      <p class="wave-hint">波形の好きな位置をクリック・タップすると、その位置から再生します。</p>
     </section>
     <section class="panel">
       <div class="eyebrow">02 / SPECTRAL MAPPING</div>
@@ -60,21 +62,26 @@
       </div>
     </section>
     <section class="panel">
-      <div class="eyebrow">03 / RENDER & LISTEN</div>
-      <button class="primary" id="render" disabled>音声を変換・更新する</button>
-      <label class="auto-label"><input id="auto-update" type="checkbox" checked> 操作に連動して自動変換（再生位置を維持）</label>
-      <progress id="progress" value="0" max="100" aria-label="変換進捗"></progress>
+      <div class="eyebrow">03 / REALTIME LISTEN</div>
+      <div class="realtime-lead">曲全体を変換する必要はありません。再生中の音声を128サンプルずつ連続変換します。</div>
+      <div class="rt-indicator" id="rt-indicator">停止中 · Rust / WASM AudioWorklet</div>
       <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを読み込んでください。</div>
       <div class="actions">
-        <button id="play-dry" disabled>▶ 原音</button>
-        <button id="play-wet" disabled>▶ 変換後</button>
+        <button id="play-dry" disabled>▶ 原音を再生</button>
+        <button id="play-wet" disabled>▶ リアルタイム変換</button>
         <button id="stop" disabled>■ 停止</button>
-        <button id="download" disabled>↓ WAV保存</button>
       </div>
+      <details class="offline-tool">
+        <summary>WAVファイルの書出し（オフライン処理）</summary>
+        <p>WAV保存のみ、曲全体の処理が必要です。リアルタイム試聴とは独立しています。</p>
+        <button id="render" disabled>書出し用に変換</button>
+        <progress id="progress" value="0" max="100" aria-label="書出し処理進捗"></progress>
+        <button id="download" disabled>↓ WAVを保存</button>
+      </details>
     </section>
     <section class="notice">
       <strong>研究用プレビューについて</strong>
-      <p>共通Rust/WASM DSPを使用します。再生中のツマミ変更は別スレッドで再変換し、完成後に同じ再生位置へクロスフェードして反映します。<strong>瞬時のリアルタイムDSPではなく、処理待ちを伴う動的プレビューです。</strong>音声はサーバーへ送信しません。</p>
+      <p>共通Rust/WASM DSPを使用します。再生中のツマミ変更は、AudioWorkletで128サンプル単位に実行している共通Rust/WASM DSPへ反映されます。曲全体を再変換する待ち時間はありません。音声はサーバーへ送信しません。</p>
       <p>L/Hの外側は「そのまま通過／除去」を選べます。ノイズ・残響・複雑な音の未追跡成分には欠落・位相ずれが残ります。出力側の0Hz以下に関するReflect/Kill/Fadeは別仕様で未実装です。</p>
       <p>Qualityの段階はこのブラウザ試作品専用の計算設定であり、完成版VST3の品質段階とは異なります。</p>
     </section>
