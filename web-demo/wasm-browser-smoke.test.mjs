@@ -144,8 +144,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height);
     const layout=await page.evaluate(()=>({
       overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
-      settingsRect:document.querySelector("#settings-open").getBoundingClientRect(),
-      curve:document.querySelector("#curve").getBoundingClientRect()
+      settingsRect:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#settings-open").getBoundingClientRect()),
+      curve:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#curve").getBoundingClientRect()),
+      viewHidden:document.querySelector("#view-map").hidden,
+      tabState:document.querySelector("#tab-map").getAttribute("aria-selected"),
+      canvasSize:[document.querySelector("#curve").width,document.querySelector("#curve").height]
     }));
     assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
     assert.ok(layout.curve.width>200,"Mobile graph layout "+JSON.stringify(layout));
