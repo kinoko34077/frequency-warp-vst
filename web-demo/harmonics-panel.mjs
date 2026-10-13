@@ -6,6 +6,9 @@ const $=id=>document.querySelector(id);
 const fmt=value=>Number.isFinite(value)?Number(value.toFixed(2)).toString():"—";
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
+const preciseFields=new Map();
+const round3=v=>Math.round((v+Number.EPSILON)*1000)/1000;
+const read=id=>preciseFields.has(id)?preciseFields.get(id):Number($("#"+id).value);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
 const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log(20000);
@@ -14,12 +17,12 @@ export function linkedCarrierRequested(){
   return $("#carrier-link").checked;
 }
 export function harmonicParameters(){
-  const F=clamp(Number($("#fundamental").value)||350,20,2000);
+  const F=clamp(read("fundamental")||350,20,2000);
   const m=clamp(Math.round(Number($("#denominator").value)||4),1,64);
   const n=clamp(Math.round(Number($("#numerator").value)||0),-128,128);
   const q=clamp(Math.round(Number($("#harmonic-index").value)||1),1,32);
-  const r=clamp(Number($("#pitch-ratio").value)||1,.25,4);
-  const manualCarrier=clamp(Number($("#carrier").value)||0,0,20000);
+  const r=clamp(read("pitch-ratio")||1,.25,4);
+  const manualCarrier=clamp(read("carrier")||0,0,20000);
   const foldMode=$("#mode").value!=="blend";
   return {F,m,n,q,r,c:linkedCarrierRequested()&&foldMode?-1:manualCarrier,
     manualCarrier,linked:linkedCarrierRequested()&&foldMode,zeroMode:Number($("#zero-mode").value)};
@@ -27,7 +30,7 @@ export function harmonicParameters(){
 function syncPair(id){
   const number=$("#"+id),range=$("#"+id+"-range");
   if(!number||!range)return;
-  const parsed=Number(number.value);
+  const parsed=read(id);
   if(Number.isFinite(parsed)){
     const bounded=clamp(parsed,Number(number.min),Number(number.max));
     range.value=String(id==="carrier"?Math.round(sliderFromCarrierHz(bounded)):bounded);
@@ -118,20 +121,33 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker){
     // Preserve direct typing for exact values while making typical changes
     // a one-finger drag; invalid numbers are clamped on change.
     range.addEventListener("input",()=>{
+      preciseFields.delete(id);
       number.value=id==="carrier"?String(Math.round(carrierHzFromSlider(Number(range.value)))):range.value;
       respond(id);
     });
+    number.addEventListener("focus",()=>{
+      if(preciseFields.has(id))number.value=String(preciseFields.get(id));
+      number.select();
+    });
     number.addEventListener("input",()=>{
       if(number.value===""||!Number.isFinite(Number(number.value)))return;
+      const value=clamp(Number(number.value),Number(number.min),Number(number.max));
+      preciseFields.set(id,integerFields.has(id)?Math.round(value):round3(value));
       syncPair(id);respond(id);
     });
     number.addEventListener("change",()=>{
       const min=Number(number.min),max=Number(number.max);
       const raw=Number(number.value);
       const v=Number.isFinite(raw)&&number.value!==""?clamp(raw,min,max):Number(number.defaultValue);
-      const step=Number(number.step)||1;
-      number.value=String(integerFields.has(id)?Math.round(v):Math.round(v/step)*step);
+      const stored=integerFields.has(id)?Math.round(v):round3(v);
+      preciseFields.set(id,stored);
+      // A range is approximate; retain the exact typed 3-decimal value.
       syncPair(id);respond(id);
+    });
+    number.addEventListener("blur",()=>{
+      const value=read(id);
+      if(Number.isFinite(value))number.value=integerFields.has(id)?
+        String(value):String(Number(value.toFixed(2)));
     });
     syncPair(id);
   }
