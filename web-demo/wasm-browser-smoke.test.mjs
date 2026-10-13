@@ -52,10 +52,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.match(await page.$eval("#math-results",el=>el.textContent),/H = F \/ m = 87.5 Hz/);
-    await page.$eval("#numerator",el=>{
+    await page.click("#tab-math");
+    assert.equal(await page.$eval("#view-math",el=>el.hidden),false);
+    await page.$eval("#numerator-range",el=>{
       el.value="-3";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\) F = -262.5 Hz/);
+    assert.equal(await page.$eval("#numerator",el=>el.value),"-3");
+    assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\)F = -262.5 Hz/);
+    await page.click("#carrier-link");
+    await page.waitForFunction(()=>document.querySelector("#carrier-linked-value").textContent.includes("Hz") &&
+      document.querySelector("#carrier").disabled,{timeout:10000});
+    const linked1=await page.$eval("#carrier-linked-value",el=>el.textContent);
+    await page.$eval("#invert",el=>{el.value=".45";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    const linked2=await page.$eval("#carrier-linked-value",el=>el.textContent);
+    assert.notEqual(linked1,linked2,"Fold location must change with invert parameter");
+    await page.click("#tab-map");
+    assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
+    await page.click("#settings-open");
+    assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
 
     // Instrument old offline Worker: any attempt while clicking play would be a regression.
     await page.evaluate(()=>{
@@ -67,6 +81,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       };
     });
     await page.select("#quality","eco");
+    await page.click("#settings-done");
     await (await page.$("#audio-file")).uploadFile(wavPath);
     await page.waitForFunction(()=>!document.querySelector("#play-wet").disabled,{timeout:20000});
     const metadata=await page.$eval("#file-meta",n=>n.textContent);
@@ -91,7 +106,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
-    // Switch actual Rust DSP engines, not cosmetic labels.
+    // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
+    await page.click("#settings-open");
     await page.select("#engine","2");
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
     assert.match(await page.$eval("#engine-description",el=>el.textContent),/Ring Mod/);
@@ -105,6 +121,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
     await page.select("#mode","fold-l");
     await page.select("#outside","kill");
+    await page.click("#settings-done");
+    assert.equal(await page.$eval("#settings-dialog",el=>el.open),false);
     await page.$eval("#low",n=>{n.value="250";n.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#stop",n=>n.disabled),false);
     const canvas=await page.$("#wave");
@@ -121,6 +139,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.deepEqual(errors,[]);
     await page.click("#stop");
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
+    // Check mobile layout without overriding current application state.
+    await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+    await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height);
+    const layout=await page.evaluate(()=>({
+      overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+      settingsRect:document.querySelector("#settings-open").getBoundingClientRect(),
+      curve:document.querySelector("#curve").getBoundingClientRect()
+    }));
+    assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
+    assert.ok(layout.curve.width>200);
+    assert.ok(layout.settingsRect.right<=390);
     await page.close();
   }finally{
     if(browser)await browser.close();
