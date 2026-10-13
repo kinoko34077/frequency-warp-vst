@@ -71,6 +71,28 @@ pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
     Ok(result)
 }
 
+/// Input-domain break location where the finite-range Fold changes direction.
+/// FoldHigh: S_p^-1((1-a)*D); FoldLow: S_p^-1(a*D).
+/// Blend has no fold point (None), and the two endpoints are valid at a=0 or a=1.
+pub fn fold_frequency(s:Settings)->Option<f64>{
+    if !s.low.is_finite() || !s.high.is_finite() || s.low<=0.0 || s.high<=s.low
+       || !(0.0..=1.0).contains(&s.curvature) || !(0.0..=1.0).contains(&s.invert) {return None;}
+    let x=coordinate(s.high,s.low,s.curvature);
+    let location=match s.mode{
+        Progression::FoldHigh=>(1.0-s.invert)*x,
+        Progression::FoldLow=>s.invert*x,
+        Progression::Blend=>return None,
+    };
+    Some(inverse_coordinate(location,s.low,s.curvature).clamp(s.low,s.high))
+}
+#[no_mangle]
+pub extern "C" fn warp_fold_frequency(low:f64,high:f64,p:f64,invert:f64,mode:u32)->f64{
+    let s=Settings{low,high,curvature:p,invert,
+        mode:match mode{1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},
+        quality:0};
+    fold_frequency(s).unwrap_or(f64::NAN)
+}
+
 /// In-place radix-2 DFT over complex samples.
 fn fft(samples: &mut [Complex], inverse: bool) {
     let n = samples.len();
@@ -415,6 +437,17 @@ mod tests {
         let rms=|x:&Vec<f32>| (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>()/x.len() as f64).sqrt();
         assert!(rms(&no.channels[0]) < 0.06);
         assert!(rms(&yes.channels[0]) > 0.28);
+    }
+    #[test]
+    fn fold_breakpoint_is_single_source_for_visual_and_ring_coupling(){
+        let s=Settings{low:100.0,high:1000.0,curvature:1.0,invert:0.25,
+            mode:Progression::FoldHigh,quality:0};
+        let high_side=fold_frequency(s).unwrap();
+        assert!((high_side-775.0).abs()<1e-9);
+        let low_side=fold_frequency(Settings{mode:Progression::FoldLow,..s}).unwrap();
+        assert!((low_side-325.0).abs()<1e-9);
+        assert!(fold_frequency(Settings{mode:Progression::Blend,..s}).is_none());
+        assert!((warp_fold_frequency(100.0,1000.0,1.0,.25,0)-775.0).abs()<1e-9);
     }
     #[test]
     fn c_abi_works() {
