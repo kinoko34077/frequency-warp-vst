@@ -111,12 +111,12 @@ function axisMarker(f){
   return result.raw??NaN;
 }
 function mathCallbacks(){
+  const core=state.mathCore,reference=settings().axisReference;
   return {
     warp:(f,l,h,curvature,invert,mode)=>
-      state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
-        mode==="blend"?1:mode==="fold-l"?2:0),
-    translate:(f,pivot,curvature,shift,slope,anchor)=> 
-      state.mathCore.warp_translate_frequency_anchored(f,anchor,pivot,slope,settings().axisReference,curvature,shift)
+      core.warp_map_frequency(f,l,h,curvature,invert,mode==="blend"?1:mode==="fold-l"?2:0),
+    translate:(f,pivot,curvature,shift,slope,anchor)=>
+      core.warp_translate_frequency_anchored(f,anchor,pivot,slope,reference,curvature,shift)
   };
 }
 function updateListeningGuide(){
