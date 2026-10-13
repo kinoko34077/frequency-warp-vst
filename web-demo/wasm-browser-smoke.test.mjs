@@ -58,8 +58,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
     await page.click("#play-wet");
-    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
-      !document.querySelector("#stop").disabled,{timeout:25000});
+    try{
+      await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
+        !document.querySelector("#stop").disabled,{timeout:25000});
+    }catch(e){
+      const snapshot=await page.evaluate(()=>({
+        status:document.querySelector("#status").textContent,
+        indicator:document.querySelector("#rt-indicator").textContent,
+        buttons:[document.querySelector("#play-wet").disabled,document.querySelector("#stop").disabled]
+      }));
+      throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
+    }
     const before=await page.$eval("#elapsed",n=>n.textContent);
     await page.$eval("#invert",node=>{
       node.value=".42";node.dispatchEvent(new Event("input",{bubbles:true}));
