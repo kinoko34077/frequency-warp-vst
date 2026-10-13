@@ -486,6 +486,18 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   field.addEventListener("change",apply);
   field.addEventListener("keydown",event=>{if(event.key==="Enter"){field.blur();}});
 }
+// The two handles share a physical track. Touching the bare rail selects
+// whichever endpoint is closest; the handles themselves remain draggable.
+$("#dual-range").addEventListener("pointerdown",event=>{
+  if(event.target!==$("#dual-range"))return;
+  const box=event.currentTarget.getBoundingClientRect();
+  const normalized=clamp((event.clientX-box.left)/box.width,0,1);
+  const target=normalized*1000;
+  const low=Number($("#low").value),high=Number($("#high").value);
+  const slider=Math.abs(target-low)<=Math.abs(target-high)?$("#low"):$("#high");
+  slider.value=String(Math.round(target));
+  slider.dispatchEvent(new Event("input",{bubbles:true}));
+});
 $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;drawCurve();});
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
