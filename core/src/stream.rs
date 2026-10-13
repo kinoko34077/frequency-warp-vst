@@ -428,7 +428,9 @@ impl Stream {
         let base=if pivot>=self.settings.low && pivot<=self.settings.high{
             map_frequency(pivot,self.settings).unwrap_or(pivot)
         }else{pivot};
-        if self.rational_enabled{self.pitch_ratio*base+self.shift_hz}else{base}
+        // Fix the pivot through the nonlinear warp, not through optional
+        // rational pitch/Hz placement. Those shifts must remain audible.
+        base
     }
     fn resolve_zero(&self,target:f64,step:f64)->Option<(f64,f64)>{
         if !target.is_finite(){return None;}
