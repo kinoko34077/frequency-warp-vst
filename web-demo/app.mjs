@@ -3,6 +3,7 @@ import {drawFrequencyGraph} from "./graph.mjs";
 import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
 const $=id=>document.querySelector(id);
+const MAX_PREVIEW_SECONDS=600;
 const controls={
   dry:$("#play-dry"),wet:$("#play-wet"),stop:$("#stop"),
   render:$("#render"),download:$("#download")
@@ -54,7 +55,9 @@ function settings(){
     engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
     pitchRatio:harmonicParameters().r,
     shiftHz:harmonicParameters().n*harmonicParameters().F/harmonicParameters().m,
-    carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode
+    carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode,
+    crusherBits:$("#crusher-enabled").checked?Number($("#crusher-bits").value):0,
+    crusherHold:Number($("#crusher-hold").value)
   };
 }
 function labels(id=""){
@@ -106,13 +109,13 @@ async function ensureSharedCore(){
 }
 function updateEngineInfo(){
   const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
-  const latency=s.engine===2?0:1000*(q.fftSize-1)/rate;
-  const names=["部分音追跡＋発振","FFTビン再配置","リング変調","Pitch → Hz Shift"];
+  const latency=1000*(q.fftSize-1)/rate;
+  const names=["部分音追跡＋発振","FFTビン再配置","Warp → Ring Mod","Warp → Pitch → Hz Shift"];
   const explain=[
     "部分音追跡したピークを発振器で再合成。倍音/残響が欠ける場合があります。",
     "FFTビンを直接再配置。時間方向の位相連続性が弱く、量子化ノイズや変調感が出ます。",
-    "Ring Mod: 入力に搬送波を乗算。上下の側波帯が生じ、FFT窓による遅延はありません。",
-    "入力の部分音を r倍してから Δ=(n/m)F Hz シフト。Fは手動値です。"
+    "Warp後のRing Mod：周波数ワープ後の成分から和・差の2つの側波帯を作ります。",
+    "Warpで反転・曲率を適用してから r倍し、Δ=(n/m)F Hzの単方向シフト。Fは手動値です。"
   ];
   $("#engine-description").textContent=explain[s.engine];
   $("#engine-summary").textContent=names[s.engine];
@@ -346,6 +349,14 @@ for(const name of ["low","high","curvature","invert","mode","outside","quality",
   $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#wet").addEventListener("input",()=>{labels();tuneWet();});
+for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
+  $("#"+id).addEventListener("input",()=>{
+    $("#crusher-bits-value").textContent=$("#crusher-bits").value+" bit";
+    $("#crusher-hold-value").textContent=$("#crusher-hold").value+" samples";
+    updateParams(id);updateEngineInfo();
+  });
+}
+
 controls.dry.addEventListener("click",()=>play("dry"));
 controls.wet.addEventListener("click",()=>play("wet"));
 controls.stop.addEventListener("click",()=>stop());
@@ -363,10 +374,12 @@ async function load(file){
     const ctx=await context();
     const data=await ctx.decodeAudioData(await file.arrayBuffer());
     const count=Math.min(2,data.numberOfChannels);
-    const length=Math.min(data.length,Math.floor(data.sampleRate*120));
+    const length=Math.min(data.length,Math.floor(data.sampleRate*MAX_PREVIEW_SECONDS));
     if(length<4096)throw Error("短すぎる音声です。");
-    state.decoded=data;
     state.dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice(0,length));
+    // Drop the browser decoder AudioBuffer reference after retaining only the
+    // requested segment to reduce iPhone peak resident memory.
+    state.decoded={sampleRate:data.sampleRate};
     state.name=file.name.replace(/\.[^.]+$/,"");
     $("#file-meta").textContent=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
     labels("high");drawCurve();drawAudio();refreshStatusSeek();
@@ -409,6 +422,14 @@ controls.render.addEventListener("click",()=>{
     controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
     message("オフライン処理失敗: "+e.message,"error");
   };
+  // Browser-WASM export allocates whole input+output; do not silently OOM
+  // for a long stereo 600s file. Live preview has no such full WASM buffer.
+  const totalSamples=state.dry.reduce((n,c)=>n+c.length,0);
+  if(totalSamples>40_000_000){
+    controls.render.disabled=false;
+    message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
+    return;
+  }
   const copies=state.dry.map(c=>new Float32Array(c));
   worker.postMessage({
     type:"process",channels:copies,sampleRate:state.decoded.sampleRate,settings
@@ -458,20 +479,26 @@ $("#settings-reset").addEventListener("click",()=>{
     overlap:"4","zero-mode":"0"
   };
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
+  $("#crusher-enabled").checked=false;
+  $("#crusher-bits").value="8";$("#crusher-hold").value="4";
+  $("#crusher-bits-value").textContent="8 bit";
+  $("#crusher-hold-value").textContent="4 samples";
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   message("エフェクト設定を初期値へ戻しました。再生位置は保持されます。");
 });
 function showTab(tab){
   const math=tab==="math";
-  $("#view-map").hidden=math;$("#view-math").hidden=!math;
+  // Keep graph and 3-harmonic summary visible when the full formula panel is open.
+  $("#view-map").hidden=false;$("#view-math").hidden=!math;
   $("#tab-map").setAttribute("aria-selected",String(!math));
   $("#tab-math").setAttribute("aria-selected",String(math));
   $("#tab-map").tabIndex=math?-1:0;
   $("#tab-math").tabIndex=math?0:-1;
-  if(!math)requestAnimationFrame(drawCurve);
+  requestAnimationFrame(drawCurve);
 }
 $("#tab-map").addEventListener("click",()=>showTab("map"));
 $("#tab-math").addEventListener("click",()=>showTab("math"));
+$("#mini-expand").addEventListener("click",()=>showTab("math"));
 for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
   $(node).addEventListener("keydown",e=>{
     if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;
