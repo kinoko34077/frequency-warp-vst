@@ -180,6 +180,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await (await page.$("#audio-file")).uploadFile(longPath);
     await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("600.0秒"),{timeout:45000});
     assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
+    await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
     const longWave=await (await page.$("#wave")).boundingBox();
     await page.mouse.click(longWave.x+longWave.width*.9,longWave.y+longWave.height/2);
     await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000})
