@@ -151,7 +151,7 @@ async function prepareCore(){
     const response=await fetch("./dsp_core.wasm");
     if(!response.ok)throw Error("Rust WASMの読込みに失敗: "+response.status);
     const bytes=await response.arrayBuffer();
-    state.module=await WebAssembly.compile(bytes);
+    state.module=bytes; // pass raw binary to the AudioWorklet; avoids Module structured-clone compatibility issues
   }
   return {ctx,module:state.module};
 }
@@ -262,7 +262,8 @@ async function play(mode="wet",offset=null){
     // Start the input before waiting for the processor's ready message.
     const start=offset===null?state.seek:offset;
     startSource(player,start);
-    worklet.port.postMessage({type:"init",module,channels:state.dry.length,settings:current});
+    player.startupMessages.push("init-sent");
+    worklet.port.postMessage({type:"init",bytes:module,channels:state.dry.length,settings:current});
     const result=await ready;
     if(state.player!==player)return;
     tuneWet();
