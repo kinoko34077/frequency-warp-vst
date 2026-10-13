@@ -11,7 +11,7 @@ async function core() {
       const bytes=await response.arrayBuffer();
       const {instance}=await WebAssembly.instantiate(bytes,{});
       const e=instance.exports;
-      for(const name of ["memory","warp_alloc_f32","warp_free_f32","warp_process_f32","warp_process_f32_ex","warp_map_frequency"]){
+      for(const name of ["memory","warp_alloc_f32","warp_free_f32","warp_stream_render_f32_ext"]){
         if(!e[name])throw new Error("WASM ABI不一致: "+name);
       }
       return e;
@@ -38,14 +38,15 @@ self.onmessage=async ({data})=>{
     if(!src||!dst)throw new Error("DSPメモリを確保できません。");
     const input=new Float32Array(exports.memory.buffer,src,count);
     for(let c=0;c<channels.length;c++)input.set(channels[c],c*frames);
-    // Nominal whole-buffer reference: no fake intermediate progress claims.
+    // Offline file export through the SAME stream as realtime audition. No fake progress.
     self.postMessage({type:"progress",value:0});
     const options=data.settings;
     const start=performance.now();
-    const result=exports.warp_process_f32_ex(src,dst,frames,channels.length,
+    const result=exports.warp_stream_render_f32_ext(src,dst,frames,channels.length,
       data.sampleRate,options.low,options.high,options.curvature,options.invert,
       options.mode==="blend"?1:options.mode==="fold-l"?2:0,options.qualityIndex,
-      options.outside==="pass"?1:0);
+      options.outside==="pass"?1:0,options.engine,options.pitchRatio,options.shiftHz,
+      options.carrierHz,options.zeroMode,options.hopDiv);
     if(result!==0)throw new Error("共通DSPの処理に失敗: status "+result);
     const output=new Float32Array(exports.memory.buffer,dst,count);
     const rendered=channels.map((_,c)=>new Float32Array(output.slice(c*frames,(c+1)*frames)));
@@ -53,7 +54,7 @@ self.onmessage=async ({data})=>{
     self.postMessage({
       type:"done",channels:rendered,
       diagnostics:{
-        engine:"Rust core / WebAssembly",
+        engine:"Shared Rust streaming DSP / WebAssembly",
         frames:Math.ceil(frames/({0:256,1:256,2:512}[options.qualityIndex]||256)),
         durationSeconds:frames/data.sampleRate,
         elapsedMs

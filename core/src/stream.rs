@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,map_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -46,7 +46,7 @@ impl Stream {
         if engine>3||zero_mode>2||![4,8].contains(&hop_div)||
            !pitch_ratio.is_finite()||pitch_ratio<=0.0||pitch_ratio>4.0||
            !shift_hz.is_finite()||shift_hz.abs()>20000.0||
-           !carrier_hz.is_finite()||carrier_hz<0.0||carrier_hz>20000.0 {
+           !carrier_hz.is_finite()||carrier_hz< -1.0||carrier_hz>20000.0 {
             return Err("invalid streaming engine settings");
         }
         if !sample_rate.is_finite()||sample_rate<=0.0||!(1..=2).contains(&channels)
@@ -92,7 +92,7 @@ impl Stream {
         pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,zero_mode:u32)->Result<(),&'static str>{
         if engine>3||zero_mode>2||!pitch_ratio.is_finite()||pitch_ratio<=0.0||pitch_ratio>4.0||
            !shift_hz.is_finite()||shift_hz.abs()>20000.0||
-           !carrier_hz.is_finite()||carrier_hz<0.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
+           !carrier_hz.is_finite()||carrier_hz< -1.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
         self.configure(settings,outside)?;
         if self.engine!=engine {self.reset();}
         self.engine=engine;self.pitch_ratio=pitch_ratio;self.shift_hz=shift_hz;
@@ -115,7 +115,13 @@ impl Stream {
         }
         // Engine 2 is a true sample-by-sample ring modulator, without FFT lookahead.
         if self.engine==2 {
-            let inc=TAU*self.carrier_hz/self.sample_rate;
+            // -1 is a stable ABI sentinel: link Ring carrier to the Rust
+            // mapping's *input-domain* Fold kink. A Blend has no kink; fail
+            // closed by using 0 Hz rather than manufacturing a midpoint.
+            let carrier=if self.carrier_hz==-1.0 {
+                fold_frequency(self.settings).unwrap_or(0.0)
+            }else{self.carrier_hz};
+            let inc=TAU*carrier/self.sample_rate;
             for i in 0..frames {
                 let carrier=self.ring_phase.cos() as f32;
                 for c in 0..self.channels {output[c*frames+i]=input[c*frames+i]*carrier;}
@@ -232,13 +238,20 @@ impl Stream {
             }else{
                 match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue}
             };
-            let target=if target<0.0 {
+            let (target,fade_gain)=if target<0.0 {
                 match self.zero_mode {
-                    0=>target.abs(), // Reflect about 0Hz
+                    0=>(target.abs(),1.0), // Reflect about 0Hz
                     1=>continue, // Kill negative output
-                    _=>{ if target.abs()>step {continue;} 0.0 } // rudimentary fade edge
+                    _=>{
+                        // One FFT-bin-wide experimental fade beyond the 0Hz
+                        // crossing. The old implementation mapped to 0Hz and
+                        // immediately discarded the sample, making Fade = Kill.
+                        let negative=target.abs();
+                        if negative>=step {continue;}
+                        (negative, (1.0-negative/step).clamp(0.0,1.0))
+                    }
                 }
-            }else{target};
+            }else{(target,1.0)};
             if !(target>0.0&&target<self.sample_rate/2.0){continue;}
             let diff=target-frequency;
             let mut closest=None;
@@ -263,7 +276,7 @@ impl Stream {
             let rot_r=omega.cos();let rot_i=omega.sin();
             for c in 0..self.channels{
                 let z=self.spectrum[c][k];
-                let amplitude=4.0*z.magnitude()/self.n as f64;
+                let amplitude=4.0*z.magnitude()/self.n as f64*fade_gain;
                 if amplitude<1e-9{continue;}
                 let centre_phase=z.angle()+PI*k as f64+shift;
                 let start_phase=centre_phase-omega*(self.n as f64/2.0);
@@ -392,6 +405,60 @@ pub unsafe extern "C" fn warp_stream_set_ext(
         engine,pitch_ratio,shift_hz,carrier_hz,zero_mode){Ok(_)=>0,Err(_)=>-2}
 }
 
+/// Render a whole file through the *identical* persistent DSP stream used
+/// by the Web AudioWorklet and future native host: optional WAV export adapter.
+/// Input and output are non-overlapping planar contiguous f32 buffers.
+/// Offline allocations are permitted here, but NOT in the realtime process.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,
+)->i32{
+    if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
+       ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
+    let settings=params(low,high,p,amount,mode,quality_id);
+    let mut st=match Stream::new_extended(rate,channels as usize,settings,outside,
+        engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div) {
+        Ok(st)=>st,Err(_)=>return -2
+    };
+    let total=frames as usize;
+    let channel_count=channels as usize;
+    let source=std::slice::from_raw_parts(input,total*channel_count);
+    let dest=std::slice::from_raw_parts_mut(output,total*channel_count);
+    let latency=st.latency();
+    let chunk=128;
+    let mut work_in=vec![0.0f32;chunk*channel_count];
+    let mut work_out=vec![0.0f32;chunk*channel_count];
+    // The stream's latency is compensated for exported WAV: the first
+    // latency samples are dropped; zero input flushes remaining output.
+    let mut t=0usize;
+    while t<total+latency{
+        let length=(total+latency-t).min(chunk);
+        work_in.fill(0.0);
+        work_out.fill(0.0);
+        for c in 0..channel_count{
+            for j in 0..length{
+                let index=t+j;
+                if index<total {work_in[c*length+j]=source[c*total+index];}
+            }
+        }
+        if st.process(&work_in[..length*channel_count],
+            &mut work_out[..length*channel_count],length).is_err(){return -3;}
+        for c in 0..channel_count{
+            for j in 0..length{
+                let render=t+j;
+                if render>=latency&&render-latency<total {
+                    dest[c*total+render-latency]=work_out[c*length+j];
+                }
+            }
+        }
+        t+=length;
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests{
     use super::*;
@@ -443,6 +510,22 @@ mod tests{
         st.configure_extended(settings(),1,2,1.0,0.0,600.0,0).unwrap();
     }
     #[test]
+    fn linked_ring_carrier_uses_core_fold_point_and_tracks_live_settings(){
+        let mut st=Stream::new_extended(8192.0,1,
+            Settings{low:100.0,high:1000.0,curvature:1.0,invert:0.25,
+                mode:Progression::FoldHigh,quality:0},
+            1,2,1.0,0.0,-1.0,0,4).unwrap();
+        let source=vec![1.0;128];let mut dst=vec![0.0;128];
+        st.process(&source,&mut dst,128).unwrap();
+        assert!((dst[1]-(TAU*775.0/8192.0).cos() as f32).abs()<1e-4);
+        let changed=Settings{low:100.0,high:1000.0,curvature:1.0,invert:0.25,
+            mode:Progression::FoldLow,quality:0};
+        st.configure_extended(changed,1,2,1.0,0.0,-1.0,0).unwrap();
+        assert_eq!(st.carrier_hz,-1.0);
+        st.reset();st.process(&source,&mut dst,128).unwrap();
+        assert!((dst[1]-(TAU*325.0/8192.0).cos() as f32).abs()<1e-4);
+    }
+    #[test]
     fn alternate_spectral_and_harmonic_engines_stream(){
         for engine in [1u32,3u32]{
             let mut st=Stream::new_extended(8192.0,1,settings(),1,engine,1.0,-75.0,300.0,0,8).unwrap();
@@ -453,6 +536,17 @@ mod tests{
                 assert!(out.iter().all(|x|x.is_finite()));
             }
         }
+    }
+    #[test]
+    fn offline_export_and_live_stream_share_same_ring_dsp_and_no_extra_silence(){
+        let rate=8192.0;let frames=4096usize;
+        let input=(0..frames).map(|i|(TAU*400.0*i as f64/rate).cos() as f32).collect::<Vec<_>>();
+        let mut output=vec![0.0f32;frames];
+        let status=unsafe{warp_stream_render_f32_ext(input.as_ptr(),output.as_mut_ptr(),
+            frames as u32,1,rate,20.0,3000.0,1.0,1.0,0,0,1,
+            2,1.0,0.0,0.0,0,4)};
+        assert_eq!(status,0);
+        assert!(output.iter().zip(&input).map(|(a,b)|(a-b).abs()).sum::<f32>()/(frames as f32)<1e-5);
     }
     #[test]
     fn stream_parameter_changes_and_reset(){

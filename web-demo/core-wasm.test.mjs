@@ -153,3 +153,50 @@ test("alternate Rust engines are actually exported and differ acoustically",asyn
     e.warp_free_f32(input,frames);e.warp_free_f32(output,frames);
   }
 });
+
+test("Rust canonical fold frequency is exactly the displayed and linked carrier",async()=>{
+  const e=await load();
+  assert.equal(typeof e.warp_fold_frequency,"function");
+  assert.ok(Math.abs(e.warp_fold_frequency(100,1000,1,.25,0)-775)<1e-7);
+  assert.ok(Math.abs(e.warp_fold_frequency(100,1000,1,.25,2)-325)<1e-7);
+  assert.ok(Number.isNaN(e.warp_fold_frequency(100,1000,1,.25,1)));
+  const fs=8192,n=128,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  const handle=e.warp_stream_create_ext(fs,1,100,1000,1,.25,0,0,1,2,1,0,-1,0,4);
+  assert.ok(handle>0);
+  try{
+    new Float32Array(e.memory.buffer,src,n).fill(1);
+    assert.equal(e.warp_stream_process(handle,src,dst,n),0);
+    let samples=new Float32Array(e.memory.buffer,dst,n);
+    assert.ok(Math.abs(samples[1]-Math.cos(2*Math.PI*775/fs))<1e-5);
+    assert.equal(e.warp_stream_set_ext(handle,100,1000,1,.25,2,0,1,2,1,0,-1,0),0);
+    assert.equal(e.warp_stream_reset(handle),0);
+    assert.equal(e.warp_stream_process(handle,src,dst,n),0);
+    samples=new Float32Array(e.memory.buffer,dst,n);
+    assert.ok(Math.abs(samples[1]-Math.cos(2*Math.PI*325/fs))<1e-5);
+  }finally{
+    e.warp_stream_free(handle);e.warp_free_f32(src,n);e.warp_free_f32(dst,n);
+  }
+});
+test("WAV export uses the same Rust stream and correct latency for Ring and FFT",async()=>{
+  const e=await load();const n=4096,fs=8192;
+  assert.equal(typeof e.warp_stream_render_f32_ext,"function");
+  const src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  try{
+    const samples=new Float32Array(e.memory.buffer,src,n);
+    for(let i=0;i<n;i++)samples[i]=.6*Math.cos(2*Math.PI*500*i/fs);
+    for(const engine of [0,1,2,3]){
+      const rc=e.warp_stream_render_f32_ext(src,dst,n,1,fs,20,3000,1,1,0,0,1,
+        engine,1,-75,engine===2?0:300,0,4);
+      assert.equal(rc,0,"WAV engine "+engine+" failed");
+      const data=new Float32Array(e.memory.buffer,dst,n);
+      assert.ok(data.every(Number.isFinite));
+      const energy=data.reduce((a,b)=>a+b*b,0)/n;
+      assert.ok(energy>1e-5,"WAV engine "+engine+" silent");
+      if(engine===2){
+        const currentInput=new Float32Array(e.memory.buffer,src,n);
+        const err=data.reduce((a,b,i)=>a+Math.abs(b-currentInput[i]),0)/n;
+        assert.ok(err<1e-5,"Ring WAV bypass differs from live stream");
+      }
+    }
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});

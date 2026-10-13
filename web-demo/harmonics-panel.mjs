@@ -1,50 +1,109 @@
 import {deriveHarmonics} from "./harmonics.mjs";
+
+// The entire panel is a UI adapter. Spectral mapping and Fold frequency
+// resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
 const $=id=>document.querySelector(id);
-const h=v=>Number.isFinite(v)?Number(v.toFixed(3)).toString():"—";
-function clampInt(v,lo,hi,fallback){return Number.isFinite(Number(v))?Math.max(lo,Math.min(hi,Math.trunc(Number(v)))):fallback;}
-export function harmonicParameters(){
-  return {
-    F:Math.max(20,Math.min(2000,Number($("#fundamental").value)||350)),
-    m:clampInt($("#denominator").value,1,64,4),
-    n:clampInt($("#numerator").value,-128,128,0),
-    q:clampInt($("#harmonic-index").value,1,32,1),
-    r:Math.max(.25,Math.min(4,Number($("#pitch-ratio").value)||1)),
-    c:Math.max(0,Math.min(20000,Number($("#carrier").value)||0)),
-    zeroMode:Number($("#zero-mode").value)
-  };
+const fmt=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
+const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
+const integerFields=new Set(["denominator","numerator","harmonic-index"]);
+const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
+
+export function linkedCarrierRequested(){
+  return $("#carrier-link").checked;
 }
-export function renderHarmonicPanel(){
-  const {F,m,n,q,r,c}=harmonicParameters();
+export function harmonicParameters(){
+  const F=clamp(Number($("#fundamental").value)||350,20,2000);
+  const m=clamp(Math.round(Number($("#denominator").value)||4),1,64);
+  const n=clamp(Math.round(Number($("#numerator").value)||0),-128,128);
+  const q=clamp(Math.round(Number($("#harmonic-index").value)||1),1,32);
+  const r=clamp(Number($("#pitch-ratio").value)||1,.25,4);
+  const manualCarrier=clamp(Number($("#carrier").value)||0,0,20000);
+  const foldMode=$("#mode").value!=="blend";
+  return {F,m,n,q,r,c:linkedCarrierRequested()&&foldMode?-1:manualCarrier,
+    manualCarrier,linked:linkedCarrierRequested()&&foldMode,zeroMode:Number($("#zero-mode").value)};
+}
+function syncPair(id){
+  const number=$("#"+id),range=$("#"+id+"-range");
+  if(!number||!range)return;
+  const parsed=Number(number.value);
+  if(Number.isFinite(parsed)){
+    const bounded=clamp(parsed,Number(number.min),Number(number.max));
+    range.value=String(bounded);
+  }
+}
+export function resolvedCarrierHz(foldPoint){
+  const p=harmonicParameters();
+  if(p.linked){
+    const v=foldPoint?.();
+    if(Number.isFinite(v))return v;
+  }
+  return p.manualCarrier;
+}
+export function renderHarmonicPanel(foldPoint){
+  const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
   const z=deriveHarmonics(F,m,n,q,r);
+  const c=resolvedCarrierHz(foldPoint);
   $("#math-results").textContent=[
-    "仮想基音 H = F / m = "+h(z.H)+" Hz",
-    "有理数シフト Δ = (n/m) F = "+h(z.delta)+" Hz",
-    "倍音列: f′k = (mk+n)(F/m) = kF+Δ",
-    "Pitch → Frequency: f′ = r·f + Δ",
-    "0Hzで折返し: f′k = |kF − S|",
-    "第q倍音がHへ着地: S = (q+1/m)F = "+h(z.foldShift)+" Hz",
+    "仮想基音: H = F / m = "+fmt(z.H)+" Hz",
+    "シフト: Δ = (n/m)F = "+fmt(z.delta)+" Hz",
+    "倍音列: f′k = (mk+n)H = kF+Δ",
+    "前段 Pitch→Hz Shift: f′=r·f+Δ",
+    "0Hz折返し: f′k = |kF − S|",
+    "第q倍音がHへ: S=(q+1/m)F = "+fmt(z.foldShift)+" Hz",
     "Ring Mod: cos(2πft)cos(2πct) = ½cos(2π(f+c)t)+½cos(2π(f−c)t)",
-    "Ring搬送周波数 c = "+h(c)+" Hz",
-    "Pitch→Shift は r·f+Δ / Shift→Pitch は r·(f+Δ)",
-    "F/mは理論的な格子。実際に聴こえる音高／録音から検出した値とは異なります。"
+    "搬送波 c = "+fmt(c)+" Hz / 両側波帯 f+c, |f−c|",
+    "変換順: Pitch→Shift = r·f+Δ / Shift→Pitch = r·(f+Δ)",
+    "注: F/mは理論的な倍音格子。入力音の基音を自動検出しません。"
   ].join("\n");
   const frag=document.createDocumentFragment();
   for(const row of z.rows){
     const tr=document.createElement("tr");
     for(const value of [row.k,row.input,row.translated,row.reflected,row.number]){
-      const td=document.createElement("td");td.textContent=h(value);tr.appendChild(td);
+      const td=document.createElement("td");
+      td.textContent=fmt(value);tr.appendChild(td);
     }
     frag.appendChild(tr);
   }
   $("#harmonics-body").replaceChildren(frag);
+  const checkbox=$("#carrier-link"),readout=$("#carrier-linked-value");
+  const valid=$("#mode").value!=="blend";
+  for(const node of [$("#carrier"),$("#carrier-range")])node.disabled=checkbox.checked&&valid;
+  if(!checkbox.checked){
+    readout.textContent="オフ：手動 "+fmt(manualCarrier)+" Hz";
+  }else if(!valid){
+    readout.textContent="単純補間には折返し点がありません。手動 "+fmt(manualCarrier)+" Hzを使用";
+  }else{
+    const fold=foldPoint?.();
+    readout.textContent=Number.isFinite(fold)?
+      "入力側の折返し点 = "+fmt(fold)+" Hzへ連動（Rust共通DSP）":
+      "折返し点を共通DSPから読込み中…";
+  }
   return z;
 }
-export function attachHarmonicPanel(onSettingsChanged){
-  for(const id of ["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier","zero-mode"]){
-    $("#"+id).addEventListener("input",()=>{
-      renderHarmonicPanel();
-      onSettingsChanged(id);
+export function attachHarmonicPanel(onChange,foldPoint){
+  const respond=id=>{renderHarmonicPanel(foldPoint);onChange(id);};
+  for(const id of IDS){
+    const number=$("#"+id),range=$("#"+id+"-range");
+    // Preserve direct typing for exact values while making typical changes
+    // a one-finger drag; invalid numbers are clamped on change.
+    range.addEventListener("input",()=>{
+      number.value=range.value;
+      respond(id);
     });
+    number.addEventListener("input",()=>{
+      if(number.value===""||!Number.isFinite(Number(number.value)))return;
+      syncPair(id);respond(id);
+    });
+    number.addEventListener("change",()=>{
+      const min=Number(number.min),max=Number(number.max);
+      const raw=Number(number.value);
+      const v=Number.isFinite(raw)&&number.value!==""?clamp(raw,min,max):Number(number.defaultValue);
+      const step=Number(number.step)||1;
+      number.value=String(integerFields.has(id)?Math.round(v):Math.round(v/step)*step);
+      syncPair(id);respond(id);
+    });
+    syncPair(id);
   }
-  renderHarmonicPanel();
+  $("#carrier-link").addEventListener("change",()=>respond("carrier-link"));
+  renderHarmonicPanel(foldPoint);
 }

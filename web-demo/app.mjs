@@ -1,6 +1,6 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
-import {harmonicParameters,attachHarmonicPanel} from "./harmonics-panel.mjs";
+import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
 const $=id=>document.querySelector(id);
 const controls={
@@ -11,7 +11,7 @@ const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",processing:false,
-  effective:{low:20,high:16000},raf:0,lastStats:null
+  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null
 };
 const hzFromScale=value=>20*Math.exp(Math.log(1000)*Number(value)/1000);
 const scaleFromHz=hz=>Math.round(1000*Math.log(Math.max(20,hz)/20)/Math.log(1000));
@@ -63,7 +63,47 @@ function labels(id=""){
   $("#invert-value").textContent=Math.round(100*Number($("#invert").value))+"%";
   $("#wet-value").textContent=Math.round(100*Number($("#wet").value))+"%";
 }
-function drawCurve(){drawFrequencyGraph($("#curve"),settings());}
+function foldPoint(){
+  const core=state.mathCore;
+  if(!core)return NaN;
+  const p=settings();
+  return core.warp_fold_frequency(p.low,p.high,p.curvature,p.invert,
+    p.mode==="blend"?1:p.mode==="fold-l"?2:0);
+}
+function drawCurve(){
+  const canvas=$("#curve");
+  if(!state.mathCore){
+    const width=Math.max(250,Math.round(canvas.getBoundingClientRect().width||320));
+    canvas.width=width;canvas.height=width;return;
+  }
+  const p=settings();
+  const shown={...p,carrierHz:resolvedCarrierHz(foldPoint)};
+  const map=(f,l,h,curvature,invert,mode)=>
+    state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
+      mode==="blend"?1:mode==="fold-l"?2:0);
+  drawFrequencyGraph(canvas,shown,map);
+}
+async function ensureSharedCore(){
+  if(!state.wasmPromise){
+    state.wasmPromise=(async()=>{
+      const response=await fetch("./dsp_core.wasm");
+      if(!response.ok)throw Error("Rust/WASM "+response.status);
+      const bytes=await response.arrayBuffer();
+      const instance=new WebAssembly.Instance(new WebAssembly.Module(bytes),{});
+      const core=instance.exports;
+      if(typeof core.warp_fold_frequency!=="function"||
+        typeof core.warp_map_frequency!=="function")throw Error("共通数式APIがありません");
+      state.module=bytes;state.mathCore=core;
+      drawCurve();renderHarmonicPanel(foldPoint);
+      return bytes;
+    })().catch(error=>{
+      state.wasmPromise=null;
+      message("共通DSPの読み込みに失敗: "+error.message,"error");
+      throw error;
+    });
+  }
+  return state.wasmPromise;
+}
 function updateEngineInfo(){
   const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
   const latency=s.engine===2?0:1000*(q.fftSize-1)/rate;
@@ -75,6 +115,7 @@ function updateEngineInfo(){
     "入力の部分音を r倍してから Δ=(n/m)F Hz シフト。Fは手動値です。"
   ];
   $("#engine-description").textContent=explain[s.engine];
+  $("#engine-summary").textContent=names[s.engine];
   $("#engine-stats").textContent=
     "方式: "+names[s.engine]+" ｜FFT窓 "+q.fftSize+
     " ｜内部hop "+Math.round(q.fftSize/s.hopDiv)+
@@ -151,12 +192,7 @@ async function prepareCore(){
     await ctx.audioWorklet.addModule("./realtime.worklet.js");
     state.workletLoaded=true;
   }
-  if(!state.module){
-    const response=await fetch("./dsp_core.wasm");
-    if(!response.ok)throw Error("Rust WASMの読込みに失敗: "+response.status);
-    const bytes=await response.arrayBuffer();
-    state.module=bytes; // pass raw binary to the AudioWorklet; avoids Module structured-clone compatibility issues
-  }
+  if(!state.module)await ensureSharedCore();
   return {ctx,module:state.module};
 }
 function makeBuffer(){
@@ -282,14 +318,22 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
-  labels(changed);drawCurve();
+  labels(changed);drawCurve();renderHarmonicPanel(foldPoint);
   state.offline=null;controls.download.disabled=true;
   const p=state.player;
   if(!p)return;
   const current=settings();
   if(current.qualityIndex!==p.quality||current.hopDiv!==p.hopDiv||current.engine!==p.engine){
-    const offset=playPosition(),mode=p.mode;
-    stop().then(()=>play(mode,offset));
+    // Debounce costly stream rebuilds while the user is selecting; keep
+    // current playback position rather than stopping on every input event.
+    if(state.rebuildTimer)clearTimeout(state.rebuildTimer);
+    state.rebuildTimer=setTimeout(async()=>{
+      state.rebuildTimer=null;
+      const active=state.player;if(!active)return;
+      const offset=playPosition(),mode=active.mode;
+      await stop();await play(mode,offset);
+    },180);
+    indicator("設定を反映するため音声処理を切替中…");
     return;
   }
   const revision=++state.settingsRevision;
@@ -306,7 +350,7 @@ controls.dry.addEventListener("click",()=>play("dry"));
 controls.wet.addEventListener("click",()=>play("wet"));
 controls.stop.addEventListener("click",()=>stop());
 window.addEventListener("resize",()=>{drawCurve();drawAudio();});
-window.addEventListener("pagehide",()=>{stop();if(state.offlineWorker)state.offlineWorker.terminate();});
+window.addEventListener("pagehide",()=>{if(state.rebuildTimer)clearTimeout(state.rebuildTimer);stop();if(state.offlineWorker)state.offlineWorker.terminate();});
 async function load(file){
   if(!file)return;
   await stop();
@@ -396,5 +440,45 @@ controls.download.addEventListener("click",()=>{
   document.body.append(el);el.click();el.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();});
+// Settings are part of the same live parameter model as the front-panel knobs.
+const dialog=$("#settings-dialog"),opener=$("#settings-open");
+const showSettings=()=>{if(!dialog.open)dialog.showModal();};
+const closeSettings=()=>{if(dialog.open)dialog.close();opener.focus();};
+opener.addEventListener("click",showSettings);
+$("#settings-inline").addEventListener("click",showSettings);
+$("#settings-close").addEventListener("click",closeSettings);
+$("#settings-done").addEventListener("click",closeSettings);
+dialog.addEventListener("click",event=>{
+  if(event.target===dialog)closeSettings();
+});
+$("#settings-reset").addEventListener("click",()=>{
+  const defaults={
+    low:"0",high:"968",curvature:"1",invert:"1",wet:"1",
+    engine:"0",mode:"fold-h",outside:"pass",quality:"eco",
+    overlap:"4","zero-mode":"0"
+  };
+  for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
+  labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
+  message("エフェクト設定を初期値へ戻しました。再生位置は保持されます。");
+});
+function showTab(tab){
+  const math=tab==="math";
+  $("#view-map").hidden=math;$("#view-math").hidden=!math;
+  $("#tab-map").setAttribute("aria-selected",String(!math));
+  $("#tab-math").setAttribute("aria-selected",String(math));
+  $("#tab-map").tabIndex=math?-1:0;
+  $("#tab-math").tabIndex=math?0:-1;
+  if(!math)requestAnimationFrame(drawCurve);
+}
+$("#tab-map").addEventListener("click",()=>showTab("map"));
+$("#tab-math").addEventListener("click",()=>showTab("math"));
+for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
+  $(node).addEventListener("keydown",e=>{
+    if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;
+    e.preventDefault();const next=tab==="map"?"math":"map";
+    showTab(next);$("#tab-"+next).focus();
+  });
+}
+attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint);
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
+ensureSharedCore().catch(()=>{});
