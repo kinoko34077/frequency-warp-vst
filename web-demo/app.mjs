@@ -255,11 +255,13 @@ async function play(mode="wet",offset=null){
         else if(event.data.type==="error"){clearTimeout(timeout);reject(Error(event.data.message));}
       };
     });
+    // AudioWorklet may remain unscheduled without an active connected input.
+    // Start the input before waiting for the processor's ready message.
+    const start=offset===null?state.seek:offset;
+    startSource(player,start);
     worklet.port.postMessage({type:"init",module,channels:state.dry.length,settings:current});
     const result=await ready;
     if(state.player!==player)return;
-    const start=offset===null?state.seek:offset;
-    startSource(player,start);
     tuneWet();
     controls.stop.disabled=false;
     indicator("稼働中 · Rust/WASM AudioWorklet · "+(1000*result.latencyFrames/ctx.sampleRate).toFixed(1)+" ms DSP遅延");
