@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p _site
           cp web-demo/index.html _site/index.html
-          cp web-demo/app.mjs web-demo/processor.worker.mjs web-demo/dsp.mjs web-demo/style.css _site/
+          cp web-demo/app.mjs web-demo/processor.worker.mjs web-demo/realtime.worklet.js web-demo/dsp.mjs web-demo/style.css _site/
           cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm _site/dsp_core.wasm
           touch _site/.nojekyll
           test -s _site/dsp_core.wasm
