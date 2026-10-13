@@ -21,6 +21,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     this.blocks = 0;
     this.renderCost = 0;
     this.overBudget = 0;
+    this.inputEnergy = 0;
+    this.wetEnergy = 0;
     this.port.onmessage = ({data}) => this.command(data);
   }
   initialize(data) {
@@ -33,7 +35,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
         "warp_stream_process","warp_stream_latency","warp_stream_set_crusher",
-        "warp_stream_set_transform"
+        "warp_stream_set_transform","warp_stream_set_geometry"
       ];
       for (const name of required) {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
@@ -52,6 +54,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         options.axisReference,options.ringEnabled?1:0,options.rationalEnabled?1:0)!==0){
         e.warp_stream_free(stream);throw Error("Rust frequency-axis mapping failed");
       }
+      if(e.warp_stream_set_geometry(stream,options.axisPivot,options.axisSlope)!==0){
+        e.warp_stream_free(stream);throw Error("Rust axis pivot/slope failed");
+      }
       if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
         e.warp_stream_free(stream);throw Error("Rust bitcrusher initialization failed");
       }
@@ -69,6 +74,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       this.latency=e.warp_stream_latency(stream);
       this.delay=Array.from({length:channels},()=>new Float32Array(this.latency+256));
       this.position=0;this.blocks=0;this.renderCost=0;this.overBudget=0;
+      this.inputEnergy=0;this.wetEnergy=0;
       this.port.postMessage({type:"ready",latencyFrames:this.latency,sampleRate});
     } catch(err) {
       this.port.postMessage({type:"error",message:String(err.message||err)});
@@ -106,7 +112,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         p.shiftHz,p.carrierHz,p.zeroMode);
       const axis=code===0?e.warp_stream_set_transform(this.stream,p.axisShift,
         p.axisReference,p.ringEnabled?1:0,p.rationalEnabled?1:0):code;
-      const fx=axis===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):axis;
+      const geometry=axis===0?e.warp_stream_set_geometry(this.stream,p.axisPivot,p.axisSlope):axis;
+      const fx=geometry===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):geometry;
       if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
@@ -147,6 +154,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         outputDry[i]=this.latency===0?inp[c*frames+i]:ring[read];
         ring[slot]=inp[c*frames+i];
         outputWet[i]=out[c*frames+i];
+        this.inputEnergy+=inp[c*frames+i]*inp[c*frames+i];
+        this.wetEnergy+=outputWet[i]*outputWet[i];
       }
     }
     this.position+=frames;
@@ -159,7 +168,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type:"stats",blocks:this.blocks,latencyFrames:this.latency,
         averageBlockMs:this.renderCost/this.blocks,
-        overBudgetBlocks:this.overBudget
+        overBudgetBlocks:this.overBudget,
+        inputRms:Math.sqrt(this.inputEnergy/(this.blocks*frames*this.channels)),
+        outputRms:Math.sqrt(this.wetEnergy/(this.blocks*frames*this.channels))
       });
     }
     return true;

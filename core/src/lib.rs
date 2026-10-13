@@ -55,21 +55,35 @@ fn inverse_coordinate(u: f64, low: f64, p: f64) -> f64 {
 /// the identical log/expm1 coordinate family used by nonlinear warp.
 /// Signed extension below zero is a mathematical convention: the audio
 /// engine must still apply Reflect/Kill/Fade at the target-0 boundary.
-pub fn translate_frequency(f:f64,reference:f64,p:f64,shift:f64)->f64{
-    if !f.is_finite()||f<=0.0||!reference.is_finite()||reference<=0.0||
-       !p.is_finite()||!(0.0..=1.0).contains(&p)||!shift.is_finite()||shift.abs()>4.0 {
-        return f64::NAN;
-    }
-    if shift==0.0{return f;}
-    let u=coordinate(f,reference,p)+shift;
-    if p==0.0{return reference*u.exp();}
+/// An explicitly pivoted / sloped frequency-axis map.
+/// pivot stays fixed when shift=0 and slope varies. slope=1 preserves the
+/// previous pitch (p=0) / Hz translation (p=1) semantics.
+/// Warning: slope != 1 changes harmonic spacing (a spectral tilt), not
+/// a uniform pitch shift even on a log scale.
+pub fn translate_frequency_affine(f:f64,pivot:f64,p:f64,shift:f64,slope:f64)->f64{
+    if !f.is_finite()||f<=0.0||!pivot.is_finite()||pivot<=0.0||
+       !p.is_finite()||!(0.0..=1.0).contains(&p)||
+       !shift.is_finite()||shift.abs()>4.0||!slope.is_finite()||
+       !(0.1..=4.0).contains(&slope){return f64::NAN;}
+    if slope==1.0&&shift==0.0{return f;}
+    // C_p(pivot; pivot) = 0: the anchor's displacement is exactly shift.
+    let u=slope*coordinate(f,pivot,p)+shift;
+    if p==0.0{return pivot*u.exp();}
     let v=1.0+p*u;
-    if v>=0.0{reference*v.powf(1.0/p)}
-    else{-reference*(-v).powf(1.0/p)}
+    if v>=0.0{pivot*v.powf(1.0/p)}
+    else{-pivot*(-v).powf(1.0/p)}
+}
+pub fn translate_frequency(f:f64,reference:f64,p:f64,shift:f64)->f64{
+    translate_frequency_affine(f,reference,p,shift,1.0)
 }
 #[no_mangle]
 pub extern "C" fn warp_translate_frequency(f:f64,reference:f64,p:f64,shift:f64)->f64{
     translate_frequency(f,reference,p,shift)
+}
+#[no_mangle]
+pub extern "C" fn warp_translate_frequency_affine(
+    f:f64,pivot:f64,p:f64,shift:f64,slope:f64)->f64{
+    translate_frequency_affine(f,pivot,p,shift,slope)
 }
 
 /// Research mapping is *only* defined for positive frequencies in [L,H].
@@ -471,6 +485,20 @@ mod tests {
         assert!((low_side-325.0).abs()<1e-9);
         assert!(fold_frequency(Settings{mode:Progression::Blend,..s}).is_none());
         assert!((warp_fold_frequency(100.0,1000.0,1.0,0.25,0)-775.0).abs()<1e-9);
+    }
+    #[test]
+    fn affine_axis_is_pivot_anchored_and_preserves_pitch_hz_extremes(){
+        let pivot=500.0;
+        for p in [0.0,0.25,0.5,1.0] {
+            assert!((translate_frequency_affine(pivot,pivot,p,0.0,3.0)-pivot).abs()<1e-8);
+            assert!((translate_frequency_affine(pivot,pivot,p,0.3,3.0)
+                    -translate_frequency_affine(pivot,pivot,p,0.3,1.0)).abs()<1e-8);
+        }
+        assert!((warp_translate_frequency_affine(250.0,500.0,0.0,0.0,2.0)-125.0).abs()<1e-7);
+        assert!((warp_translate_frequency_affine(750.0,500.0,1.0,0.0,2.0)-1000.0).abs()<1e-7);
+        assert!((warp_translate_frequency_affine(500.0,500.0,0.0,(2.0f64).ln(),1.0)-1000.0).abs()<1e-7);
+        assert!((warp_translate_frequency_affine(500.0,500.0,1.0,0.2,1.0)-600.0).abs()<1e-7);
+        assert!(warp_translate_frequency_affine(500.0,0.0,0.0,0.0,1.0).is_nan());
     }
     #[test]
     fn unified_axis_translation_pitch_at_log_and_hz_at_linear(){

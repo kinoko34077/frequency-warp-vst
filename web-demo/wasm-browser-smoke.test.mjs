@@ -53,6 +53,27 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.equal(await page.$eval("#invert",el=>el.value),"0","neutral mapping is the only default that allows ordinary pitch shift");
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
+    for(const id of ["curvature","invert","wet"]){
+      assert.ok(await page.$eval("#"+id,el=>Number(el.step))<=0.005,"percentage slider coarse: "+id);
+    }
+    assert.equal(await page.$eval("#axis-shift-number",el=>Number(el.step)),0.05);
+    await page.$eval("#axis-pivot",el=>{
+      el.value="500";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#axis-slope",el=>{
+      el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.match(await page.$eval("#listening-guide",el=>el.textContent),/傾き 2\.00/);
+    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形側の移動量/);
+    await page.click("#slope-one");
+    assert.equal(await page.$eval("#axis-slope",el=>Number(el.value)),1);
+    await page.$eval("#axis-shift-number",el=>{
+      el.value=".35";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),.35);
+    await page.click("#axis-zero");
+    assert.equal(await page.$eval("#axis-shift-number",el=>Number(el.value)),0);
+
     await page.$eval("#curvature",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.$eval("#axis-shift",el=>{el.value=".7";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/対数移動: ×2/);

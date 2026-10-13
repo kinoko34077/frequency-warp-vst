@@ -1,5 +1,6 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
+import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
 const $=id=>document.querySelector(id);
@@ -58,6 +59,9 @@ function settings(){
     carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode,
     axisShift:Number($("#axis-shift").value),
     axisReference:harmonicParameters().r*harmonicParameters().F,
+    axisPivot:hzFromScale($("#axis-pivot").value),
+    axisSlope:Number($("#axis-slope").value),
+    sampleRate:state.ctx?.sampleRate||state.decoded?.sampleRate||48000,
     ringEnabled:$("#ring-enabled").checked,
     rationalEnabled:$("#rational-enabled").checked,
     crusherBits:$("#crusher-enabled").checked?Number($("#crusher-bits").value):0,
@@ -66,12 +70,16 @@ function settings(){
 }
 function labels(id=""){
   bounds(id);
-  $("#curvature-value").textContent=Number($("#curvature").value).toFixed(2);
+  $("#curvature-value").textContent=Number($("#curvature").value).toFixed(3);
+  const pivot=hzFromScale($("#axis-pivot").value);
+  $("#axis-pivot-value").textContent=hzText(pivot);
+  $("#axis-slope-value").textContent=Number($("#axis-slope").value).toFixed(2)+"×";
   $("#invert-value").textContent=Math.round(100*Number($("#invert").value))+"%";
   $("#wet-value").textContent=Math.round(100*Number($("#wet").value))+"%";
   const u=Number($("#axis-shift").value),p=Number($("#curvature").value);
-  const ref=harmonicParameters().r*harmonicParameters().F;
+  const ref=hzFromScale($("#axis-pivot").value);
   $("#axis-shift-value").textContent=(u>=0?"+":"")+u.toFixed(3);
+  $("#axis-shift-number").value=u.toFixed(2);
   $("#axis-mode-hint").textContent=Number($("#invert").value)>0?
     "反転がONです。通常のピッチシフトは反転量0%で確認できます。":
     p===0?"通常ピッチ移動：すべての成分を同じ倍率で移動":
@@ -80,7 +88,7 @@ function labels(id=""){
   $("#axis-explainer").textContent=p===0?
     "対数移動: ×"+Math.exp(u).toFixed(3)+" / "+(1200*u/Math.log(2)).toFixed(1)+" cent":
     p===1?"線形移動: "+(u*ref>=0?"+":"")+(u*ref).toFixed(2)+" Hz":
-    "中間軸 p="+p.toFixed(2)+" · 位置によりHz差が変化";
+    "中間軸 p="+p.toFixed(3)+" · 起点を中心に非線形移動";
 
 }
 function foldPoint(){
@@ -94,8 +102,49 @@ function axisMarker(f){
   const core=state.mathCore;
   if(!core||!(f>0))return NaN;
   const p=settings();
-  return core.warp_translate_frequency(f,p.axisReference,p.curvature,p.axisShift);
+  return core.warp_translate_frequency_affine(f,p.axisPivot,p.curvature,p.axisShift,p.axisSlope);
 }
+function mathCallbacks(){
+  return {
+    warp:(f,l,h,curvature,invert,mode)=>
+      state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
+        mode==="blend"?1:mode==="fold-l"?2:0),
+    translate:(f,pivot,curvature,shift,slope)=>
+      state.mathCore.warp_translate_frequency_affine(f,pivot,curvature,shift,slope)
+  };
+}
+function updateListeningGuide(){
+  if(!state.mathCore)return;
+  const p=settings(),{warp,translate}=mathCallbacks();
+  const pivot=p.axisPivot;
+  const pivotMap=mapAtFrequency(pivot,p,warp,translate);
+  const pivotWarped=pivot>=p.low&&pivot<=p.high?
+    warp(pivot,p.low,p.high,p.curvature,p.invert,p.mode):pivot;
+  const shifted=pivotMap.outputs[0]??NaN;
+  const effect=p.curvature===0?"倍率移動":p.curvature===1?"Hz移動":"中間軸の変形";
+  const ratio=shifted/pivot;
+  const semitones=12*Math.log2(Math.max(1e-9,ratio));
+  const about=(v)=>Number.isFinite(v)?Math.round(v*10)/10:"—";
+  const examples=[250,500,1000].map(f=>{
+    const m=mapAtFrequency(f,p,warp,translate);
+    return m.outputs.length
+      ?f+" → "+m.outputs.slice(0,2).map(v=>about(v)).join(" / ")+" Hz"
+      :f+" Hz → "+m.reason;
+  });
+  $("#listening-guide").textContent=
+    effect+" · 起点 "+about(pivot)+" Hz → "+(Number.isFinite(shifted)?about(shifted)+" Hz":pivotMap.reason)+
+    "（"+(Number.isFinite(ratio)?(ratio>=1?"×":"÷")+about(ratio>=1?ratio:1/ratio):"範囲外")+
+    "、"+(Number.isFinite(semitones)?(semitones>=0?"+":"")+semitones.toFixed(1)+"半音":"不算出")+"）"+
+    " / 傾き "+p.axisSlope.toFixed(2)+"、反転 "+Math.round(p.invert*100)+"%"+
+    "\n"+examples.join("　|　");
+  $("#coordinate-details").textContent=
+    "対数側の移動定数 e^u="+Math.exp(p.axisShift).toFixed(4)+
+    " ／ 線形側の移動量 Δ="+(p.axisShift*p.axisPivot).toFixed(2)+"Hz"+
+    " ／ 座標指数 p="+p.curvature.toFixed(3)+
+    " ／ 起点 "+about(pivot)+"Hz、傾き "+p.axisSlope.toFixed(2)+
+    " ／ 反転 g(起点)="+about(pivotWarped)+"Hz（線形差 "+about(pivotWarped-pivot)+"Hz）";
+}
+
 function drawCurve(){
   const canvas=$("#curve");
   if(!state.mathCore){
@@ -104,12 +153,9 @@ function drawCurve(){
   }
   const p=settings();
   const shown={...p,carrierHz:resolvedCarrierHz(foldPoint)};
-  const map=(f,l,h,curvature,invert,mode)=>
-    state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
-      mode==="blend"?1:mode==="fold-l"?2:0);
-  const translate=(f,reference,axis,amount)=>
-    state.mathCore.warp_translate_frequency(f,reference,axis,amount);
-  drawFrequencyGraph(canvas,shown,map,translate);
+  const {warp,translate}=mathCallbacks();
+  drawFrequencyGraph(canvas,shown,warp,translate);
+  updateListeningGuide();
 }
 async function ensureSharedCore(){
   if(!state.wasmPromise){
@@ -121,7 +167,7 @@ async function ensureSharedCore(){
       const core=instance.exports;
       if(typeof core.warp_fold_frequency!=="function"||
         typeof core.warp_map_frequency!=="function"||
-        typeof core.warp_translate_frequency!=="function")throw Error("共通数式APIがありません");
+        typeof core.warp_translate_frequency_affine!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
       return bytes;
@@ -246,6 +292,11 @@ function playerMessage(node,p){
     }
     if(data.type==="stats"){
       state.lastStats=data;
+      const wet=Number(data.outputRms)||0,dry=Number(data.inputRms)||0;
+      $("#signal-diagnostic").textContent=dry>.002&&wet<dry*.01?
+        "注意：入力音あり／変換音がほぼ無音（入力RMS "+dry.toFixed(3)+"、変換RMS "+wet.toFixed(4)+"）。帯域、0Hz・Nyquist、方式・ピーク抽出を確認":
+        "実音量 入力 "+dry.toFixed(3)+" / 変換 "+wet.toFixed(3)+" RMS";
+      $("#signal-diagnostic").dataset.silent=dry>.002&&wet<dry*.01?"yes":"no";
       const latency=1000*data.latencyFrames/state.ctx.sampleRate;
       indicator("リアルタイム動作中 · DSP遅延 "+latency.toFixed(1)+" ms · 約 "+
         data.averageBlockMs.toFixed(2)+" ms/block / 予算超過 "+data.overBudgetBlocks);
@@ -370,10 +421,26 @@ function updateParams(changed){
   });
   indicator("リアルタイム動作中 · パラメータ更新中…");
 }
-for(const name of ["low","high","curvature","invert","axis-shift","mode","outside","quality","overlap","engine","ring-enabled","rational-enabled"]){
+for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","mode","outside","quality","overlap","engine","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#wet").addEventListener("input",()=>{labels();tuneWet();});
+$("#slope-one").addEventListener("click",()=>{
+  $("#axis-slope").value="1";
+  updateParams("axis-slope");updateEngineInfo();
+});
+$("#axis-shift-number").addEventListener("input",()=>{
+  const value=Number($("#axis-shift-number").value);
+  if(!Number.isFinite(value)||$("#axis-shift-number").value==="")return;
+  $("#axis-shift").value=String(clamp(value,-2,2));
+  updateParams("axis-shift");updateEngineInfo();
+});
+$("#axis-shift-number").addEventListener("change",()=>{
+  const value=Number($("#axis-shift-number").value);
+  const snap=Number.isFinite(value)?Math.round(clamp(value,-2,2)*20)/20:0;
+  $("#axis-shift").value=String(snap);
+  updateParams("axis-shift");updateEngineInfo();
+});
 $("#axis-zero").addEventListener("click",()=>{
   $("#axis-shift").value="0";
   updateParams("axis-shift");
@@ -505,7 +572,7 @@ dialog.addEventListener("click",event=>{
 });
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
+    low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
     engine:"0",mode:"fold-h",outside:"pass",quality:"eco",
     overlap:"4","zero-mode":"0"
   };
