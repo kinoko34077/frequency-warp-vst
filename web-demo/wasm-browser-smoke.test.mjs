@@ -182,7 +182,18 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
     const longWave=await (await page.$("#wave")).boundingBox();
     await page.mouse.click(longWave.x+longWave.width*.9,longWave.y+longWave.height/2);
-    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000});
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000})
+      .catch(async err=>{
+        const state=await page.evaluate(()=>({
+          status:document.querySelector("#status").textContent,
+          indicator:document.querySelector("#rt-indicator").textContent,
+          current:document.querySelector("#elapsed").textContent,
+          selected:document.querySelector("#engine").value,
+          crash:document.querySelector("#play-wet").disabled,
+          errors:[]
+        }));
+        throw Error("600-second start: "+JSON.stringify(state)+" | "+err.message);
+      });
     const minute=await page.$eval("#elapsed",el=>Number(el.textContent.split(":")[0]));
     assert.equal(minute,9,"600s seek failed");
     await page.click("#stop");
