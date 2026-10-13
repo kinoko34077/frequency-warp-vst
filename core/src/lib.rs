@@ -124,6 +124,25 @@ pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
     Ok(result)
 }
 
+/// Apply the existing L/H inversion while preserving the chosen physical
+/// pivot. When the pivot is inside the processed band it is fixed under
+/// inversion and slope for zero translation. Outside-range source handling
+/// continues to be determined separately by Pass/Kill.
+pub fn map_frequency_anchored(f:f64,s:Settings,pivot:f64)->Result<f64,&'static str>{
+    let mapped=map_frequency(f,s)?;
+    if pivot>=s.low&&pivot<=s.high {
+        Ok(mapped+pivot-map_frequency(pivot,s)?)
+    }else{Ok(mapped)}
+}
+#[no_mangle]
+pub extern "C" fn warp_map_frequency_anchored(
+    f:f64,low:f64,high:f64,p:f64,invert:f64,mode:u32,pivot:f64)->f64{
+    let s=Settings{low,high,curvature:p,invert,
+        mode:match mode{1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},
+        quality:0};
+    map_frequency_anchored(f,s,pivot).unwrap_or(f64::NAN)
+}
+
 /// Input-domain break location where the finite-range Fold changes direction.
 /// FoldHigh: S_p^-1((1-a)*D); FoldLow: S_p^-1(a*D).
 /// Blend has no fold point (None), and the two endpoints are valid at a=0 or a=1.
@@ -525,6 +544,16 @@ mod tests {
         let mid=translate_frequency(f,reference,0.5,shift);
         assert!(mid>f+100.0 && mid<f*shift.exp());
         assert!((warp_translate_frequency(f,reference,1.0,-2.5)+100.0).abs()<1e-8);
+    }
+    #[test]
+    fn inversion_pivot_is_stable_under_invert_amount(){
+        for mode in [Progression::Blend,Progression::FoldLow,Progression::FoldHigh]{
+            for invert in [0.0,0.2,0.75,1.0]{
+                let settings=Settings{low:100.0,high:3000.0,curvature:0.5,
+                    invert,mode,quality:0};
+                assert!((map_frequency_anchored(600.0,settings,600.0).unwrap()-600.0).abs()<1e-8);
+            }
+        }
     }
     #[test]
     fn c_abi_works() {
