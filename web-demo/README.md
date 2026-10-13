@@ -54,3 +54,28 @@ Node/WASMおよびChrome統合試験はコンパイル済み
 
 設計正本: [#10](https://github.com/kinoko34077/frequency-warp-vst/issues/10) /
 [共通DSP設計](../docs/SHARED_DSP_ARCHITECTURE.md)。
+
+## Effect-style controls (2026-10-13)
+
+- **L/H**: logarithmic range knobs; min 20Hz, max 20kHz or sample-rate-safe
+  cap, L < H. These actually control the Rust DSP range, not just the graph.
+- **Invert Mode**: simple blend / L-side fold / H-side fold. The two signed
+  folds are mathematically distinct midway yet both reach the same complete
+  reflection at Invert=100%.
+- **Outside band**: Pass preserves FFT-bin components outside [L,H],
+  Kill discards those components. This does **not** implement the separate
+  0Hz-below Reflect/Kill/Fade output policy.
+- **Automatic updates** enabled by default: setting changes initiate a new
+  Rust/WASM offline rendering after brief debounce. While listening to the
+  processed sound, the existing audio continues uninterrupted, and after
+  the updated buffer is ready the player crossfades at approximately the
+  same playhead (85ms crossfade). This is a **deferred, effect-like preview**,
+  not instant true streaming low-latency DSP. At high Quality or for long
+  files an audible delay between knob change and result is expected.
+- **Wet** applies immediately using AudioContext gain automation, without
+  recomputing the spectrum. Exported WAV uses the current Wet value.
+- Preview playback loops until the Stop control is pressed to facilitate
+  live knob experimentation.
+
+Audio quality limitations of the unselected R2.1 method remain unchanged.
+For acceptance and actual test evidence see Issue #12.
