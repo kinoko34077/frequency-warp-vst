@@ -42,8 +42,6 @@ function bounds(changed=""){
   state.effective={low,high};
   $("#low-value").textContent=hzText(low);
   $("#high-value").textContent=hzText(high);
-  $("#graph-low").textContent="L: "+hzText(low);
-  $("#graph-high").textContent="H: "+hzText(high);
   return state.effective;
 }
 function settings(){
