@@ -181,3 +181,43 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .axis-numeric-label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:5px;font-size:10px;color:#99c2bc}
 .axis-numeric-label input{width:74px;max-width:50%;background:#0a2227;border:1px solid #48716c;color:#b8f0dc;border-radius:7px;padding:5px;text-align:right;font:12px ui-monospace,monospace}
 @media(max-width:450px){.axis-numeric-label{flex-wrap:wrap}.axis-numeric-label input{width:100%;max-width:100%}}
+
+/* User-first presentation: inline numbers belong directly beside controls */
+.inline-value,.math-field>input[type=number]{
+ box-sizing:border-box;min-width:0;width:73px;max-width:52%;padding:4px 5px;
+ background:#102b2e;border:1px solid #35635d;border-radius:6px;
+ color:#b3eed4;text-align:right;font:inherit;font-size:11px;font-variant-numeric:tabular-nums;
+ appearance:textfield;-moz-appearance:textfield
+}
+.inline-value:focus,.math-field>input[type=number]:focus{outline:2px solid #71d2b0;outline-offset:1px}
+.inline-value::-webkit-inner-spin-button,.math-field>input[type=number]::-webkit-inner-spin-button{appearance:none}
+.math-field{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px}
+.math-field>.math-input{grid-column:1/-1;display:block}
+.math-field>.math-input input[type=range]{width:100%}
+.graph-title{display:flex;gap:7px;align-items:center;justify-content:space-between}
+#curve{cursor:pointer;touch-action:manipulation}
+#curve:focus-visible{outline:2px solid #7eeacb;outline-offset:1px}
+.listening-guide{font:11px/1.5 ui-monospace,monospace;background:transparent;border:none;padding:4px 0;margin:4px 0;color:#a2e3c4}
+.signal-diagnostic{font-size:10px;margin:3px 0}
+.graph-note{opacity:.7;line-height:1.25}
+.advanced-stats{font-size:10px;color:#a9bfc0;padding:5px 0}
+.advanced-stats summary{cursor:pointer}
+.sine-meta{gap:6px}
+.sine-meta .inline-value{width:85px}
+#mini-fundamental{font-size:10px;white-space:normal;overflow-wrap:normal}
+@media(max-width:800px){
+  .inline-value,.math-field>input[type=number]{width:68px;max-width:100%;font-size:11px}
+  .quick-panel .control-heading{gap:5px}
+  .quick-panel .control-heading .axis-value-tools{min-width:0}
+  .quick-panel .control-heading .axis-value-tools .inline-value{width:52px}
+  .math-field{grid-template-columns:minmax(0,1fr) auto}
+  .math-field>.math-input{grid-template-columns:1fr}
+}
+@media(max-width:450px){
+  .inline-value{width:58px!important;max-width:100%;font-size:10px;padding:3px}
+  .graph-title{flex-wrap:wrap}
+  .graph-title span{font-size:9px}
+  .workspace-right .listening-guide{font-size:9px;overflow-wrap:anywhere}
+  .sine-meta .inline-value{width:80px!important}
+  .mini-heading{overflow-wrap:anywhere}
+}

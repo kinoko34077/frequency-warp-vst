@@ -315,7 +315,7 @@ function startSource(p,offset){
 function seek(seconds){
   const p=state.player;
   const where=clamp(seconds,0,Math.max(0,duration()-.001));
-  state.seek=where;
+  state.seek=where;updateSystemPlayback(Boolean(p));
   if(!p)return;
   // Short host mute covers state reset and rebuffering at the new position.
   const now=state.ctx.currentTime;
@@ -325,14 +325,65 @@ function seek(seconds){
   p.master.gain.setTargetAtTime(1,now+.040,.02);
   message("波形位置 "+fmtTime(where)+" から再生します。","info");
 }
+function updateSystemPlayback(playing){
+  if(!("mediaSession" in navigator))return;
+  const ms=navigator.mediaSession;
+  try{
+    if("MediaMetadata" in window){
+      ms.metadata=new MediaMetadata({title:state.name||"Frequency Warp",artist:"Frequency Warp"});
+    }
+    ms.playbackState=playing?"playing":"paused";
+    if(typeof ms.setPositionState==="function" && duration()>0){
+      ms.setPositionState({duration:duration(),position:clamp(state.seek,0,duration())});
+    }
+  }catch{}
+}
+function attachSystemControls(){
+  const ms=navigator.mediaSession;
+  if(!ms?.setActionHandler)return;
+  for(const [name,fn]of [
+    ["play",()=>play(state.player?.mode||"wet",state.seek)],
+    ["pause",()=>stop()],
+    ["stop",()=>stop()],
+    ["seekto",event=>seek(event.seekTime??0)],
+    ["seekbackward",event=>seek(Math.max(0,playPosition()-(event.seekOffset||10)))],
+    ["seekforward",event=>seek(Math.min(duration(),playPosition()+(event.seekOffset||10)))]
+  ]){
+    try{ms.setActionHandler(name,fn);}catch{}
+  }
+}
+attachSystemControls();
+// An HTMLMediaElement can keep a media session associated with an audio
+// stream on mobile; a native Safari process may still suspend WebAudio when
+// backgrounded. The direct WebAudio route remains the guaranteed fallback.
+async function connectBackgroundMedia(player){
+  const media=$("#background-output");
+  if(!state.ctx?.createMediaStreamDestination || !media)return;
+  let dest;
+  try{
+    dest=state.ctx.createMediaStreamDestination();
+    player.master.connect(dest);
+    media.srcObject=dest.stream;
+    await media.play();
+    if(state.player!==player){media.pause();return;}
+    player.master.disconnect(state.ctx.destination);
+    player.mediaDest=dest;
+  }catch(error){
+    try{player.master.disconnect(dest);}catch{}
+    try{media.pause();media.srcObject=null;}catch{}
+    // Ordinary WebAudio stays connected to the device if media playback fails.
+  }
+}
 async function stop(){
   const p=state.player;
-  if(!p){controls.stop.disabled=true;return;}
+  if(!p){controls.stop.disabled=true;updateSystemPlayback(false);return;}
   state.seek=playPosition();
   state.player=null;
   try{p.source?.stop();}catch{}
   try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();p.dry.disconnect();p.master.disconnect();}catch{}
   try{p.worklet.port.postMessage({type:"dispose"});}catch{}
+  try{const media=$("#background-output");media.pause();media.srcObject=null;}catch{}
+  updateSystemPlayback(false);
   p.worklet.port.onmessage=null;
   controls.stop.disabled=true;
   indicator("停止中 · Rust / WASM AudioWorklet");
@@ -343,7 +394,7 @@ async function play(mode="wet",offset=null){
   if(state.player){
     if(offset!==null)seek(offset);
     state.player.mode=mode;
-    tuneWet();
+    tuneWet();updateSystemPlayback(true);
     message(mode==="wet"?"リアルタイム音声処理中。パラメータは即時適用されます。":"原音を連続再生中。");
     return;
   }
@@ -380,6 +431,9 @@ async function play(mode="wet",offset=null){
     // Start the input before waiting for the processor's ready message.
     const start=offset===null?state.seek:offset;
     startSource(player,start);
+    updateSystemPlayback(true);
+    // Start media route without blocking DSP worklet readiness or fallback.
+    void connectBackgroundMedia(player);
     worklet.port.postMessage({type:"init",bytes:module,channels:state.dry.length,settings:current});
     const result=await ready;
     if(state.player!==player)return;
@@ -479,6 +533,7 @@ async function load(file){
     // requested segment to reduce iPhone peak resident memory.
     state.decoded={sampleRate:data.sampleRate};
     state.name=file.name.replace(/\.[^.]+$/,"");
+    updateSystemPlayback(false);
     $("#file-meta").textContent=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
     labels("high");drawCurve();drawAudio();refreshStatusSeek();
     controls.dry.disabled=false;controls.wet.disabled=false;controls.render.disabled=false;
@@ -614,8 +669,8 @@ function updateSineLabel(){
   const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
   const cents=Math.round((value-nearest)*100);
   $("#sine-note").textContent=note;
-  $("#sine-cent").textContent=(cents>=0?"+":"")+cents+" cent";
-  $("#sine-hz").textContent=sineFrequency().toFixed(2)+" Hz";
+  $("#sine-cent").value=String(cents);
+  $("#sine-hz").value=sineFrequency().toFixed(2);
   if(state.sine&&state.ctx)state.sine.osc.frequency.setTargetAtTime(sineFrequency(),state.ctx.currentTime,.012);
 }
 function stopSine(){
@@ -624,6 +679,17 @@ function stopSine(){
   try{sine.osc.stop();sine.osc.disconnect();sine.gain.disconnect();}catch{}
 }
 $("#sine-pitch").addEventListener("input",updateSineLabel);
+$("#sine-hz").addEventListener("change",()=>{
+  const hz=clamp(Number($("#sine-hz").value)||440,65,2100);
+  $("#sine-pitch").value=String(clamp(69+12*Math.log2(hz/440),36,96));
+  updateSineLabel();
+});
+$("#sine-cent").addEventListener("change",()=>{
+  const cents=clamp(Number($("#sine-cent").value)||0,-50,50);
+  const root=Math.round(Number($("#sine-pitch").value));
+  $("#sine-pitch").value=String(clamp(root+cents/100,36,96));
+  updateSineLabel();
+});
 $("#sine-enabled").addEventListener("change",async()=>{
   if(!$("#sine-enabled").checked){stopSine();return;}
   try{

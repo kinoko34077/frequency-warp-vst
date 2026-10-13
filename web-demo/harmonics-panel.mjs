@@ -77,11 +77,11 @@ export function renderHarmonicPanel(foldPoint,axisMarker){
     frag.appendChild(tr);
   }
   $("#harmonics-body").replaceChildren(frag);
-  $("#mini-fundamental").textContent="H "+fmt(z.H)+" → "+moving+" / Δ "+fmt(z.delta)+" Hz";
+  $("#mini-fundamental").textContent=fmt(z.H)+" → "+moving;
   $("#mini-harmonics").replaceChildren(...z.rows.slice(0,3).map(row=>{
     const div=document.createElement("div");
     const shifted=axisMarker?.(row.translated);
-    div.textContent="第"+row.k+"倍音 "+fmt(row.input)+" → "+fmt(Number.isFinite(shifted)?shifted:row.translated)+" Hz";
+    div.textContent=row.k+"： "+fmt(row.input)+" → "+fmt(Number.isFinite(shifted)?shifted:row.translated)+" Hz";
     return div;
   }));
   $("#harmonic-table-title").textContent="第1〜"+count+"倍音の数値表を見る";
