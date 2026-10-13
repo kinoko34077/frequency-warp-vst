@@ -160,3 +160,32 @@ UNVERIFIED pending physical testing.
 - A shared Rust post-effect Bit Crusher quantizes sample amplitudes (2–16 bits) and reduces sample update rate by sample hold (1–32 samples), independently toggled and adjustable during playback. WAV export uses the same settings and Rust Stream.
 - Browser full-file WAV export still has a **40,000,000-sample safety cap**; long stereo clips may be auditioned but cannot necessarily be exported without memory risk. The UI explains this instead of failing silently.
 - **Five DSP algorithm families are not all implemented:** analytic complex-modulated direct linear inversion and whole-file Fourier reposition remain offline research references; STFT tracked peaks and sinusoidal resynthesis exist experimentally; residual reconstruction and high-resolution chirplet/nonuniform analyses remain unimplemented. See docs/SHARED_DSP_ARCHITECTURE.md and #17/#5 for exact authority.
+
+
+## Unified frequency-axis shift and reference tone (Issue #25)
+
+- **DSP synthesis method** in Settings contains the actual experimental
+  reconstruction implementations (partial oscillator, FFT-bin frame
+  relocation). Ring Mod, Bit Crusher, signed axis shift, and optional #24
+  rational partial-grid model are **effects/transform settings**, not
+  competing sound reconstruction technologies.
+- The main "周波数軸の上下移動" slider spans u=−2…+2. The existing
+  Curvature p controls whether that signed displacement occurs in
+  logarithmic frequency coordinates (p=0, multiply every target frequency
+  by exp(u)) or linear coordinates (p=1, add u*F' Hz), with continuously
+  interpolating p values. F' = manual F × user pitch ratio. At p=0 this
+  is the usual single-ratio Pitch Shift in the *ideal frequency mapping
+  model*; at p=1 it is the usual constant-Hz Frequency Shift. Acoustic
+  quality still depends on the chosen experimental resynthesis algorithm.
+- The virtual H=r_pitch*F/m is shown along with its translated marker
+  H_moved=T_p(H). For constant-Hz shifts, H_moved is a position marker,
+  NOT a guaranteed acoustic/mathematical fundamental of the output.
+  Nonlinear spectral Warp likewise generally invalidates fixed
+  integer-harmonic source assumptions.
+- The optional WebAudio **reference sine** plays at gentle volume even
+  without an uploaded source; its slider displays an equal-temperament
+  note name, octave, signed cents and Hz. Sine output is local to Web
+  audition and does not modify exported audio. Turn it off to stop it.
+- All actual audio frequency-coordinate transforms and negative
+  frequency rules execute in shared native/WASM Rust; graph uses the
+  exported Rust operator for its frequency movement.
