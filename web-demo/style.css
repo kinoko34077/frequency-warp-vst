@@ -158,3 +158,22 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .workspace-right .math-input{grid-template-columns:minmax(0,1fr)}
   .workspace-right .math-input input[type=number]{width:100%}
 }
+
+/* Listening-oriented effects status: small enough for the right panel on mobile. */
+.listening-guide{font:11px/1.6 ui-monospace,monospace;color:#a8e7d0;white-space:pre-wrap;overflow-wrap:anywhere;background:#0c2529;border:1px solid #2d5e5b;border-radius:9px;padding:9px;margin-top:10px}
+.signal-diagnostic{font-size:10px;line-height:1.55;color:#9ec4c6;margin-top:7px;overflow-wrap:anywhere}
+.signal-diagnostic[data-silent=yes]{color:#f6c48b;font-weight:650}
+.control .axis-value-tools{max-width:100%}
+#coordinate-details{white-space:pre-wrap;color:#9ac5c0}
+@media(max-width:800px){
+  .listening-guide{font-size:10px;padding:7px}
+  .signal-diagnostic{font-size:9px}
+}
+@media(max-width:450px){
+  .quick-panel .control-heading{gap:3px}
+  .quick-panel .control-heading label{font-size:10px}
+  .quick-panel .control-heading .axis-value-tools{gap:3px}
+  .quick-panel .control-heading .zero-button{font-size:9px;padding:3px 4px}
+  .listening-guide{font-size:9px}
+  .axis-mode-hint{font-size:9px}
+}
