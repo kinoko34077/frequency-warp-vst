@@ -1,5 +1,13 @@
 # Frequency Warp — Browser Audio Preview
 
+## Fastest way to listen (no server required)
+
+Download [standalone.html](./standalone.html) using GitHub's **Download raw file**
+control, save it on your computer and double-click it in Chrome/Edge.
+It includes all scripts, styles, DSP and Web Worker in one HTML file.
+Audio stays local. If file:// workers are restricted by your browser policy,
+use the local-server method below instead.
+
 A self-contained **research-only** front end for listening to nonlinear
 frequency warping with uploaded local audio. No backend, tracking or audio
 upload. Runs with native Web Audio, a module Web Worker and JavaScript.
