@@ -1,4 +1,6 @@
-import {QUALITY,mapFrequency,mixWet} from "./dsp.mjs";
+import {QUALITY,mixWet} from "./dsp.mjs";
+import {drawFrequencyGraph} from "./graph.mjs";
+import {harmonicParameters,attachHarmonicPanel} from "./harmonics-panel.mjs";
 
 const $=id=>document.querySelector(id);
 const controls={
@@ -50,7 +52,11 @@ function settings(){
   return {
     low,high,curvature:Number($("#curvature").value),
     invert:Number($("#invert").value),
-    mode:$("#mode").value,outside:$("#outside").value,qualityIndex
+    mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
+    engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
+    pitchRatio:harmonicParameters().r,
+    shiftHz:harmonicParameters().n*harmonicParameters().F/harmonicParameters().m,
+    carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode
   };
 }
 function labels(id=""){
@@ -59,24 +65,25 @@ function labels(id=""){
   $("#invert-value").textContent=Math.round(100*Number($("#invert").value))+"%";
   $("#wet-value").textContent=Math.round(100*Number($("#wet").value))+"%";
 }
-function drawCurve(){
-  const canvas=$("#curve"),ratio=Math.min(devicePixelRatio||1,2);
-  canvas.width=Math.max(240,Math.round(canvas.getBoundingClientRect().width*ratio));
-  canvas.height=180*ratio;
-  const ctx=canvas.getContext("2d"),w=canvas.width,h=canvas.height;
-  ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle="#637e86";ctx.setLineDash([5*ratio,5*ratio]);
-  ctx.beginPath();ctx.moveTo(0,h);ctx.lineTo(w,0);ctx.stroke();ctx.setLineDash([]);
-  ctx.strokeStyle="#4ed2b2";ctx.lineWidth=2.5*ratio;ctx.beginPath();
-  const {low,high}=state.effective;
-  const p=Number($("#curvature").value),a=Number($("#invert").value),mode=$("#mode").value;
-  for(let i=0;i<=256;i++){
-    const f=low+(high-low)*i/256,v=mapFrequency(f,low,high,p,a,mode);
-    const x=i*w/256,y=(1-(v-low)/(high-low))*h;
-    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-  }
-  ctx.stroke();
+function drawCurve(){drawFrequencyGraph($("#curve"),settings());}
+function updateEngineInfo(){
+  const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
+  const latency=s.engine===2?0:1000*(q.fftSize-1)/rate;
+  const names=["部分音追跡＋発振","FFTビン再配置","リング変調","Pitch → Hz Shift"];
+  const explain=[
+    "部分音追跡したピークを発振器で再合成。倍音/残響が欠ける場合があります。",
+    "FFTビンを直接再配置。時間方向の位相連続性が弱く、量子化ノイズや変調感が出ます。",
+    "入力に搬送波を乗算。上下の側波帯が生じ、FFT窓による遅延はありません。",
+    "入力の部分音を r倍してから Δ=(n/m)F Hz シフト。Fは手動値です。"
+  ];
+  $("#engine-description").textContent=explain[s.engine];
+  $("#engine-stats").textContent=
+    "方式: "+names[s.engine]+" ｜FFT窓 "+q.fftSize+
+    " ｜内部hop "+Math.round(q.fftSize/s.hopDiv)+
+    " ｜理論DSP遅延 "+latency.toFixed(1)+"ms（"+Math.round(rate)+"Hz）"+
+    " ｜AudioWorklet量子 128 samples（固定）";
 }
+
 function drawAudio(){
   const signal=state.dry?.[0];
   const canvas=$("#wave"),ratio=Math.min(devicePixelRatio||1,2);
@@ -179,7 +186,7 @@ function playerMessage(node,p){
       state.lastStats=data;
       const latency=1000*data.latencyFrames/state.ctx.sampleRate;
       indicator("リアルタイム動作中 · DSP遅延 "+latency.toFixed(1)+" ms · 約 "+
-        data.averageBlockMs.toFixed(2)+" ms/block");
+        data.averageBlockMs.toFixed(2)+" ms/block / 予算超過 "+data.overBudgetBlocks);
     }
   };
 }
@@ -242,7 +249,7 @@ async function play(mode="wet",offset=null){
     master.gain.value=1;
     const player={
       worklet,dry,wet,master,buffer:makeBuffer(),source:null,
-      mode,quality:current.qualityIndex,at:ctx.currentTime,
+      mode,quality:current.qualityIndex,engine:current.engine,hopDiv:current.hopDiv,at:ctx.currentTime,
       offset:0,appliedRevision:0
     };
     state.player=player;
@@ -282,7 +289,7 @@ function updateParams(changed){
   const p=state.player;
   if(!p)return;
   const current=settings();
-  if(current.qualityIndex!==p.quality){
+  if(current.qualityIndex!==p.quality||current.hopDiv!==p.hopDiv||current.engine!==p.engine){
     const offset=playPosition(),mode=p.mode;
     stop().then(()=>play(mode,offset));
     return;
@@ -293,8 +300,8 @@ function updateParams(changed){
   });
   indicator("リアルタイム動作中 · パラメータ更新中…");
 }
-for(const name of ["low","high","curvature","invert","mode","outside","quality"]){
-  $("#"+name).addEventListener("input",()=>updateParams(name));
+for(const name of ["low","high","curvature","invert","mode","outside","quality","overlap","engine"]){
+  $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#wet").addEventListener("input",()=>{labels();tuneWet();});
 controls.dry.addEventListener("click",()=>play("dry"));
@@ -391,4 +398,5 @@ controls.download.addEventListener("click",()=>{
   document.body.append(el);el.click();el.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
-labels();drawCurve();refreshPlayhead();
+attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();});
+labels();drawCurve();updateEngineInfo();refreshPlayhead();
