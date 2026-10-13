@@ -14,8 +14,8 @@ test("UI preview follows the shared curvature formula",()=>{
 test("L/H folding avoids linear-blend midpoint collapse",()=>{
   assert.ok(Math.abs(mapFrequency(500,20,20000,1,.5,"blend")
     -mapFrequency(1500,20,20000,1,.5,"blend"))<1e-8);
-  assert.ok(Math.abs(mapFrequency(500,20,20000,1,.5,"fold")
-    -mapFrequency(1500,20,20000,1,.5,"fold"))>100);
+  assert.ok(Math.abs(mapFrequency(500,20,20000,1,.5,"fold-h")
+    -mapFrequency(1500,20,20000,1,.5,"fold-h"))>100);
 });
 test("independent Wet is samplewise mixture",()=>{
   const dry=Float32Array.from([.8,-.5,.2]);
@@ -26,4 +26,17 @@ test("independent Wet is samplewise mixture",()=>{
 test("Quality UI profiles are distinct",()=>{
   assert.ok(QUALITY.eco.fftSize<QUALITY.standard.fftSize);
   assert.ok(QUALITY.standard.fftSize<QUALITY.high.fftSize);
+});
+
+test("H/L fold directions are different at partial invert, equal at complete inversion",()=>{
+  for(const p of [0,0.3,1]){
+    for(const f of [100,500,1200]){
+      const high=mapFrequency(f,20,3000,p,.4,"fold-h");
+      const low=mapFrequency(f,20,3000,p,.4,"fold-l");
+      assert.ok(Math.abs(high-low)>1);
+      const fullH=mapFrequency(f,20,3000,p,1,"fold-h");
+      const fullL=mapFrequency(f,20,3000,p,1,"fold-l");
+      assert.ok(Math.abs(fullH-fullL)<1e-7);
+    }
+  }
 });
