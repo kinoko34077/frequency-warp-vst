@@ -71,7 +71,7 @@ function updateEngineInfo(){
   const explain=[
     "部分音追跡したピークを発振器で再合成。倍音/残響が欠ける場合があります。",
     "FFTビンを直接再配置。時間方向の位相連続性が弱く、量子化ノイズや変調感が出ます。",
-    "入力に搬送波を乗算。上下の側波帯が生じ、FFT窓による遅延はありません。",
+    "Ring Mod: 入力に搬送波を乗算。上下の側波帯が生じ、FFT窓による遅延はありません。",
     "入力の部分音を r倍してから Δ=(n/m)F Hz シフト。Fは手動値です。"
   ];
   $("#engine-description").textContent=explain[s.engine];
