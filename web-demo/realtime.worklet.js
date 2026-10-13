@@ -133,7 +133,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       for(let i=0;i<frames;i++){
         const t=this.position+i,slot=t%ringLen;
         const read=(t+ringLen-(this.latency%ringLen))%ringLen;
-        outputDry[i]=ring[read];
+        outputDry[i]=this.latency===0?inp[c*frames+i]:ring[read];
         ring[slot]=inp[c*frames+i];
         outputWet[i]=out[c*frames+i];
       }
