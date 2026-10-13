@@ -68,10 +68,32 @@
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="control"><div class="control-heading"><label for="low">下限</label><input class="inline-value" id="low-value" type="number" min="20" max="20000" step="1" value="20" aria-label="low-value の数値"></div>
-            <input id="low" type="range" min="0" max="1000" step="1" value="0"><div class="ends"><span>20Hz</span><span>20kHz</span></div></div>
-          <div class="control"><div class="control-heading"><label for="high">上限</label><input class="inline-value" id="high-value" type="number" min="20" max="20000" step="1" value="16000" aria-label="high-value の数値"></div>
-            <input id="high" type="range" min="0" max="1000" step="1" value="968"><div class="ends"><span>20Hz</span><span>20kHz</span></div></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="1" value="20"></label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="1" value="16000"></label></div>
+          <div class="dual-range" id="dual-range" style="--lo:0%;--hi:96.8%">
+            <input id="low" type="range" aria-label="帯域下限" min="0" max="1000" step="1" value="0">
+            <input id="high" type="range" aria-label="帯域上限" min="0" max="1000" step="1" value="968">
+          </div>
+          <div class="ends"><span>20 Hz</span><span>20 kHz</span></div>
+        </div>
+        <div class="effects-panel">
+          <h3>追加加工</h3>
+          <div class="fx-item">
+            <label class="fx-toggle"><input id="ring-enabled" type="checkbox"> リング変調</label>
+            <div class="fx-body">
+              <div class="control-heading"><label for="carrier">搬送波</label><input id="carrier" class="inline-value" type="number" min="0" max="20000" step="1" value="350"></div>
+              <input id="carrier-range" type="range" min="0" max="1000" step="1" value="592" aria-label="搬送波周波数">
+      
+              <small id="carrier-linked-value" class="fx-help"></small>
+            </div>
+          </div>
+          <div class="fx-item">
+            <label class="fx-toggle"><input id="crusher-enabled" type="checkbox"> ビットクラッシャー</label>
+            <div class="fx-pair">
+              <div><div class="control-heading"><label for="crusher-bits">ビット数</label><input id="crusher-bits-value" class="inline-value" type="number" min="2" max="16" step="1" value="8"></div><input id="crusher-bits" type="range" min="2" max="16" step="1" value="8"></div>
+              <div><div class="control-heading"><label for="crusher-hold">間引き</label><input id="crusher-hold-value" class="inline-value" type="number" min="1" max="32" step="1" value="4"></div><input id="crusher-hold" type="range" min="1" max="32" step="1" value="4"></div>
+            </div>
+          </div>
+          <details class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
         </div>
       </section>
       <section class="panel sine-monitor" aria-labelledby="sine-heading">
@@ -110,7 +132,7 @@
           <div class="math-field"><label for="numerator">分子 n <small>符号付き</small></label><input id="numerator" type="number" min="-128" max="128" step="1" value="-3"><div class="math-input"><input id="numerator-range" type="range" min="-128" max="128" step="1" value="-3"></div></div>
           <div class="math-field"><label for="harmonic-index">折返す倍音 q</label><input id="harmonic-index" type="number" min="1" max="32" step="1" value="1"><div class="math-input"><input id="harmonic-index-range" type="range" min="1" max="32" step="1" value="1"></div></div>
           <div class="math-field"><label for="pitch-ratio">前段ピッチ比 r</label><input id="pitch-ratio" type="number" min=".25" max="4" step=".05" value="1"><div class="math-input"><input id="pitch-ratio-range" type="range" min=".25" max="4" step=".05" value="1"></div></div>
-          <div class="math-field"><label for="carrier">Ring搬送波 c <small>Hz</small></label><input id="carrier" type="number" min="0" max="20000" step="1" value="350"><div class="math-input"><input id="carrier-range" type="range" min="0" max="1000" step="1" value="592" aria-label="Ring搬送波 0Hz〜20kHz 対数スライダー"></div></div>
+</div>
         </div>
         <label class="link-carrier"><input id="carrier-link" type="checkbox"><span><strong>搬送波を変換の折返し点に連動</strong><small id="carrier-linked-value">オフ：手動設定中</small></span></label>
         <div id="math-results" class="math-results" aria-live="polite"></div>
@@ -152,26 +174,12 @@
         <p class="setting-help">Aのみ。部分音の最低周波数と、再合成後の残響を調整します。</p>
       </div>
     </fieldset>
-    <fieldset><legend>周波数操作・付加効果</legend>
-      <label class="setting-checkbox"><input id="rational-enabled" type="checkbox"> #24の有理数倍音配置（r・n/m）を前段に適用</label>
-      <p class="setting-help">入力の理想基音 F は数式欄で指定。通常はOFFとして「周波数軸の上下移動」だけを利用できます。</p>
-      <label class="setting-checkbox"><input id="ring-enabled" type="checkbox"> Ring Modを重ねる（上下の側波帯）</label>
-      <p class="setting-help">Ring搬送波は倍音ラボで調整。通常のHz/Pitch移動の代替方式ではありません。</p>
-    </fieldset>
     <fieldset><legend>反転と帯域</legend>
       <div class="settings-pair">
         <div><label for="mode">反転の進行</label><select id="mode"><option value="blend">単純補間</option><option value="fold-l">L側で折返し</option><option value="fold-h" selected>H側で折返し</option></select></div>
         <div><label for="outside">L/Hの外側</label><select id="outside"><option value="pass" selected>通過する</option><option value="kill">除去する</option></select></div>
       </div>
       <label for="zero-mode">0Hz以下へ移動した成分</label><select id="zero-mode"><option value="0">Reflect / 折返し</option><option value="1">Kill / 除去</option><option value="2">Fade / 減衰（実験版）</option></select>
-    </fieldset>
-    <fieldset><legend>ビットクラッシャー</legend>
-      <label class="setting-checkbox"><input id="crusher-enabled" type="checkbox"> ON · ビット単位で音を粗くする（全方式と併用）</label>
-      <div class="settings-pair"><div><label for="crusher-bits">ビット深度 <input class="inline-value" id="crusher-bits-value" type="number" min="2" max="16" step="1" value="8" aria-label="crusher-bits-value の数値"></label>
-        <input id="crusher-bits" type="range" min="2" max="16" step="1" value="8"></div>
-        <div><label for="crusher-hold">サンプル保持 <input class="inline-value" id="crusher-hold-value" type="number" min="1" max="32" step="1" value="4" aria-label="crusher-hold-value の数値"></label>
-        <input id="crusher-hold" type="range" min="1" max="32" step="1" value="4"></div></div>
-      <p class="setting-help">Rust DSP後段で量子化・サンプルホールド。変更は再生中に反映されます。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5">5倍音</option><option value="7" selected>7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>
