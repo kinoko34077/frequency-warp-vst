@@ -292,3 +292,42 @@ test("audible pitch case: zero inversion + log axis maps 500Hz actual PCM to ~1k
     assert.ok(p1>leak*2,"old pitch remained stronger than the new target: target="+p1+" source="+leak);
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+
+test("pivot/slope and signed 0Hz policies are shared WASM audio operations",async()=>{
+ const e=await load();
+ assert.equal(typeof e.warp_translate_frequency_affine,"function");
+ assert.equal(typeof e.warp_stream_set_geometry,"function");
+ assert.equal(typeof e.warp_stream_render_f32_geometry_ext,"function");
+ assert.ok(Math.abs(e.warp_translate_frequency_affine(750,500,1,0,2)-1000)<1e-6);
+ assert.ok(Math.abs(e.warp_translate_frequency_affine(250,500,0,0,2)-125)<1e-6);
+ assert.ok(Math.abs(e.warp_translate_frequency_affine(500,500,0,Math.log(2),2)-1000)<1e-6);
+ const n=16384,rate=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+ try{
+   const inp=new Float32Array(e.memory.buffer,src,n);
+   for(let i=0;i<n;i++)inp[i]=.4*Math.cos(2*Math.PI*500*i/rate);
+   const render=(engine,zero)=>{
+     const rc=e.warp_stream_render_f32_geometry_ext(src,dst,n,1,rate,
+      20,3000,1,0,0,0,0,engine,1,0,0,zero,4,0,1,-2,350,0,0,350,1);
+     assert.equal(rc,0);
+     return Float32Array.from(new Float32Array(e.memory.buffer,dst,n));
+   };
+   const energy=(samples,hz)=>{
+     let re=0,im=0;
+     for(let i=4000;i<12000;i++){
+       const t=2*Math.PI*hz*i/rate;
+       re+=samples[i]*Math.cos(t);
+       im+=samples[i]*Math.sin(t);
+     }
+     return Math.hypot(re,im);
+   };
+   for(const engine of [0,1]){
+     const reflected=render(engine,0);
+     const killed=render(engine,1);
+     const peak=energy(reflected,200);
+     const gone=energy(killed,200);
+     assert.ok(peak>2,"zero Reflect went silent for engine "+engine+" peak "+peak);
+     assert.ok(peak>gone*5,"engine "+engine+" ignores Reflect versus Kill: "+peak+" vs "+gone);
+   }
+ }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
