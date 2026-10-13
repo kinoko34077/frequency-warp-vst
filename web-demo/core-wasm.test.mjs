@@ -115,3 +115,41 @@ test("real native-shared Rust WASM streaming ABI processes continuous 128-frame 
     e.warp_stream_free(ptr);
   }
 });
+
+test("alternate Rust engines are actually exported and differ acoustically",async()=>{
+  const e=await load();
+  assert.ok(e.warp_stream_create_ext && e.warp_stream_set_ext);
+  const frames=128,fs=8192;
+  const input=e.warp_alloc_f32(frames),output=e.warp_alloc_f32(frames);
+  const signals=[];
+  try{
+    for(const engine of [0,1,2,3]){
+      const ptr=e.warp_stream_create_ext(fs,1,20,3000,1,1,0,0,0,
+        engine,1,-75,300,0,4);
+      assert.ok(ptr!==0,"engine "+engine+" missing");
+      try{
+        assert.equal(e.warp_stream_latency(ptr),engine===2?0:1023);
+        const samples=[];
+        for(let b=0;b<65;b++){
+          const inp=new Float32Array(e.memory.buffer,input,frames);
+          for(let i=0;i<frames;i++)inp[i]=.5*Math.cos(2*Math.PI*500*(b*128+i)/fs);
+          assert.equal(e.warp_stream_process(ptr,input,output,frames),0);
+          const out=new Float32Array(e.memory.buffer,output,frames);
+          for(const x of out)samples.push(x);
+        }
+        signals.push(samples);
+        assert.equal(e.warp_stream_set_ext(ptr,20,3000,.8,.6,2,0,0,engine,1,-50,100,0),0);
+      }finally{e.warp_stream_free(ptr);}
+    }
+    const compare=(a,b)=>{
+      let sum=0;
+      for(let i=2048;i<4096;i++)sum+=Math.abs(a[i]-b[i]);
+      return sum/2048;
+    };
+    assert.ok(compare(signals[0],signals[1])>0.001,"FFT-bin engine sounds identical to tracked partial engine");
+    assert.ok(compare(signals[0],signals[2])>0.05,"Ring Mod engine was not selected");
+    assert.ok(compare(signals[0],signals[3])>0.02,"Pitch+Hz shift engine was not selected");
+  }finally{
+    e.warp_free_f32(input,frames);e.warp_free_f32(output,frames);
+  }
+});
