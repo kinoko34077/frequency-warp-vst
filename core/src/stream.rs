@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,translate_frequency_controls,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -21,6 +21,7 @@ pub struct Stream {
     ring_enabled:bool,
     axis_shift:f64,
     axis_reference:f64,
+    axis_pivot:f64,
     axis_slope:f64,
     rational_enabled:bool,
     crusher_bits:u32,
@@ -68,7 +69,7 @@ impl Stream {
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
-            axis_reference:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
+            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],zero_mode,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
@@ -123,11 +124,11 @@ impl Stream {
         Ok(())
     }
     pub fn set_geometry(&mut self,pivot:f64,slope:f64)->Result<(),&'static str>{
-        if !pivot.is_finite()||!(20.0..=20000.0).contains(&pivot)||
+        if !pivot.is_finite()||!(0.0..=20000.0).contains(&pivot)||
            !slope.is_finite()||!(0.1..=4.0).contains(&slope) {
             return Err("invalid frequency pivot/slope");
         }
-        self.axis_reference=pivot;self.axis_slope=slope;Ok(())
+        self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
@@ -237,8 +238,8 @@ impl Stream {
                             self.pitch_ratio*base+self.shift_hz
                         }else{base};
                         if old<=0.0 {old}else{
-                            translate_frequency_affine(old,self.axis_reference,
-                                self.settings.curvature,self.axis_shift,self.axis_slope)
+                            translate_frequency_controls(old,self.axis_pivot,self.axis_slope,
+                                self.axis_reference,self.settings.curvature,self.axis_shift)
                         }
                     }else if self.outside==1 {f} else {continue};
                     // Exact same signed/DC policy used by the peak-resynthesis
@@ -301,8 +302,8 @@ impl Stream {
                 self.pitch_ratio*mapped+self.shift_hz
             }else{mapped};
             let target=if staged<=0.0 {staged}else {
-                translate_frequency_affine(staged,self.axis_reference,
-                    self.settings.curvature,self.axis_shift,self.axis_slope)
+                translate_frequency_controls(staged,self.axis_pivot,self.axis_slope,
+                    self.axis_reference,self.settings.curvature,self.axis_shift)
             };
             let (target,fade_gain)=match self.resolve_zero(target,step){
                 Some(v)=>v,None=>continue
@@ -702,6 +703,19 @@ mod tests{
         a.set_transform(0.0,400.0,0,0).unwrap();
         assert!(!a.ring_enabled);
         assert!(a.set_transform(0.0,0.0,0,0).is_err());
+    }
+    #[test]
+    fn physical_slope_zero_pivot_is_uniform_pitch_in_both_engines(){
+        let settings=Settings{low:20.0,high:3000.0,curvature:1.0,
+            invert:0.0,mode:Progression::FoldHigh,quality:0};
+        for engine in [0,1]{
+            let mut stream=Stream::new_extended(8192.0,1,settings,1,engine,
+                1.0,0.0,0.0,0,4).unwrap();
+            stream.set_geometry(0.0,2.0).unwrap();
+            assert_eq!(stream.axis_pivot,0.0);
+            assert!((translate_frequency_controls(500.0,stream.axis_pivot,
+                stream.axis_slope,stream.axis_reference,1.0,0.0)-1000.0).abs()<1e-8);
+        }
     }
     #[test]
     fn both_resynthesis_engines_respect_signed_zero_policy_and_pivot_slope(){

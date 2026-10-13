@@ -36,3 +36,14 @@ test("ring modulation draws two actual ideal sidebands",()=>{
   assert.ok(Math.abs(point.outputs[1]-Math.abs(mapped-300))<1e-6);
   assert.ok(Math.abs(point.outputs[0]-(point.f+300))>100,"Ring chain ignores Warp");
 });
+
+test("20 kHz view spans full range while retaining square-axis ideal map",()=>{
+ const cfg={low:20,high:20000,curvature:1,invert:0,mode:"fold-h",outside:"pass",
+   axisPivot:0,axisSlope:2,axisReference:350,axisShift:0,sampleRate:48000};
+ const twice=(f,pivot,curvature,shift,slope)=>pivot+slope*(f-pivot);
+ const points=graphSegments(cfg,(f)=>f,twice,20000);
+ assert.equal(points[0].f,20);
+ assert.equal(points.at(-1).f,20000);
+ const at500=points.find(pt=>Math.abs(pt.f-500)<25);
+ assert.ok(Math.abs(at500.outputs[0]-2*at500.f)<1e-9);
+});

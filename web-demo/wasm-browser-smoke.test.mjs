@@ -56,42 +56,58 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     for(const id of ["curvature","invert","wet"]){
       assert.ok(await page.$eval("#"+id,el=>Number(el.step))<=0.005,"percentage slider coarse: "+id);
     }
-    assert.equal(await page.$eval("#axis-shift-number",el=>Number(el.step)),0.05);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.step)),0.05);
+    // Frequency slope ×2 with ZERO physical pivot is a normal octave
+    // at either curvature endpoint, not the old log-coordinate exponent.
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="0";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.$eval("#axis-slope",el=>{el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    for(const p of [0,1]){
+      await page.$eval("#curvature", (el,p)=>{el.value=String(p);el.dispatchEvent(new Event("input",{bubbles:true}));},p);
+      assert.match(await page.$eval("#listening-guide",el=>el.textContent),/500Hz → 1000Hz/);
+    }
+    assert.equal(await page.$eval("#axis-pivot",el=>Number(el.value)),0);
+    assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
+    await page.click("#curve");
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/20kHz/);
+    await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/2kHz/);
     await page.$eval("#axis-pivot",el=>{
       el.value="500";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.$eval("#axis-slope",el=>{
       el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.match(await page.$eval("#listening-guide",el=>el.textContent),/傾き 2\.00/);
-    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形側の移動量/);
+    assert.match(await page.$eval("#listening-guide",el=>el.textContent),/500Hz →/);
+    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形移動/);
     await page.click("#slope-one");
     assert.equal(await page.$eval("#axis-slope",el=>Number(el.value)),1);
-    await page.$eval("#axis-shift-number",el=>{
+    await page.$eval("#axis-shift-value",el=>{
       el.value=".35";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),.35);
     await page.click("#axis-zero");
-    assert.equal(await page.$eval("#axis-shift-number",el=>Number(el.value)),0);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0);
 
     await page.$eval("#curvature",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.$eval("#axis-shift",el=>{el.value=".7";el.dispatchEvent(new Event("input",{bubbles:true}));});
-    assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/対数移動: ×2/);
+    assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/移動倍率 ×2/);
     assert.doesNotMatch(await page.$eval("#math-axis-note",el=>el.textContent),/準備中|未算出|計算中/);
     assert.match(await page.$eval("#math-axis-note",el=>el.textContent),/上下移動後/);
     await page.click("#axis-zero");
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0);
-    assert.match(await page.$eval("#axis-shift-value",el=>el.textContent),/0\.000/);
+    assert.match(await page.$eval("#axis-shift-value",el=>el.value),/0\.00/);
     await page.$eval("#curvature",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
 
     assert.match(await page.$eval("#math-results",el=>el.textContent),/H=F′\/m=87.5 Hz/);
     // Independent sine test can run before an audio file has been loaded.
-    assert.equal(await page.$eval("#sine-hz",el=>el.textContent),"440.00 Hz");
+    assert.equal(await page.$eval("#sine-hz",el=>el.value),"440.00");
     await page.click("#sine-enabled");
     assert.equal(await page.$eval("#sine-enabled",el=>el.checked),true);
     await page.$eval("#sine-pitch",el=>{el.value="69.5";el.dispatchEvent(new Event("input",{bubbles:true}));});
-    assert.match(await page.$eval("#sine-hz",el=>el.textContent),/452\.89 Hz/);
-    assert.match(await page.$eval("#sine-cent",el=>el.textContent),/-50 cent|\+50 cent/);
+    assert.match(await page.$eval("#sine-hz",el=>el.value),/452\.89/);
+    assert.match(await page.$eval("#sine-cent",el=>el.value),/-50|50/);
     await page.click("#sine-enabled");
     await page.$eval("#axis-shift",el=>{el.value=".25";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/Hz/);
@@ -210,12 +226,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(layout.settingsRect.right<=390);
     assert.ok(layout.curve.width<=210,"Mobile graph should use freed space for sliders "+JSON.stringify(layout));
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
-    assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/第3倍音/);
+    assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);
     await page.click("#settings-open");
     await page.select("#harmonic-count","12");
     await page.click("#crusher-enabled");
     await page.$eval("#crusher-bits",el=>{el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));});
-    assert.equal(await page.$eval("#crusher-bits-value",el=>el.textContent),"3 bit");
+    assert.equal(await page.$eval("#crusher-bits-value",el=>el.value),"3");
     await page.click("#settings-done");
     await page.click("#mini-expand");
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false,"graph must stay visible when equations open");

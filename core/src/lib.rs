@@ -86,6 +86,22 @@ pub extern "C" fn warp_translate_frequency_affine(
     translate_frequency_affine(f,pivot,p,shift,slope)
 }
 
+pub fn translate_frequency_controls(f:f64,pivot:f64,slope:f64,reference:f64,p:f64,shift:f64)->f64{
+ if !f.is_finite()||!pivot.is_finite()||!(0.0..=20000.0).contains(&pivot)
+ || !slope.is_finite()||!(0.1..=4.0).contains(&slope)
+ || !reference.is_finite()||reference<=0.0
+ || !p.is_finite()||!(0.0..=1.0).contains(&p)
+ || !shift.is_finite()||shift.abs()>4.0{return f64::NAN;}
+ let stretched=pivot+slope*(f-pivot);
+ if p==1.0{return stretched+shift*reference;}
+ if stretched<=0.0{return stretched;}
+ translate_frequency(stretched,reference,p,shift)
+}
+#[no_mangle]
+pub extern "C" fn warp_translate_frequency_controls(f:f64,pivot:f64,slope:f64,reference:f64,p:f64,shift:f64)->f64{
+ translate_frequency_controls(f,pivot,slope,reference,p,shift)
+}
+
 /// Research mapping is *only* defined for positive frequencies in [L,H].
 pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
     if !s.low.is_finite() || !s.high.is_finite() || s.low <= 0.0 || s.high <= s.low

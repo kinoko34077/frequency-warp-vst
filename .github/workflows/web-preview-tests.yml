@@ -58,7 +58,7 @@ jobs:
           grep -q 'warp_fold_frequency' web-demo/app.mjs
           grep -q 'warp_stream_render_f32_geometry_ext' web-demo/processor.worker.mjs
           grep -q 'warp_stream_set_geometry' web-demo/realtime.worklet.js
-          grep -q 'warp_translate_frequency_affine' web-demo/app.mjs
+          grep -q 'warp_translate_frequency_controls' web-demo/app.mjs
           grep -q 'warp_stream_set_transform' web-demo/realtime.worklet.js
           grep -q 'warp_stream_set_crusher' web-demo/realtime.worklet.js
           grep -q 'warp_stream_create_ext' web-demo/realtime.worklet.js

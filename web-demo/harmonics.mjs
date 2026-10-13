@@ -55,9 +55,9 @@ export function mapAtFrequency(f,
   return {f,inside,outputs,reason:outputs.length?"": "再生周波数範囲外（0Hz／ナイキスト）",
     raw:transformed};
 }
-export function graphSegments(settings,warp,translate=(f)=>f){
+export function graphSegments(settings,warp,translate=(f)=>f,maxHz=DISPLAY_MAX){
   const values=[];
-  const f0=DISPLAY_MIN,f1=DISPLAY_MAX;
+  const f0=DISPLAY_MIN,f1=maxHz;
   for(let i=0;i<=512;i++){
     const f=f0+(f1-f0)*i/512;
     const point=mapAtFrequency(f,settings,warp,translate);
