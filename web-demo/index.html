@@ -1,123 +1,145 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>Frequency Warp — Audio Preview</title>
-  <link rel="stylesheet" href="./style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Frequency Warp — Realtime Laboratory</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <main>
-    <header class="header">
-      <div class="brand"><span class="logo">∿</span><div><h1>Frequency Warp</h1><p>Audio Preview · Shared Rust/WASM Core</p></div></div>
-      <span class="phase">Experimental</span>
-    </header>
-    <section class="panel upload-section">
-      <div class="eyebrow">01 / SOURCE AUDIO</div>
-      <div id="drop" class="drop" tabindex="0" role="button" aria-label="音声ファイルを選択またはドロップ">
-        <div class="upload-icon">♫</div>
-        <strong>音声ファイルを読み込む</strong>
-        <p>クリックまたはドラッグ＆ドロップ</p>
-        <small>WAV / MP3 などブラウザ対応の音声 · 最大75MB · 先頭120秒まで変換</small>
-        <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac">
-      </div>
-      <p id="file-meta" class="meta" aria-live="polite">音声未選択</p>
-      <div class="wave-wrap"><canvas id="wave" aria-label="クリックまたはタップした位置から音声を再生" role="button" tabindex="0"></canvas><div id="playhead" class="playhead"></div></div>
-      <div class="transport"><span id="elapsed">0:00.0</span><span id="duration">0:00.0</span></div>
-      <p class="wave-hint">波形の好きな位置をクリック・タップすると、その位置から再生します。</p>
-    </section>
-    <section class="panel">
-      <div class="eyebrow">02 / SPECTRAL MAPPING</div>
-      <div class="panels">
-        <div class="controls">
-          <div class="bounds">
-            <div class="control"><div class="control-heading"><label for="low">L · 下限周波数</label><output id="low-value">20 Hz</output></div><input id="low" type="range" min="0" max="1000" step="1" value="0"><div class="ends"><span>20 Hz</span><span>20 kHz</span></div></div>
-            <div class="control"><div class="control-heading"><label for="high">H · 上限周波数</label><output id="high-value">16 kHz</output></div><input id="high" type="range" min="0" max="1000" step="1" value="968"><div class="ends"><span>20 Hz</span><span>20 kHz</span></div></div>
-          </div>
-          <div class="control"><div class="control-heading"><label for="curvature">Curvature</label><output id="curvature-value">1.00</output></div>
-            <input id="curvature" type="range" min="0" max="1" step=".01" value="1">
-            <div class="ends"><span>Logarithmic</span><span>Linear</span></div>
-          </div>
-          <div class="control"><div class="control-heading"><label for="invert">Invert</label><output id="invert-value">100%</output></div>
-            <input id="invert" type="range" min="0" max="1" step=".01" value="1">
-            <div class="ends"><span>Normal</span><span>Inverted</span></div>
-          </div>
-          <div class="control"><div class="control-heading"><label for="wet">Wet</label><output id="wet-value">100%</output></div>
-            <input id="wet" type="range" min="0" max="1" step=".01" value="1">
-            <div class="ends"><span>Original</span><span>Processed</span></div>
-          </div>
-          <div class="selectors">
-            <div class="engine-choice"><label for="engine">音声処理エンジン（Rust DSPを実切替）</label>
-              <select id="engine">
-                <option value="0">A: 部分音追跡＋位相変調（現行）</option>
-                <option value="1">B: STFT/FFTビン再配置（高速・粗精度）</option>
-                <option value="2">C: Ring Mod（積による上下側波帯・低遅延）</option>
-                <option value="3">D: Pitch → Hz Shift（#16 仮想基音系）</option>
-                <option disabled>候補: 線形反転専用の解析信号直接系（未実装）</option>
-                <option disabled>候補: 正弦波追跡＋残差再構成（#5 R2.2未完）</option>
-                <option disabled>候補: chirplet／非一様スペクトル解析（未検証）</option>
-              </select>
-            </div>
-            <div><label for="mode">Invert Mode</label><select id="mode"><option value="blend">単純補間</option><option value="fold-l">L側で折返し</option><option value="fold-h" selected>H側で折返し</option></select></div>
-            <div><label for="outside">帯域外の音</label><select id="outside"><option value="pass" selected>そのまま通過</option><option value="kill">除去</option></select></div>
-            <div><label for="quality">FFT窓 / 精度・レイテンシ</label><select id="quality"><option value="eco" selected>1024 samples · 軽量</option><option value="standard">2048 samples · 標準</option><option value="high">4096 samples · 高分解能</option></select></div>
-            <div><label for="overlap">FFT重ね合わせ / 内部hop</label><select id="overlap"><option value="4" selected>4× overlap · N/4 hop</option><option value="8">8× overlap · N/8 hop（高負荷）</option></select></div>
-          </div>
+<main class="studio">
+  <header class="header">
+    <div class="brand"><span class="logo" aria-hidden="true">∿</span><div>
+      <h1>Frequency Warp</h1><p>REALTIME AUDIO LAB / SHARED RUST DSP</p>
+    </div></div>
+    <button id="settings-open" type="button" class="gear" aria-label="設定を開く" aria-haspopup="dialog" aria-controls="settings-dialog">
+      <span aria-hidden="true">⚙</span><span>設定</span>
+    </button>
+  </header>
+
+  <div class="workspace-grid">
+    <div class="workspace-left">
+      <section class="panel player" aria-labelledby="player-title">
+        <div class="section-header"><div><p class="eyebrow">AUDIO SOURCE</p><h2 id="player-title">音を聴きながら調整</h2></div><span class="micro-hint">先頭120秒まで</span></div>
+        <div id="drop" class="drop" role="button" tabindex="0" aria-label="音声を読み込む">
+          <span aria-hidden="true">♫</span><strong>ここを押して音声を選ぶ</strong>
+          <small>WAV / MP3 / M4A など · 75MBまで · ドロップ可</small>
+          <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac">
         </div>
+        <p id="file-meta" class="meta">音声未選択</p>
+        <div class="wave-wrap"><canvas id="wave" role="button" tabindex="0" aria-label="波形を押すとその位置から再生"></canvas><div id="playhead" class="playhead"></div></div>
+        <div class="transport"><span id="elapsed">0:00.0</span><span>波形を押して移動</span><span id="duration">0:00.0</span></div>
+        <div class="actions">
+          <button id="play-wet" class="primary" disabled>▶ 変換して再生</button>
+          <button id="play-dry" disabled>原音</button>
+          <button id="stop" disabled>■ 停止</button>
+        </div>
+        <div id="rt-indicator" class="rt-indicator" role="status">停止中 · Rust/WASM</div>
+        <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを選択してください。</div>
+      </section>
+
+      <section class="panel quick-panel" aria-labelledby="control-title">
+        <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
+        <div class="control-grid">
+          <div class="control"><div class="control-heading"><label for="invert">反転量</label><output id="invert-value">100%</output></div>
+            <input id="invert" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>通常</span><span>反転</span></div>
+          </div>
+          <div class="control"><div class="control-heading"><label for="curvature">曲率</label><output id="curvature-value">1.00</output></div>
+            <input id="curvature" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>対数</span><span>線形</span></div>
+          </div>
+          <div class="control"><div class="control-heading"><label for="wet">変換音の割合</label><output id="wet-value">100%</output></div>
+            <input id="wet" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
+          </div>
+          <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">部分音追跡</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
+        </div>
+        <div class="bounds">
+          <div class="control"><div class="control-heading"><label for="low">下限 L</label><output id="low-value">20 Hz</output></div>
+            <input id="low" type="range" min="0" max="1000" step="1" value="0"><div class="ends"><span>20Hz</span><span>20kHz</span></div></div>
+          <div class="control"><div class="control-heading"><label for="high">上限 H</label><output id="high-value">16 kHz</output></div>
+            <input id="high" type="range" min="0" max="1000" step="1" value="968"><div class="ends"><span>20Hz</span><span>20kHz</span></div></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="panel workspace-right" aria-label="周波数グラフ・倍音ラボ">
+      <div class="panel-tabs" role="tablist" aria-label="分析ビュー">
+        <button id="tab-map" type="button" role="tab" aria-selected="true" aria-controls="view-map">変換グラフ</button>
+        <button id="tab-math" type="button" role="tab" aria-selected="false" aria-controls="view-math" tabindex="-1">倍音ラボ</button>
+      </div>
+      <div id="view-map" role="tabpanel" aria-labelledby="tab-map">
+        <div class="graph-title"><strong>20Hz — 2kHz</strong><span>入力 → 出力</span></div>
         <div class="curve-panel">
-          <div class="graph-title">20 Hz – 2 kHz / 全域マッピング <span>f → f′</span></div>
-          <canvas id="curve" aria-label="周波数変換曲線"></canvas>
-          <div class="ends"><span>入力 20 Hz</span><span>2 kHz</span></div>
-          <div class="graph-legend"><span>━ 変換帯域</span><span>┄ 無変換</span><span>▧ L–H 範囲</span></div>
-          <p class="graph-note">X/Yとも20Hz–2000Hz固定、等倍率の正方形です。L/Hより外側は通過なら対角線、除去なら空白。2kHzより外側は描画されません（実DSPの処理範囲は別）。</p>
+          <canvas id="curve" aria-label="20Hzから2kHzまでの正方形周波数変換図"></canvas>
         </div>
+        <div class="graph-legend"><span>━ 変換帯域</span><span>┄ 元の周波数</span><span>▧ 選択範囲</span></div>
+        <p class="graph-note">縦軸・横軸とも20〜2000Hz。L/H外の通過・除去も表示します。表示範囲は音声の処理上限ではありません。</p>
       </div>
-      <details id="harmonic-lab" class="math-lab" open>
-        <summary>数式・倍音列の変換を表示（Issue #16）</summary>
-        <p>下記は<strong>理想的な整数倍音列に対する数値計算</strong>です。録音の基音自動検出や実際の知覚音高を表しません。</p>
+      <div id="view-math" role="tabpanel" aria-labelledby="tab-math" hidden>
+        <div class="section-header"><div><p class="eyebrow">HARMONIC LAB / ISSUE #16</p><h2>仮想基音と搬送波</h2></div></div>
+        <p class="math-note">理想的な整数倍音列の計算です。録音から基音を自動検出した値ではありません。</p>
         <div class="math-controls">
-          <label>元基音 F（Hz）<input id="fundamental" type="number" value="350" min="20" max="2000" step="1"></label>
-          <label>分母 m<input id="denominator" type="number" value="4" min="1" max="64" step="1"></label>
-          <label>符号付き分子 n<input id="numerator" type="number" value="-3" min="-128" max="128" step="1"></label>
-          <label>折返し元倍音 q<input id="harmonic-index" type="number" value="1" min="1" max="32" step="1"></label>
-          <label>前段Pitch倍率 r<input id="pitch-ratio" type="number" value="1" min=".25" max="4" step=".05"></label>
-          <label>Ring搬送周波数 c（Hz）<input id="carrier" type="number" value="350" min="0" max="20000" step="1"></label>
-          <label>0Hz以下のシフト先<select id="zero-mode"><option value="0">Reflect / 折返し</option><option value="1">Kill / 除去</option><option value="2">Fade / 減衰（実験版）</option></select></label>
+          <div class="math-field"><label for="fundamental">元基音 F <small>Hz</small></label><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"><input id="fundamental" type="number" min="20" max="2000" step="1" value="350"></div></div>
+          <div class="math-field"><label for="denominator">分母 m</label><div class="math-input"><input id="denominator-range" type="range" min="1" max="64" step="1" value="4"><input id="denominator" type="number" min="1" max="64" step="1" value="4"></div></div>
+          <div class="math-field"><label for="numerator">分子 n <small>符号付き</small></label><div class="math-input"><input id="numerator-range" type="range" min="-128" max="128" step="1" value="-3"><input id="numerator" type="number" min="-128" max="128" step="1" value="-3"></div></div>
+          <div class="math-field"><label for="harmonic-index">折返す倍音 q</label><div class="math-input"><input id="harmonic-index-range" type="range" min="1" max="32" step="1" value="1"><input id="harmonic-index" type="number" min="1" max="32" step="1" value="1"></div></div>
+          <div class="math-field"><label for="pitch-ratio">前段ピッチ比 r</label><div class="math-input"><input id="pitch-ratio-range" type="range" min=".25" max="4" step=".05" value="1"><input id="pitch-ratio" type="number" min=".25" max="4" step=".05" value="1"></div></div>
+          <div class="math-field"><label for="carrier">Ring搬送波 c <small>Hz</small></label><div class="math-input"><input id="carrier-range" type="range" min="0" max="2000" step="1" value="350"><input id="carrier" type="number" min="0" max="20000" step="1" value="350"></div></div>
         </div>
-        <div class="math-results" id="math-results" aria-live="polite"></div>
-        <div class="math-table"><table><thead><tr><th>k</th><th>入力 kF</th><th>kF+Δ</th><th>|kF−S|</th><th>倍音番号 mk+n</th></tr></thead><tbody id="harmonics-body"></tbody></table></div>
-        <p class="math-note">Ring Modは f+c と |f−c| の<strong>二系列</strong>です。[L,H]でのFoldと0HzでのReflectは別概念。現行試作では位相・聴感・仮想基音の知覚を保証しません。</p>
-      </details>
-    </section>
-    <section class="panel">
-      <div class="eyebrow">03 / REALTIME LISTEN</div>
-      <div class="realtime-lead">曲全体を変換する必要はありません。再生中の音声を128サンプルずつ連続変換します。</div>
-      <div class="rt-indicator" id="rt-indicator">停止中 · Rust / WASM AudioWorklet</div>
-      <div id="engine-description" class="engine-description" aria-live="polite"></div>
-      <div id="engine-stats" class="engine-stats"></div>
-      <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを読み込んでください。</div>
-      <div class="actions">
-        <button id="play-dry" disabled>▶ 原音を再生</button>
-        <button id="play-wet" disabled>▶ リアルタイム変換</button>
-        <button id="stop" disabled>■ 停止</button>
+        <label class="link-carrier"><input id="carrier-link" type="checkbox"><span><strong>搬送波を変換の折返し点に連動</strong><small id="carrier-linked-value">オフ：手動設定中</small></span></label>
+        <div id="math-results" class="math-results" aria-live="polite"></div>
+        <details class="harmonic-table"><summary>第1〜7倍音の数値表を見る</summary>
+          <div class="table-scroll"><table><thead><tr><th>k</th><th>kF</th><th>kF+Δ</th><th>|kF−S|</th><th>mk+n</th></tr></thead><tbody id="harmonics-body"></tbody></table></div>
+        </details>
       </div>
-      <details class="offline-tool">
-        <summary>WAVファイルの書出し（オフライン処理）</summary>
-        <p>WAV保存のみ、曲全体の処理が必要です。リアルタイム試聴とは独立しています。</p>
-        <button id="render" disabled>書出し用に変換</button>
-        <progress id="progress" value="0" max="100" aria-label="書出し処理進捗"></progress>
-        <button id="download" disabled>↓ WAVを保存</button>
-      </details>
-    </section>
-    <section class="notice">
-      <strong>研究用プレビューについて</strong>
-      <p>共通Rust/WASM DSPを使用します。再生中のツマミ変更は、AudioWorkletで128サンプル単位に実行している共通Rust/WASM DSPへ反映されます。曲全体を再変換する待ち時間はありません。音声はサーバーへ送信しません。</p>
-      <p>L/Hの外側は「そのまま通過／除去」を選べます。ノイズ・残響・複雑な音の未追跡成分には欠落・位相ずれが残ります。出力側の0Hz以下に関するReflect/Kill/Fadeは別仕様で未実装です。</p>
-      <p>Qualityの段階はこのブラウザ試作品専用の計算設定であり、完成版VST3の品質段階とは異なります。</p>
-    </section>
-    <footer><a href="https://github.com/kinoko34077/frequency-warp-vst">Source / frequency-warp-vst</a><span>Local-only DSP · No upload</span></footer>
-  </main>
-  <script type="module" src="./app.mjs"></script>
+      <div class="performance-summary"><div id="engine-description"></div><div id="engine-stats"></div></div>
+    </aside>
+  </div>
+  <div class="below-workspace">
+    <details class="offline-tool"><summary>WAVファイルを書き出す（オフライン処理）</summary>
+      <p>書出しだけ曲全体の変換を行います。再生中の音の変更には不要です。</p>
+      <button id="render" disabled>書出し用に変換</button>
+      <progress id="progress" value="0" max="100" aria-label="書出し処理進捗"></progress>
+      <button id="download" disabled>↓ WAVを保存</button>
+    </details>
+    <footer><span>音声は端末内で処理 · 研究試作</span><a href="https://github.com/kinoko34077/frequency-warp-vst">GitHub / Source</a></footer>
+  </div>
+</main>
+
+<dialog id="settings-dialog" aria-labelledby="settings-title">
+  <div class="settings-head"><div><p class="eyebrow">PREFERENCES</p><h2 id="settings-title">設定</h2><p>変更内容は再生中にも反映されます。</p></div><button id="settings-close" type="button" aria-label="設定を閉じる">×</button></div>
+  <div class="settings-body">
+    <fieldset><legend>音声処理方式</legend>
+      <label for="engine">エンジン</label><select id="engine">
+        <option value="0">A · 部分音追跡＋位相変調</option>
+        <option value="1">B · STFTビン再配置</option>
+        <option value="2">C · Ring Mod（低遅延）</option>
+        <option value="3">D · Pitch → Hz Shift</option>
+        <option disabled>候補 · 解析信号による線形反転（未実装）</option>
+        <option disabled>候補 · 部分音＋残差（研究中）</option>
+        <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
+      </select>
+      <p class="setting-help">各方式は共通Rustエンジンを実切替。未実装方式は選べません。</p>
+    </fieldset>
+    <fieldset><legend>反転と帯域</legend>
+      <div class="settings-pair">
+        <div><label for="mode">反転の進行</label><select id="mode"><option value="blend">単純補間</option><option value="fold-l">L側で折返し</option><option value="fold-h" selected>H側で折返し</option></select></div>
+        <div><label for="outside">L/Hの外側</label><select id="outside"><option value="pass" selected>通過する</option><option value="kill">除去する</option></select></div>
+      </div>
+      <label for="zero-mode">0Hz以下へ移動した成分</label><select id="zero-mode"><option value="0">Reflect / 折返し</option><option value="1">Kill / 除去</option><option value="2">Fade / 減衰（実験版）</option></select>
+    </fieldset>
+    <fieldset><legend>計算量・応答性</legend>
+      <div class="settings-pair"><div><label for="quality">FFT窓サイズ</label><select id="quality"><option value="eco" selected>1024 · 低遅延</option><option value="standard">2048 · 標準</option><option value="high">4096 · 高分解能</option></select></div>
+      <div><label for="overlap">重ね合わせ量</label><select id="overlap"><option value="4" selected>4× / hop N/4</option><option value="8">8× / hop N/8</option></select></div></div>
+      <p class="setting-help">FFT設定変更時は処理状態を作り直します。AudioWorkletの128サンプル量子は固定です。</p>
+    </fieldset>
+    <fieldset><legend>操作</legend><button id="settings-reset" type="button" class="reset-button">エフェクトの設定を初期値に戻す</button>
+      <p class="setting-help">音声ファイルと再生位置はそのまま。研究用試作品のため一部の変更で短い音切れが生じます。</p>
+    </fieldset>
+    <details><summary>この試作版について</summary><p>VST3は未完成です。Ring Modは周波数反転とは別の効果です。残差・音質・モバイルCPU耐性は研究中であり、処理品質を保証しません。</p></details>
+  </div>
+  <div class="settings-foot"><button id="settings-done" type="button" class="primary">閉じて音を聴く</button></div>
+</dialog>
+<script type="module" src="./app.mjs"></script>
 </body>
 </html>
