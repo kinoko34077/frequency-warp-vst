@@ -54,3 +54,30 @@ full-file Worker/crossfade interface in #12 is superseded for audition.
   N−1 samples (Eco 1023, Standard 2047, High 4095); actual output latency adds
   device/buffer overhead. Sound fidelity, CPU performance on mobile and streaming
   peak tracking remain empirical research questions.
+
+
+## 2026-10-13 comparator UI request (Issue #17, PR #18)
+- Graph window fixed at **20–2000 Hz** on x and y, rendered as a
+  square. The highlighting only applies on [L,H] (may extend beyond
+  display), the outside Pass curve follows f'=f and Kill omits outside
+  mapping. Display clipping to 2000 Hz is **not a DSP cutoff**.
+- Numerical math explorer follows *research minutes* Issue #16:
+  ideal harmonic F (manually supplied), H=F/m, delta=(n/m)F,
+  f'_k=(mk+n)H, downfold |kF−S|, S=(q+1/m)F, ring sidebands
+  f+c / |f−c| and pitch-first r·f+delta. This is analytical preview,
+  **not a claimed fundamental/chord estimator or an automatic audible root**.
+- Web settings select tested actual native/WASM streaming DSP branches:
+  tracked peak oscillators, bin-relocation STFT, time-domain Ring Mod,
+  pitch-first signed-Hz shift. These are **not four interchangeable
+  implementations of the same mathematical nonlinear warp**: Ring Mod
+  creates upper/lower sidebands; pitch+Hz uses a different mapping.
+  Separate their intent when comparing musical outcomes.
+- Candidate implementations with no validated engine (direct analytic
+  linear inversion, partial+residual R2.2, chirplet/nonuniform analysis)
+  appear **disabled**. A complete scientific ranking remains unmet.
+- Buffer controls: FFT windows 1024/2048/4096, hop N/4 or N/8. Browser
+  render quantum 128 frames cannot be changed through this control.
+  Higher overlap can increase CPU, larger FFT increases N−1 delay;
+  Ring Mod bypasses this FFT processing.
+- Source: Issue #17 and shared DSP architecture. Chrome/native/WASM
+  test evidence is attached to PR #18 and deployment actions.
