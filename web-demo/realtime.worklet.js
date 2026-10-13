@@ -31,6 +31,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       const required = [
         "memory","warp_alloc_f32","warp_free_f32","warp_stream_create",
         "warp_stream_free","warp_stream_reset","warp_stream_set",
+        "warp_stream_create_ext","warp_stream_set_ext",
         "warp_stream_process","warp_stream_latency"
       ];
       for (const name of required) {
@@ -39,9 +40,11 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       const options=data.settings;
       const mode=options.mode==="blend"?1:options.mode==="fold-l"?2:0;
       const channels=data.channels;
-      const stream=e.warp_stream_create(
+      const stream=e.warp_stream_create_ext(
         sampleRate,channels,options.low,options.high,options.curvature,
-        options.invert,mode,options.qualityIndex,options.outside==="pass"?1:0
+        options.invert,mode,options.qualityIndex,options.outside==="pass"?1:0,
+        options.engine,options.pitchRatio,options.shiftHz,options.carrierHz,
+        options.zeroMode,options.hopDiv
       );
       if (!stream) throw Error("Rust streaming DSP initialization failed");
       const frames=128*channels;
@@ -89,9 +92,10 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         this.port.postMessage({type:"rebuild-needed",settings:p});
         return;
       }
-      const code=e.warp_stream_set(this.stream,p.low,p.high,p.curvature,p.invert,
+      const code=e.warp_stream_set_ext(this.stream,p.low,p.high,p.curvature,p.invert,
         p.mode==="blend"?1:p.mode==="fold-l"?2:0,
-        p.qualityIndex,p.outside==="pass"?1:0);
+        p.qualityIndex,p.outside==="pass"?1:0,p.engine,p.pitchRatio,
+        p.shiftHz,p.carrierHz,p.zeroMode);
       if(code!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+code});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
@@ -129,7 +133,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       for(let i=0;i<frames;i++){
         const t=this.position+i,slot=t%ringLen;
         const read=(t+ringLen-(this.latency%ringLen))%ringLen;
-        outputDry[i]=ring[read];
+        outputDry[i]=this.latency===0?inp[c*frames+i]:ring[read];
         ring[slot]=inp[c*frames+i];
         outputWet[i]=out[c*frames+i];
       }

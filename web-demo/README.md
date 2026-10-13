@@ -66,3 +66,54 @@ instantiating the legacy whole-file Worker. Original/reference Python
 tests remain separate evidence.
 
 Technical owner: [Issue #14](https://github.com/kinoko34077/frequency-warp-vst/issues/14).
+
+
+## Fixed square 20–2000 Hz graph / #16 formula analysis (Issue #17)
+
+The graph is **always 20–2000Hz on both axes**, on a square canvas, even
+when L/H are much higher. Only the transformed [L,H] region is highlighted;
+Pass outside that interval follows the diagonal, and Kill removes its trace.
+Anything above 2kHz is *clipped from the visualization only* and continues to
+be processed normally. A Ring Mod setting plots both sum and difference
+sidebands, not a single invert mapping.
+
+A read-only *theoretical* table models Issue #16's integer harmonic series:
+- Original ideal fundamental F (entered manually, **not detected**);
+- rational index m/n, virtual-grid fundamental H=F/m;
+- signed constant shift Δ=nF/m;
+- translated harmonic kF+Δ=(mk+n)H;
+- negative-frequency fold |kF−S| and the selected harmonic's landing
+  at H for S=(q+1/m)F;
+- Ring Mod sum/difference f+c and |f−c|;
+- pitch-first order r f+Δ, which is not identical to r(f+Δ).
+
+These are algebraic facts about ideal synthetic tones; audible pitch,
+absolute phase, and coincident amplitudes in real recordings are empirical
+questions. [Historical minutes #16](https://github.com/kinoko34077/frequency-warp-vst/issues/16)
+remains a research record, not proof of production DSP quality.
+
+## Algorithm selector (actually implemented in shared Rust/WASM)
+
+| Engine | DSP | Practical interpretation |
+| --- | --- | --- |
+| A | STFT prominent partial tracking + oscillator resynthesis | Stable-ish tonal peaks; noise/residual removed |
+| B | STFT spectral bin reassignment / inverse FFT | Grid-quantized, phase rough; experimental lower-peak overhead |
+| C | Ring Mod x(t)·cos(2πct) | True low-cost time-domain two-sideband effect, **not frequency inversion** |
+| D | Partial tracking + manual pitch ratio r then signed Δ=nF/m shift | Ideal harmonic lattice controls, negative targets experimental |
+
+Other proposals in Issue #3/#5 (analytic direct inversion, partial+noise
+residual, chirplet/nonuniform spectral analysis) are shown as
+**disabled research candidates**, because no tested engine exists yet.
+Selecting them would be misleading. These are not alternative names for A/B.
+
+FFT window length 1024/2048/4096 and hop N/4 or N/8 are selectable. A change
+of FFT shape restarts the streaming state and alters algorithmic lookahead
+(N−1 samples). AudioWorklet itself always processes **128-sample quanta**;
+that is a browser runtime constraint, not a configurable block size.
+For Ring Mod, FFT window controls have no audio effect: the Ring engine
+bypasses the FFT and has 0 FFT lookahead.
+
+The site reports approximate DSP callback time and the count of callback
+deadlines exceeded on the testing machine, without guaranteeing mobile
+real-time performance. All engine paths use Rust WASM; the Web UI draws
+formula and graph previews only and does not implement a separate DSP.

@@ -21,3 +21,25 @@
 .offline-tool p{font-size:12px;line-height:1.6}
 .offline-tool button{margin:12px 12px 0 0}
 .offline-tool progress{display:block}
+
+/* Fixed-square whole-spectrum mapping, distinct from responsive waveform */
+.curve-panel{min-width:0;align-self:start}
+.curve-panel canvas#curve{display:block;width:100%;height:auto;aspect-ratio:1/1;background:#08191d;border:1px solid #274951;border-radius:8px}
+.graph-legend{display:flex;gap:12px;flex-wrap:wrap;color:#96b9ba;font-size:11px;margin-top:10px}
+.graph-legend span:first-child{color:#55daba}
+.engine-choice{grid-column:1/-1}
+.engine-description,.engine-stats{font-size:12px;line-height:1.6;margin:12px 0;color:#9ec8c7}
+.engine-stats{font-family:ui-monospace,monospace;color:#73d9bd}
+.math-lab{border-top:1px solid #2d4e56;margin-top:24px;padding-top:20px}
+.math-lab summary{cursor:pointer;color:#7ce2c7;font-weight:650}
+.math-lab p{font-size:12px;line-height:1.7;color:#afc4c6}
+.math-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0}
+.math-controls label{color:#95b6ba;font-size:12px;min-width:0}
+.math-controls input,.math-controls select{display:block;width:100%;margin-top:5px;background:#091b21;color:#eaf3f2;border:1px solid #34565d;border-radius:7px;padding:9px 8px;font:inherit}
+.math-results{font-family:ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#0a1a20;border:1px solid #2b454c;color:#c4ded6;border-radius:9px;padding:15px;line-height:1.9;font-size:12px}
+.math-table{max-width:100%;overflow-x:auto;margin-top:14px}
+.math-table table{border-collapse:collapse;width:100%;font:12px ui-monospace,monospace}
+.math-table th,.math-table td{padding:8px 10px;border-bottom:1px solid #294650;text-align:right;white-space:nowrap}
+.math-table th{color:#89c4b9}
+@media(max-width:800px){.math-controls{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:440px){.math-controls{grid-template-columns:1fr 1fr}.math-controls label{font-size:11px}.graph-legend{gap:8px;font-size:10px}}

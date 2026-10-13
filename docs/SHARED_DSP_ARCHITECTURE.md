@@ -148,3 +148,46 @@ optional offline WAV export instantaneous; that still processes the
 whole selected audio file.
 
 Status and evidence: [Issue #14](https://github.com/kinoko34077/frequency-warp-vst/issues/14).
+
+
+## 2026-10-13 multiple engine research controls (Issue #17)
+
+Live Web configuration exposes **actual different Rust streaming engines**, not
+aliases: \`core/src/stream.rs\` selects its processing branch at stream creation
+via \`warp_stream_create_ext\` (retaining \`warp_stream_create\` compatibility).
+
+| ID | Implemented mechanism | Potential quality/CPU tradeoff |
+| --- | --- | --- |
+| 0 | STFT tracked prominent peaks -> continuous-ish oscillator resynthesis | Peak count bounds CPU; residual/noise missing |
+| 1 | STFT FFT-bin relocation with inverse FFT | Bin-grid quantization, coarse phase, lower analysis overhead but still FFT-heavy |
+| 2 | Time-domain Ring Mod, \`x(t)*cos(2πct)\` | True no-FFT sample processing; **not the same spectral warp**, adds two sidebands |
+| 3 | STFT tracked peaks with pitch-ratio and constant-Hz signed shift | Ideal \`r*f+(n/m)F\` approximation to Issue #16; noise and inharmonicities untracked |
+
+Mode 3 accepts explicit user-provided \`F,m,n,r\`; NO automatic fundamental
+inference. Negative target frequency has experimental Reflect/Kill/Fade options
+(phase/energy and transition effects remain unvalidated), separate from the
+L/H-progress Fold mode.
+
+Comparison candidates from specs #3/#5 that **are not implemented** are visible
+as disabled options: direct analytic conjugate linear inversion, sinusoidal
+partial tracking **plus residual reconstruction**, and nonuniform/chirplet
+analysis. The existing oscillator model does not claim to provide residual
+reconstruction merely because it tracks partials. No ranking of acoustic
+quality is inferred from option presence.
+
+The host can select FFT 1024/2048/4096 samples and 4× or 8× overlap:
+hop = FFT length / overlap. AudioWorklet render quantum **always remains 128
+frames**, not configurable via the UI. Increasing overlap roughly doubles
+frame processing frequency, potentially increasing CPU demand. Ring mode
+bypasses FFT entirely and reports 0 FFT lookahead; other engines report
+FFT_N−1 sample algorithmic delay before hardware output latency. The interface
+shows an approximate DSP callback time and number of over-budget blocks
+instead of claiming real-time quality for unsupported devices.
+
+Visualization plots the **full 20–2000Hz input/output coordinate** in a
+square. The [L,H] range is highlighted; outside Pass draws identity and Kill
+omits the trace. Ring mode instead draws two sidebands and is not equivalent
+to the nonlinear warp. Values outside the graph's 20–2000 range are clipped
+**for display only**, not removed by the sound engine. Formula explorer
+reproduces Issue #16's \`H=F/m\`, \`Δ=(n/m)F\`, \`(mk+n)H\`, \`S=qF+H\`,
+\`|kF−S|\`, and Ring Mod sum/difference branches as an ideal numerical model.

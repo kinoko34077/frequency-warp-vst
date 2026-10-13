@@ -42,6 +42,21 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(r=>setTimeout(r,250));
     }
     assert.ok(okay,"page not served");
+    await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
+      document.querySelector("#math-results")?.textContent.includes("仮想基音"),{timeout:16000})
+      .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
+        math:document.querySelector("#math-results")?.textContent,curve:[
+          document.querySelector("#curve").width,document.querySelector("#curve").height],
+        errors:window.__uiErrors||[]
+      })))+" | "+err.message);});
+    const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
+    assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
+    assert.match(await page.$eval("#math-results",el=>el.textContent),/H = F \/ m = 87.5 Hz/);
+    await page.$eval("#numerator",el=>{
+      el.value="-3";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\) F = -262.5 Hz/);
+
     // Instrument old offline Worker: any attempt while clicking play would be a regression.
     await page.evaluate(()=>{
       window.offlineWorkersCreated=0;
@@ -76,6 +91,18 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
+    // Switch actual Rust DSP engines, not cosmetic labels.
+    await page.select("#engine","2");
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    assert.match(await page.$eval("#engine-description",el=>el.textContent),/Ring Mod/);
+    await page.select("#engine","3");
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    await page.select("#engine","1");
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    await page.select("#engine","0");
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    await page.select("#overlap","8");
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
     await page.select("#mode","fold-l");
     await page.select("#outside","kill");
     await page.$eval("#low",n=>{n.value="250";n.dispatchEvent(new Event("input",{bubbles:true}));});
