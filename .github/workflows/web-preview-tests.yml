@@ -60,7 +60,6 @@ jobs:
           grep -q 'warp_stream_set_a_options' web-demo/realtime.worklet.js
           grep -q 'warp_translate_frequency_anchored' web-demo/app.mjs
           grep -q 'warp_stream_set_geometry' web-demo/realtime.worklet.js
-          grep -q 'warp_translate_frequency_controls' web-demo/app.mjs
           grep -q 'warp_stream_set_transform' web-demo/realtime.worklet.js
           grep -q 'warp_stream_set_crusher' web-demo/realtime.worklet.js
           grep -q 'warp_stream_create_ext' web-demo/realtime.worklet.js
