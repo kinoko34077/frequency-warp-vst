@@ -735,6 +735,7 @@ $("#settings-reset").addEventListener("click",()=>{
     engine:"1",mode:"fold-h",outside:"pass",quality:"eco",
     overlap:"4","zero-mode":"0"
   };
+  state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#a-min").value="0";$("#a-reverb").value="0";
@@ -768,15 +769,15 @@ for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
 }
 // WebAudio reference sine is a monitoring aid, not a competing DSP engine.
 const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
-const sinePitch=()=>Number($("#sine-pitch").value);
+const sinePitch=()=>state.sineExactPitch??Number($("#sine-pitch").value);
 const sineFrequency=()=>440*2**((sinePitch()-69)/12);
 function updateSineLabel(){
   const value=sinePitch(),nearest=Math.round(value);
   const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
-  const cents=Math.round((value-nearest)*100);
+  const cents=round3((value-nearest)*100);
   $("#sine-note").textContent=note;
-  $("#sine-cent").value=String(cents);
-  $("#sine-hz").value=sineFrequency().toFixed(2);
+  showNumber("sine-cent",cents);
+  showNumber("sine-hz",sineFrequency());
   if(state.sine&&state.ctx)state.sine.osc.frequency.setTargetAtTime(sineFrequency(),state.ctx.currentTime,.012);
 }
 function stopSine(){
@@ -784,18 +785,32 @@ function stopSine(){
   if(!sine)return;
   try{sine.osc.stop();sine.osc.disconnect();sine.gain.disconnect();}catch{}
 }
-$("#sine-pitch").addEventListener("input",updateSineLabel);
-$("#sine-hz").addEventListener("change",()=>{
-  const hz=clamp(Number($("#sine-hz").value)||440,65,2100);
-  $("#sine-pitch").value=String(clamp(69+12*Math.log2(hz/440),36,96));
+$("#sine-pitch").addEventListener("input",()=>{delete state.sineExactPitch;updateSineLabel();});
+$("#sine-hz").addEventListener("input",()=>{
+  const raw=Number($("#sine-hz").value);
+  if(!Number.isFinite(raw)||$("#sine-hz").value==="")return;
+  const hz=round3(clamp(raw,65,2100));
+  state.sineExactPitch=clamp(69+12*Math.log2(hz/440),36,96);
+  $("#sine-pitch").value=String(state.sineExactPitch);
   updateSineLabel();
 });
-$("#sine-cent").addEventListener("change",()=>{
-  const cents=clamp(Number($("#sine-cent").value)||0,-50,50);
-  const root=Math.round(Number($("#sine-pitch").value));
-  $("#sine-pitch").value=String(clamp(root+cents/100,36,96));
+$("#sine-hz").addEventListener("focus",()=>{
+  $("#sine-hz").value=String(round3(sineFrequency()));$("#sine-hz").select();
+});
+$("#sine-hz").addEventListener("blur",()=>{
+  showNumber("sine-hz",sineFrequency());
+});
+$("#sine-cent").addEventListener("input",()=>{
+  if($("#sine-cent").value==="")return;
+  const cents=round3(clamp(Number($("#sine-cent").value),-50,50));
+  if(!Number.isFinite(cents))return;
+  const root=Math.round(sinePitch());
+  state.sineExactPitch=clamp(root+cents/100,36,96);
+  $("#sine-pitch").value=String(state.sineExactPitch);
   updateSineLabel();
 });
+$("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(round3((sinePitch()-Math.round(sinePitch()))*100));});
+$("#sine-cent").addEventListener("blur",()=>showNumber("sine-cent",(sinePitch()-Math.round(sinePitch()))*100));
 $("#sine-enabled").addEventListener("change",async()=>{
   if(!$("#sine-enabled").checked){stopSine();return;}
   try{
