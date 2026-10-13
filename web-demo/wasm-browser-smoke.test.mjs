@@ -52,7 +52,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.equal(await page.$eval("#invert",el=>el.value),"0","neutral mapping is the only default that allows ordinary pitch shift");
-    assert.equal(await page.$eval("#axis-shift",el=>el.step),"0.05");
+    assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
     await page.$eval("#curvature",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.$eval("#axis-shift",el=>{el.value=".7";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/対数移動: ×2/);
