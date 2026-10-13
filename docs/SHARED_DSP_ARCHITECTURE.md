@@ -138,3 +138,65 @@ iPhone; subjective sound of warp→Ring and pitch, crusher aliasing; FFT
 CPU budget on iPhone. User informally reported that previous iPhone
 version seemed to work; this does NOT verify 600-second worst-case
 memory and DSP cost across devices.
+
+
+## 2026-10-13 generalized frequency-coordinate translation / Issue #25
+
+**Architectural change:** DSP \`engine\` selects *only how the waveform is
+analyzed and reconstructed*: (0) peak tracking and oscillator resynthesis,
+(1) STFT FFT-bin relocation, both experimental. Frequency inversion, signed
+axis translation, #24 rational partial-grid positioning, Ring Mod, and Bit
+Crusher are orthogonal transform/effect settings, not DSP algorithm types.
+Previous engine codes 2/3 remain as compatibility entry points, not exposed
+to users in the Web synthesis-method selector.
+
+The accepted nonlinear Warp coordinate already used:
+\`C_p(f;r) = expm1(p*ln(f/r))/p\`, with \`C_0(f;r)=ln(f/r)\`,
+where \`r>0\` is a reference Hz. We now apply a separate signed displacement
+\`u\` **in the same coordinate** after the existing Warp, not a separate
+pitch/frequency branch. Its inverse is:
+\`T_{p,u,r}(f)=r*exp(u+ln(f/r))\` for \`p=0\`;
+\`T_{1,u,r}(f)=f+u*r\` for \`p=1\`; and
+\`r*(1+p*(C_p(f;r)+u))^(1/p)\` for \`0<p<1\` when in the
+positive domain. A signed extension beyond the zero boundary is used for
+intermediate p, then the existing negative-frequency Reflect/Kill/Fade rule
+applies; this continuation is an *experimental definition*, not a unique
+mathematical or acoustically transparent choice.
+
+Reference \`r\` here is the user's manual theoretical \`F'=r_pitch*F\`
+(HISTORY: avoid conflating coordinate reference \`r\` with pitch ratio).
+The source coefficient \`u\` is dimensionless; in log mode the output ratio
+is \`e^u\`, in linear mode the shift is \`u*F'\` Hz. Thus the same UI slider
+and \`Curvature\` parameter govern both extremes and everything between.
+
+The optional #24 rational harmonic lattice uses \`F'=r_pitch*F\`,
+\`H=F'/m\`, \`s=(n/m)*F'\`; when enabled it is applied after Warp and
+before the shared generalized-axis move. When the actual source is an
+ideal kF series with **no preceding nonlinear warp**, rational results
+occupy \`(mk+n)*H\`. If the nonlinear g(f) is active, the precise
+number-theoretic relationship need not hold for the rendered audio.
+The UI explicitly calls \`T_{p,u,F'}(H)\` a *tracked virtual-root marker*;
+a constant-Hz translation changes a marker but does **not** generally
+produce a new integer-harmonic common divisor. This is essential to avoid
+falsely claiming #24's target-H formula works after arbitrary nonlinear Warp.
+
+On/off Ring Mod is a post-effect independent of the synthesis algorithm,
+not a frequency shifter. It adds two sidebands from the already mapped
+source; it cannot replace a single-sided constant-Hz shift. Bit Crusher is
+also post-FX and independent. AudioWorklet uses
+\`warp_stream_set_transform\` on both init and live changes; WAV Worker uses
+\`warp_stream_render_f32_axis_ext\` with identical extra FX parameters.
+Old C ABI entry points remain available for research compatibility.
+
+Optional reference sine is a **WebAudio oscillator** on a separate
+low-volume output path. It plays without uploaded audio, uses a
+checkbox and chromatic MIDI-like note slider (MIDI 36–96, 0.01 steps),
+computes 440*2^((note−69)/12), and displays nearest note/octave,
+cents offset, and exact Hz. This monitor is not processed through Rust
+spectral DSP and is not included in exported WAV.
+
+This architecture is a clearer division of the single source of
+frequency mapping (Rust) and the audio-host/transport/monitor controls
+(WebAudio). Neither the analytic complex modulation method nor the
+residual-inclusive reference has been promoted to a certified real-time
+DSP algorithm; research in Issue #5/#17 remains open.
