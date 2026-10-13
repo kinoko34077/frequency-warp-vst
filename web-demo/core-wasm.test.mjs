@@ -76,3 +76,42 @@ test("shared WASM exposes both folds and outside-band Pass/Kill",async ()=>{
     e.warp_free_f32(a,n);e.warp_free_f32(b,n);
   }
 });
+
+test("real native-shared Rust WASM streaming ABI processes continuous 128-frame blocks",async ()=>{
+  const e=await load();
+  for(const name of ["warp_stream_create","warp_stream_process","warp_stream_set",
+    "warp_stream_reset","warp_stream_latency","warp_stream_free"]){
+    assert.ok(e[name],name+" not exported to WASM");
+  }
+  const fs=8192,frames=128;
+  const ptr=e.warp_stream_create(fs,1,20,3000,1,1,0,0,0);
+  assert.ok(ptr>0,"stream init failed");
+  assert.equal(e.warp_stream_latency(ptr),1023);
+  const input=e.warp_alloc_f32(frames),output=e.warp_alloc_f32(frames);
+  const result=[];
+  try{
+    for(let block=0;block<65;block++){
+      const inp=new Float32Array(e.memory.buffer,input,frames);
+      for(let i=0;i<frames;i++)
+        inp[i]=.6*Math.cos(2*Math.PI*500*(block*frames+i)/fs);
+      assert.equal(e.warp_stream_process(ptr,input,output,frames),0);
+      const rendered=new Float32Array(e.memory.buffer,output,frames);
+      for(const sample of rendered)result.push(sample);
+    }
+    assert.ok(result.slice(2048).every(Number.isFinite));
+    const magnitude=hz=>{
+      let re=0,im=0;
+      for(let i=0;i<4096;i++){
+        const sample=result[2048+i],theta=2*Math.PI*i*hz/fs;
+        re+=sample*Math.cos(theta);im-=sample*Math.sin(theta);
+      }
+      return Math.hypot(re,im);
+    };
+    assert.ok(magnitude(2520)>magnitude(500)*4,"stream did not move the tone");
+    assert.equal(e.warp_stream_set(ptr,100,3000,.5,.4,2,0,1),0);
+    assert.equal(e.warp_stream_reset(ptr),0);
+  }finally{
+    e.warp_free_f32(input,frames);e.warp_free_f32(output,frames);
+    e.warp_stream_free(ptr);
+  }
+});

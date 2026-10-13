@@ -95,3 +95,56 @@ implements any audio FFT/STFT engine.
   DSP and it may be noticeably delayed for longer audio and High quality.
   The full offline Rust core, rather than a separate JS DSP, is still
   used for every update.
+
+## 2026-10-13 realtime streaming DSP / AudioWorklet (Issue #14)
+
+The shared Rust library now implements **two intentionally distinct
+processing interfaces**, not two separately maintained languages:
+
+- \`core/src/lib.rs\` / \`warp_process_f32_ex\`: original offline R2.1
+  reference-style analysis, used only when exporting the full WAV.
+- \`core/src/stream.rs\` / \`warp_stream_create/set/process/reset/free/latency\`:
+  persistent bounded state, overlap-add STFT and peak-linked sinusoidal
+  resynthesis, with out-of-band spectral complement. The native build
+  exports the same C ABI consumed in browser by WASM. This is the base
+  for a future VST3 host adapter; **no VST3 plugin exists yet**.
+
+The two methods share Rust types/mapping/FFT definitions, while the
+realtime oscillator resynthesis trades some fidelity for lower work per
+block. This is an explicit algorithmic difference, not an additional
+JS implementation or a claim of numerical equivalence.
+
+### Live streaming lifecycle
+
+AudioBufferSourceNode -> AudioWorkletNode (one input, two outputs).
+The processor calls \`warp_stream_process\` for every 128-frame input,
+with fixed-size preallocated WASM buffers/rings. Wet samples go to a
+WebAudio gain; the dry output is lookahead-aligned (N−1 samples).
+WebAudio performs the final Wet/Dry mix. Parameter messages update
+\`warp_stream_set\` in the persistent state at the next Worklet message
+boundary; no processing of the full recording is required. For FFT size
+changes, the stream is recreated to adjust its latency. Starting playback
+compiles/instantiates the WASM binary once; previously compiled bytes
+are cached on the main thread for subsequent playbacks.
+
+A waveform pointer tap/click converts the pointer's x position into a
+sample time. The playback source restarts at that offset and resets the
+Rust stream so previous STFT state does not leak across the jump. Source
+playhead and elapsed display update continuously. Keyboard operation
+supports Enter/Space and ±2s arrows.
+
+### Constraints / measured boundaries
+
+FFT latency is **N−1 samples**: Eco FFT1024 -> 1023 samples, Standard
+FFT2048 -> 2047, High FFT4096 -> 4095. This is distinct from the hardware
+output latency. WASM/AudioWorklet Chrome CI establishes *functional*
+real-time processing without full-file rendering and input seek. It does
+not establish glitch-free guaranteed scheduling on every mobile device;
+block CPU/over-budget diagnostics are exposed when supported.
+
+Web audition is immediate on the normal device buffer timeline aside
+from initial WebAudio/WASM setup and FFT warm-up. This does not make the
+optional offline WAV export instantaneous; that still processes the
+whole selected audio file.
+
+Status and evidence: [Issue #14](https://github.com/kinoko34077/frequency-warp-vst/issues/14).

@@ -1,0 +1,335 @@
+//! AudioWorklet/VST-ready *streaming* prototype on the same Rust DSP
+//! definitions. No whole-track render; 128-frame calls have persistent state.
+//! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
+
+use super::{fft,map_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
+
+pub struct Stream {
+    sample_rate:f64,
+    channels:usize,
+    n:usize,
+    hop:usize,
+    max_peaks:usize,
+    floor:f64,
+    settings:Settings,
+    outside:u32,
+    received:u64,
+    input:Vec<Vec<f64>>,
+    output:Vec<Vec<f64>>,
+    weights:Vec<f64>,
+    window_sq:Vec<f64>,
+    spectrum:Vec<Vec<Complex>>,
+    previous:Vec<Vec<Complex>>,
+    mag:Vec<f64>,
+    candidates:Vec<usize>,
+    peaks:Vec<usize>,
+    tracks:Vec<Track>,
+    next_tracks:Vec<Track>,
+    used:Vec<bool>,
+    complement:Vec<Complex>,
+}
+
+impl Stream {
+    pub fn new(sample_rate:f64, channels:usize, settings:Settings, outside:u32)->Result<Self,&'static str>{
+        if !sample_rate.is_finite()||sample_rate<=0.0||!(1..=2).contains(&channels)
+           ||settings.high>=sample_rate*0.5||outside>1 {return Err("invalid stream config");}
+        map_frequency(settings.low,settings)?;
+        let q=quality(settings.quality).ok_or("invalid streaming quality")?;
+        // Per-block processing has no persistent large file buffer.
+        Ok(Self{
+            sample_rate,channels,n:q.n,hop:q.hop,max_peaks:q.max_peaks,
+            floor:q.floor,settings,outside,received:0,
+            input:vec![vec![0.0;q.n];channels],
+            output:vec![vec![0.0;q.n*2];channels],
+            weights:vec![0.0;q.n*2],
+            window_sq:(0..q.n).map(|i|{
+                let w=0.5-0.5*(TAU*i as f64/q.n as f64).cos();w*w
+            }).collect(),
+            spectrum:vec![vec![Complex::ZERO;q.n];channels],
+            previous:vec![vec![Complex::ZERO;q.n];channels],
+            mag:vec![0.0;q.n/2+1],
+            candidates:Vec::with_capacity(q.n/2),
+            peaks:Vec::with_capacity(q.max_peaks),
+            tracks:Vec::with_capacity(q.max_peaks),
+            next_tracks:Vec::with_capacity(q.max_peaks),
+            used:vec![false;q.max_peaks],
+            complement:vec![Complex::ZERO;q.n],
+        })
+    }
+    pub fn latency(&self)->usize{self.n-1}
+    pub fn configure(&mut self,settings:Settings,outside:u32)->Result<(),&'static str>{
+        if settings.quality!=self.settings.quality{
+            return Err("quality change requires stream rebuild");
+        }
+        if outside>1||settings.high>=self.sample_rate*0.5{return Err("invalid stream configuration");}
+        map_frequency(settings.low,settings)?;
+        self.settings=settings;
+        self.outside=outside;
+        Ok(())
+    }
+    pub fn reset(&mut self){
+        self.received=0;
+        for x in &mut self.input{x.fill(0.0);}
+        for x in &mut self.output{x.fill(0.0);}
+        for x in &mut self.spectrum{x.fill(Complex::ZERO);}
+        for x in &mut self.previous{x.fill(Complex::ZERO);}
+        self.weights.fill(0.0);
+        self.tracks.clear();self.next_tracks.clear();
+    }
+    pub fn process(&mut self,input:&[f32],output:&mut [f32],frames:usize)->Result<(),&'static str>{
+        if frames==0||frames>2048||input.len()!=frames*self.channels||output.len()!=input.len(){
+            return Err("invalid streaming planar block");
+        }
+        // Input and output layout: [channel0 frames][channel1 frames].
+        for i in 0..frames {
+            let t=self.received as usize;
+            let write=t%self.n;
+            for c in 0..self.channels {self.input[c][write]=input[c*frames+i] as f64;}
+            if t+1>=self.n && ((t+1-self.n)%self.hop==0){
+                self.process_frame(t+1-self.n);
+            }
+            if t+1>=self.n{
+                let pos=t+1-self.n;
+                let slot=pos%(self.n*2);
+                let w=self.weights[slot];
+                for c in 0..self.channels{
+                    output[c*frames+i]=if w>1e-9 {(self.output[c][slot]/w) as f32} else {0.0};
+                    self.output[c][slot]=0.0;
+                }
+                self.weights[slot]=0.0;
+            }else{
+                for c in 0..self.channels{output[c*frames+i]=0.0;}
+            }
+            self.received+=1;
+        }
+        Ok(())
+    }
+    fn process_frame(&mut self,start:usize){
+        let half=self.n/2;
+        let step=self.sample_rate/self.n as f64;
+        for c in 0..self.channels{
+            for i in 0..self.n{
+                let ring=(start+i)%self.n;
+                self.spectrum[c][i]=Complex{
+                    r:self.input[c][ring]*self.window_sq[i].sqrt(),i:0.0
+                };
+            }
+            fft(&mut self.spectrum[c],false);
+        }
+        let mut greatest=0.0f64;
+        for k in 1..half{
+            let mut m=0.0;
+            for c in 0..self.channels{
+                let z=self.spectrum[c][k];
+                m+=z.r*z.r+z.i*z.i;
+            }
+            self.mag[k]=m.sqrt();
+            greatest=greatest.max(self.mag[k]);
+        }
+        let threshold=(greatest*self.floor).max(1e-10);
+        self.candidates.clear();
+        for k in 2..half-1{
+            if self.mag[k]>=threshold&&self.mag[k]>=self.mag[k-1]&&self.mag[k]>self.mag[k+1]{
+                self.candidates.push(k);
+            }
+        }
+        self.candidates.sort_unstable_by(|a,b|self.mag[*b].total_cmp(&self.mag[*a]));
+        self.peaks.clear();
+        for &k in self.candidates.iter().take(self.max_peaks){self.peaks.push(k);}
+        self.peaks.sort_unstable();
+        self.used.fill(false);
+        self.next_tracks.clear();
+
+        for &k in &self.peaks{
+            let ref_ch=if self.spectrum[0][k].magnitude()>1e-10{0}else{self.channels-1};
+            let phase=self.spectrum[ref_ch][k].angle();
+            let magnitude=self.mag[k];
+            let frequency=if self.received>=self.n as u64{
+                let prev=self.previous[ref_ch][k];
+                if prev.magnitude()>1e-8{
+                    let delta=(phase-prev.angle()-TAU*k as f64*self.hop as f64/self.n as f64+PI)
+                        .rem_euclid(TAU)-PI;
+                    k as f64*step+delta/(TAU*self.hop as f64/self.sample_rate)
+                }else{self.interpolate(k,step)}
+            }else{
+                self.interpolate(k,step)
+            };
+            if !frequency.is_finite() ||frequency<self.settings.low||frequency>self.settings.high{continue;}
+            let target=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
+            if !(target>0.0&&target<self.sample_rate/2.0){continue;}
+            let diff=target-frequency;
+            let mut closest=None;
+            let mut dist=f64::INFINITY;
+            for (j,old) in self.tracks.iter().enumerate(){
+                let d=(old.frequency-frequency).abs();
+                if !self.used[j]&&d<dist {dist=d;closest=Some(j);}
+            }
+            let mut shift=0.0;
+            if let Some(j)=closest{
+                if dist<(3.0*step).max(0.05*frequency){
+                    self.used[j]=true;
+                    let old=self.tracks[j];
+                    shift=old.phase_shift+PI*(old.difference+diff)*self.hop as f64/self.sample_rate;
+                }
+            }
+            self.next_tracks.push(Track{frequency,difference:diff,phase_shift:shift});
+
+            // At window centre, FFT-bin phase and carrier phase share a
+            // common origin. Shared shift preserves L/R phase differences.
+            let omega=TAU*target/self.sample_rate;
+            let rot_r=omega.cos();let rot_i=omega.sin();
+            for c in 0..self.channels{
+                let z=self.spectrum[c][k];
+                let amplitude=4.0*z.magnitude()/self.n as f64;
+                if amplitude<1e-9{continue;}
+                let centre_phase=z.angle()+PI*k as f64+shift;
+                let start_phase=centre_phase-omega*(self.n as f64/2.0);
+                let mut cr=start_phase.cos();
+                let mut ci=start_phase.sin();
+                for i in 0..self.n{
+                    let slot=(start+i)%(self.n*2);
+                    self.output[c][slot]+=amplitude*cr*self.window_sq[i];
+                    let new_r=cr*rot_r-ci*rot_i;
+                    ci=cr*rot_i+ci*rot_r;cr=new_r;
+                }
+            }
+        }
+        // Reconstruct out-of-range bins, never duplicate entire dry signal.
+        if self.outside==1{
+            for c in 0..self.channels{
+                self.complement.fill(Complex::ZERO);
+                for k in 0..=half{
+                    let freq=k as f64*step;
+                    if freq<self.settings.low || freq>self.settings.high{
+                        self.complement[k]=self.spectrum[c][k];
+                        if k>0&&k<half{
+                            self.complement[self.n-k]=self.spectrum[c][self.n-k];
+                        }
+                    }
+                }
+                fft(&mut self.complement,true);
+                for i in 0..self.n{
+                    let slot=(start+i)%(self.n*2);
+                    // FFT inverse already has analysis Hann. Synthesis Hann
+                    // is the second factor needed for overlap-add.
+                    self.output[c][slot]+=self.complement[i].r*self.window_sq[i].sqrt();
+                }
+            }
+        }
+        for i in 0..self.n{
+            let slot=(start+i)%(self.n*2);
+            self.weights[slot]+=self.window_sq[i];
+        }
+        std::mem::swap(&mut self.tracks,&mut self.next_tracks);
+        std::mem::swap(&mut self.previous,&mut self.spectrum);
+    }
+    fn interpolate(&self,k:usize,step:f64)->f64{
+        let l=self.mag[k-1].max(1e-12).ln();
+        let m=self.mag[k].max(1e-12).ln();
+        let r=self.mag[k+1].max(1e-12).ln();
+        let d=l-2.0*m+r;
+        let fraction=if d.abs()>1e-10{(0.5*(l-r)/d).clamp(-0.5,0.5)}else{0.0};
+        (k as f64+fraction)*step
+    }
+}
+
+fn mode_from_number(mode:u32)->Progression{
+    match mode{1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh}
+}
+fn params(low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32)->Settings{
+    Settings{low,high,curvature:p,invert:amount,mode:mode_from_number(mode),quality:quality_id}
+}
+#[no_mangle]
+pub extern "C" fn warp_stream_create(
+    sample_rate:f64,channels:u32,low:f64,high:f64,p:f64,
+    amount:f64,mode:u32,quality_id:u32,outside:u32
+)->*mut Stream{
+    match Stream::new(sample_rate,channels as usize,params(low,high,p,amount,mode,quality_id),outside){
+        Ok(stream)=>Box::into_raw(Box::new(stream)),
+        Err(_)=>std::ptr::null_mut()
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_free(ptr:*mut Stream){
+    if !ptr.is_null(){drop(Box::from_raw(ptr));}
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_reset(ptr:*mut Stream)->i32{
+    if ptr.is_null(){return -1;}(&mut *ptr).reset();0
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_latency(ptr:*const Stream)->u32{
+    if ptr.is_null(){0}else{(&*ptr).latency() as u32}
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set(
+    ptr:*mut Stream,low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,outside:u32
+)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).configure(params(low,high,p,amount,mode,quality_id),outside){
+        Ok(_)=>0,Err(_)=>-2
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_process(
+    ptr:*mut Stream,src:*const f32,dst:*mut f32,frames:u32
+)->i32{
+    if ptr.is_null()||src.is_null()||dst.is_null()||frames==0||frames>2048{return -1;}
+    let stream=&mut *ptr;
+    let n=frames as usize*stream.channels;
+    let inp=std::slice::from_raw_parts(src,n);
+    let out=std::slice::from_raw_parts_mut(dst,n);
+    match stream.process(inp,out,frames as usize){Ok(_)=>0,Err(_)=>-2}
+}
+
+#[cfg(test)]
+mod tests{
+    use super::*;
+    fn settings()->Settings{
+        Settings{low:20.0,high:3000.0,curvature:1.0,invert:1.0,
+            mode:Progression::FoldHigh,quality:0}
+    }
+    #[test]
+    fn continuous_blocks_shift_tone_with_bounded_latency(){
+        let fs=8192.0;
+        let mut st=Stream::new(fs,1,settings(),0).unwrap();
+        let mut rendered=Vec::new();
+        for block in 0..65{
+            let input:(Vec<f32>)=(0..128).map(|j|{
+                let i=block*128+j;
+                (0.6*(TAU*500.0*i as f64/fs).cos()) as f32
+            }).collect();
+            let mut output=vec![0.0;128];
+            st.process(&input,&mut output,128).unwrap();
+            rendered.extend(output);
+        }
+        assert!(rendered.iter().all(|x|x.is_finite()));
+        assert_eq!(st.latency(),1023);
+        let offset=2048;
+        let portion=&rendered[offset..offset+4096];
+        // Compare direct projection at expected and source frequencies.
+        let magnitude=|hz:f64|{
+            let mut re=0.0;let mut im=0.0;
+            for (i,&x) in portion.iter().enumerate(){
+                let angle=TAU*hz*i as f64/fs;
+                re+=x as f64*angle.cos();im-=x as f64*angle.sin();
+            }
+            (re*re+im*im).sqrt()
+        };
+        let warped=magnitude(2520.0);
+        let original=magnitude(500.0);
+        assert!(warped>original*4.0,"peak shift missing: warped={warped}, original={original}");
+        assert!(warped>150.0,"unexpectedly low shifted energy {warped}");
+    }
+    #[test]
+    fn stream_parameter_changes_and_reset(){
+        let mut st=Stream::new(48000.0,2,settings(),1).unwrap();
+        let inp=vec![0.2;256];let mut out=vec![0.0;256];
+        st.process(&inp,&mut out,128).unwrap();
+        st.configure(Settings{invert:0.4,mode:Progression::FoldLow,..settings()},0).unwrap();
+        st.process(&inp,&mut out,128).unwrap();
+        st.reset();
+        assert_eq!(st.received,0);
+        assert!(st.tracks.is_empty());
+    }
+}

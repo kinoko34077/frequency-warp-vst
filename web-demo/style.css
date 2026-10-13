@@ -7,3 +7,17 @@
 .auto-label{display:flex;align-items:center;gap:9px;color:#a5d3c8;font-size:13px;margin-top:10px;cursor:pointer}
 .auto-label input{accent-color:#55d7b6;width:17px;height:17px}
 @media(max-width:560px){.bounds{grid-template-columns:1fr;gap:15px}.selectors{grid-template-columns:1fr 1fr}.bounds .control-heading{align-items:center}}
+
+.wave-wrap{position:relative;touch-action:manipulation;cursor:crosshair;overflow:hidden}
+.wave-wrap canvas{cursor:crosshair;touch-action:manipulation;outline-offset:-3px}
+.wave-wrap canvas:focus-visible{outline:2px solid #7ee7d0}
+.playhead{position:absolute;top:8px;bottom:8px;left:0;z-index:2;pointer-events:none;width:2px;background:#ffce87;box-shadow:0 0 9px #ffce8799;transition:left .035s linear}
+.transport{display:flex;justify-content:space-between;font:12px ui-monospace,monospace;color:#bad4d8;margin-top:7px}
+.wave-hint{font-size:12px;color:#9abac1;margin-top:8px}
+.realtime-lead{font-size:14px;line-height:1.6;color:#c5e9e2;margin-bottom:14px}
+.rt-indicator{display:inline-flex;border:1px solid #335958;border-radius:20px;padding:8px 13px;color:#6be2b8;font-size:12px;background:#12352f}
+.offline-tool{border-top:1px solid #34525a;margin-top:22px;padding-top:18px;color:#99b5bd}
+.offline-tool summary{cursor:pointer;color:#c0dbd9;font-size:13px}
+.offline-tool p{font-size:12px;line-height:1.6}
+.offline-tool button{margin:12px 12px 0 0}
+.offline-tool progress{display:block}
