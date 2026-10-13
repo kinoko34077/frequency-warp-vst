@@ -90,3 +90,14 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .mini-harmonics div{font-size:9px;padding:6px 3px}
   .graph-note{font-size:10px}
 }
+
+/* Unified-axis shift and an independent low-volume reference oscillator */
+.axis-explainer{display:block;margin-top:7px;font-size:10px;color:#85b7b0;line-height:1.45}
+.sine-monitor{padding-top:15px;padding-bottom:15px}
+.sine-monitor .section-header{margin-bottom:8px}
+.sine-toggle{display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:#bfe9d9;cursor:pointer}
+.sine-toggle input{accent-color:#65dcbb;width:18px;height:18px}
+.sine-monitor>input[type=range]{display:block;width:100%;accent-color:#6be3c5}
+.sine-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:7px;font:12px ui-monospace,monospace;color:#addbcf}
+.sine-meta strong{color:#71dfbc}
+@media(max-width:450px){.sine-monitor{padding:12px}.sine-meta{font-size:11px}.axis-explainer{font-size:9px}}
