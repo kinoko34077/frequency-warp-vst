@@ -24,12 +24,7 @@ jobs:
           node-version: '22'
       - name: Check actual JS FFT/STFT output and stereo phase
         run: node --test web-demo/dsp.test.mjs
-      - name: Install browser smoke dependency and locate Chrome
-        run: |
-          npm install --no-save --no-package-lock puppeteer-core@24
-          command -v google-chrome
-      - name: Test standalone file upload and DSP in headless Chrome
-        run: node --test web-demo/browser-smoke.test.mjs
+      # Full browser/WASM integration is checked in shared-core-tests.yml.
       - name: Check browser resources exist
         run: |
           test -s web-demo/index.html
