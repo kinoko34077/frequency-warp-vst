@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,translate_frequency_controls,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,translate_frequency_controls,translate_frequency_anchored,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -28,6 +28,10 @@ pub struct Stream {
     crusher_hold:u32,
     crusher_counter:u64,
     crusher_value:Vec<f32>,
+    a_min_hz:f64,
+    a_reverb_amount:f32,
+    a_reverb_delays:Vec<Vec<Vec<f32>>>,
+    a_reverb_pos:[usize;3],
     zero_mode:u32, // 0=reflect,1=kill,2=fade
     received:u64,
     input:Vec<Vec<f64>>,
@@ -70,7 +74,12 @@ impl Stream {
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
-            crusher_value:vec![0.0;channels],zero_mode,received:0,
+            crusher_value:vec![0.0;channels],
+            a_min_hz:20.0,a_reverb_amount:0.0,
+            a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
+                .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
+                .collect()).collect(),
+            a_reverb_pos:[0;3],zero_mode,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
             weights:vec![0.0;q.n*2],
@@ -130,6 +139,13 @@ impl Stream {
         }
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
+    pub fn set_a_options(&mut self,min_hz:f64,reverb:f64)->Result<(),&'static str>{
+        if !min_hz.is_finite()||!(20.0..=20000.0).contains(&min_hz)
+           || !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
+            return Err("invalid A options");
+        }
+        self.a_min_hz=min_hz;self.a_reverb_amount=reverb as f32;Ok(())
+    }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
             return Err("invalid bit-crusher settings");
@@ -145,12 +161,26 @@ impl Stream {
         }else{self.carrier_hz};
         let inc=TAU*carrier/self.sample_rate;
         let levels=(1u32<<self.crusher_bits.saturating_sub(1)) as f32;
+        let feedback=[0.48f32,0.55,0.61];
         for i in 0..frames{
             let modulator=if self.ring_enabled {self.ring_phase.cos() as f32}else{1.0};
             if self.ring_enabled{self.ring_phase=(self.ring_phase+inc).rem_euclid(TAU);}
             for c in 0..self.channels{
                 let idx=c*frames+i;
-                let sample=output[idx]*modulator;
+                let mut sample=output[idx];
+                if self.engine==0 && self.a_reverb_amount>0.0{
+                    let mut tail=0.0;
+                    for j in 0..3{
+                        let pos=self.a_reverb_pos[j];
+                        let delay=&mut self.a_reverb_delays[c][j];
+                        let prev=delay[pos];
+                        delay[pos]=sample+prev*feedback[j];
+                        tail+=prev;
+                    }
+                    sample=sample*(1.0-self.a_reverb_amount)
+                        +tail/3.0*self.a_reverb_amount;
+                }
+                sample*=modulator;
                 output[idx]=if self.crusher_bits==0{sample}else{
                     if self.crusher_counter%(self.crusher_hold as u64)==0 {
                         self.crusher_value[c]=
@@ -160,13 +190,22 @@ impl Stream {
                 };
             }
             self.crusher_counter+=1;
+            if self.engine==0 && self.a_reverb_amount>0.0{
+                for j in 0..3{
+                    self.a_reverb_pos[j]=(self.a_reverb_pos[j]+1)%
+                        self.a_reverb_delays[0][j].len();
+                }
+            }
         }
     }
     pub fn reset(&mut self){
         self.received=0;
         self.ring_phase=0.0;
         self.crusher_counter=0;
-        self.crusher_value.fill(0.0);
+        self.crusher_value.fill(0.0);self.a_reverb_pos=[0;3];
+        for channel in &mut self.a_reverb_delays{
+            for delay in channel{delay.fill(0.0);}
+        }
         for x in &mut self.input{x.fill(0.0);}
         for x in &mut self.output{x.fill(0.0);}
         for x in &mut self.spectrum{x.fill(Complex::ZERO);}
@@ -238,7 +277,8 @@ impl Stream {
                             self.pitch_ratio*base+self.shift_hz
                         }else{base};
                         if old<=0.0 {old}else{
-                            translate_frequency_controls(old,self.axis_pivot,self.axis_slope,
+                            translate_frequency_anchored(old,self.source_pivot_anchor(),
+                                self.axis_pivot,self.axis_slope,
                                 self.axis_reference,self.settings.curvature,self.axis_shift)
                         }
                     }else if self.outside==1 {f} else {continue};
@@ -294,7 +334,7 @@ impl Stream {
             }else{
                 self.interpolate(k,step)
             };
-            if !frequency.is_finite() ||frequency<self.settings.low||frequency>self.settings.high{continue;}
+            if !frequency.is_finite() ||frequency<self.settings.low.max(self.a_min_hz)||frequency>self.settings.high{continue;}
             // Transform semantics are orthogonal to the resynthesis engine:
             // g(f) -> optional Issue #24 rational lattice -> axis-translation.
             let mapped=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
@@ -302,7 +342,8 @@ impl Stream {
                 self.pitch_ratio*mapped+self.shift_hz
             }else{mapped};
             let target=if staged<=0.0 {staged}else {
-                translate_frequency_controls(staged,self.axis_pivot,self.axis_slope,
+                translate_frequency_anchored(staged,self.source_pivot_anchor(),
+                    self.axis_pivot,self.axis_slope,
                     self.axis_reference,self.settings.curvature,self.axis_shift)
             };
             let (target,fade_gain)=match self.resolve_zero(target,step){
@@ -374,6 +415,13 @@ impl Stream {
         }
         std::mem::swap(&mut self.tracks,&mut self.next_tracks);
         std::mem::swap(&mut self.previous,&mut self.spectrum);
+    }
+    fn source_pivot_anchor(&self)->f64{
+        let pivot=self.axis_pivot;
+        let base=if pivot>=self.settings.low && pivot<=self.settings.high{
+            map_frequency(pivot,self.settings).unwrap_or(pivot)
+        }else{pivot};
+        if self.rational_enabled{self.pitch_ratio*base+self.shift_hz}else{base}
     }
     fn resolve_zero(&self,target:f64,step:f64)->Option<(f64,f64)>{
         if !target.is_finite(){return None;}
