@@ -148,7 +148,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       curve:document.querySelector("#curve").getBoundingClientRect()
     }));
     assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
-    assert.ok(layout.curve.width>200);
+    assert.ok(layout.curve.width>200,"Mobile graph layout "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
     await page.close();
   }finally{
