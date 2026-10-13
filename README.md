@@ -12,8 +12,9 @@ the mapping permits.
 - **R2.1:** measured nonlinear STFT candidate, limitations recorded — PR #7.
 - **Shared engine:** Rust `core/` used both as native ABI and browser WASM.
   Research build in [PR #11](https://github.com/kinoko34077/frequency-warp-vst/pull/11).
-- **Browser:** [GitHub Pages audio audition](https://kinoko34077.github.io/frequency-warp-vst/)
-  (available **after successful Pages deployment**); up to 120 seconds.
+- **Browser (live):** [GitHub Pages AudioWorklet audio audition](https://kinoko34077.github.io/frequency-warp-vst/)
+  — continuous shared Rust/WASM streaming controls and waveform seek; up to 120 seconds.
+- **Real-time research prototype:** Issue #14, PR #15; native and WASM Rust streaming process blocks; optional offline WAV export remains separate.
 - **Next research:** R2.2 independently compare sinusoidal partial tracking
   and residual preservation, then stereo/onset/CPU studies under Issue #5.
 
