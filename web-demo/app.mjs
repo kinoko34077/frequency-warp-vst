@@ -174,7 +174,7 @@ async function ensureSharedCore(){
         typeof core.warp_map_frequency!=="function"||
         typeof core.warp_translate_frequency_anchored!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
-      drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
+      drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
       return bytes;
     })().catch(error=>{
       state.wasmPromise=null;
@@ -443,7 +443,7 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
-  labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
+  labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   state.offline=null;controls.download.disabled=true;
   const p=state.player;
   if(!p)return;
@@ -829,6 +829,6 @@ $("#sine-enabled").addEventListener("change",async()=>{
 });
 window.addEventListener("pagehide",stopSine);
 updateSineLabel();
-attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker);
+attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker,settings);
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});
