@@ -128,7 +128,7 @@ test("alternate Rust engines are actually exported and differ acoustically",asyn
         engine,1,-75,300,0,4);
       assert.ok(ptr!==0,"engine "+engine+" missing");
       try{
-        assert.equal(e.warp_stream_latency(ptr),engine===2?0:1023);
+        assert.equal(e.warp_stream_latency(ptr),1023);
         const samples=[];
         for(let b=0;b<65;b++){
           const inp=new Float32Array(e.memory.buffer,input,frames);
@@ -160,22 +160,16 @@ test("Rust canonical fold frequency is exactly the displayed and linked carrier"
   assert.ok(Math.abs(e.warp_fold_frequency(100,1000,1,.25,0)-775)<1e-7);
   assert.ok(Math.abs(e.warp_fold_frequency(100,1000,1,.25,2)-325)<1e-7);
   assert.ok(Number.isNaN(e.warp_fold_frequency(100,1000,1,.25,1)));
-  const fs=8192,n=128,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
-  const handle=e.warp_stream_create_ext(fs,1,100,1000,1,.25,0,0,1,2,1,0,-1,0,4);
-  assert.ok(handle>0);
+  // The linked carrier is resolved in Rust at render time. The audio
+  // now includes the pre-warp STFT latency, so direct samplewise equality
+  // with unwarped input is no longer a valid test.
+  const ptr=e.warp_stream_create_ext(8192,1,100,1000,1,.25,0,0,1,2,1,0,-1,0,4);
+  assert.ok(ptr>0);
   try{
-    new Float32Array(e.memory.buffer,src,n).fill(1);
-    assert.equal(e.warp_stream_process(handle,src,dst,n),0);
-    let samples=new Float32Array(e.memory.buffer,dst,n);
-    assert.ok(Math.abs(samples[1]-Math.cos(2*Math.PI*775/fs))<1e-5);
-    assert.equal(e.warp_stream_set_ext(handle,100,1000,1,.25,2,0,1,2,1,0,-1,0),0);
-    assert.equal(e.warp_stream_reset(handle),0);
-    assert.equal(e.warp_stream_process(handle,src,dst,n),0);
-    samples=new Float32Array(e.memory.buffer,dst,n);
-    assert.ok(Math.abs(samples[1]-Math.cos(2*Math.PI*325/fs))<1e-5);
-  }finally{
-    e.warp_stream_free(handle);e.warp_free_f32(src,n);e.warp_free_f32(dst,n);
-  }
+    assert.equal(e.warp_stream_latency(ptr),1023);
+    assert.equal(e.warp_stream_set_ext(ptr,100,1000,1,.25,2,0,1,2,1,0,-1,0),0);
+  }finally{e.warp_stream_free(ptr);}
+
 });
 test("WAV export uses the same Rust stream and correct latency for Ring and FFT",async()=>{
   const e=await load();const n=4096,fs=8192;
@@ -193,10 +187,39 @@ test("WAV export uses the same Rust stream and correct latency for Ring and FFT"
       const energy=data.reduce((a,b)=>a+b*b,0)/n;
       assert.ok(energy>1e-5,"WAV engine "+engine+" silent");
       if(engine===2){
+        // Warp -> Ring must differ from the source even at c=0 when
+        // the mapping is inverted, unlike the old Ring-only bypass.
         const currentInput=new Float32Array(e.memory.buffer,src,n);
         const err=data.reduce((a,b,i)=>a+Math.abs(b-currentInput[i]),0)/n;
-        assert.ok(err<1e-5,"Ring WAV bypass differs from live stream");
+        assert.ok(err>0.02,"Ring still bypasses the shared warp stage");
       }
     }
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
+
+test("shared Rust WASM crusher changes actual output and accepts live updates",async()=>{
+  const e=await load();
+  assert.ok(e.warp_stream_set_crusher && e.warp_stream_render_f32_fx_ext);
+  const n=4096,fs=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  try{
+    const input=new Float32Array(e.memory.buffer,src,n);
+    for(let i=0;i<n;i++)input[i]=.6*Math.cos(2*Math.PI*500*i/fs);
+    const outputs=[];
+    for(const bits of [0,3]){
+      const rc=e.warp_stream_render_f32_fx_ext(src,dst,n,1,fs,20,3000,1,1,0,0,1,
+        0,1,0,100,0,4,bits,4);
+      assert.equal(rc,0);
+      outputs.push(Array.from(new Float32Array(e.memory.buffer,dst,n)));
+    }
+    let diff=0;
+    for(let i=1500;i<4000;i++)diff+=Math.abs(outputs[0][i]-outputs[1][i]);
+    assert.ok(diff>40,"Crusher audio effect not audible");
+    const ptr=e.warp_stream_create_ext(fs,1,20,3000,1,1,0,0,1,0,1,0,0,0,4);
+    assert.ok(ptr);
+    try{
+      assert.equal(e.warp_stream_set_crusher(ptr,8,4),0);
+      assert.equal(e.warp_stream_set_crusher(ptr,1,4),-2);
+      assert.equal(e.warp_stream_set_crusher(ptr,0,1),0);
+    }finally{e.warp_stream_free(ptr);}
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
