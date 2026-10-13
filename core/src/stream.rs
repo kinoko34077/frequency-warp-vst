@@ -416,7 +416,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_ext(
         engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div) {
         Ok(st)=>st,Err(_)=>return -2
     };
-    let total=frames as usize,channel_count=channels as usize;
+    let total=frames as usize;
+    let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
     let dest=std::slice::from_raw_parts_mut(output,total*channel_count);
     let latency=st.latency();
@@ -538,7 +539,7 @@ mod tests{
             frames as u32,1,rate,20.0,3000.0,1.0,1.0,0,0,1,
             2,1.0,0.0,0.0,0,4)};
         assert_eq!(status,0);
-        assert!(output.iter().zip(&input).map(|(a,b)|(a-b).abs()).sum::<f32>()/frames as f32<1e-5);
+        assert!(output.iter().zip(&input).map(|(a,b)|(a-b).abs()).sum::<f32>()/(frames as f32)<1e-5);
     }
     #[test]
     fn stream_parameter_changes_and_reset(){
