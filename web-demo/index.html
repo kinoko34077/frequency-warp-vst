@@ -10,7 +10,7 @@
 <body>
   <main>
     <header class="header">
-      <div class="brand"><span class="logo">∿</span><div><h1>Frequency Warp</h1><p>Audio Preview · R2.1 Research</p></div></div>
+      <div class="brand"><span class="logo">∿</span><div><h1>Frequency Warp</h1><p>Audio Preview · Shared Rust/WASM Core</p></div></div>
       <span class="phase">Experimental</span>
     </header>
     <section class="panel upload-section">
@@ -19,7 +19,7 @@
         <div class="upload-icon">♫</div>
         <strong>音声ファイルを読み込む</strong>
         <p>クリックまたはドラッグ＆ドロップ</p>
-        <small>WAV / MP3 などブラウザ対応の音声 · 最大75MB · 先頭10秒を解析</small>
+        <small>WAV / MP3 などブラウザ対応の音声 · 最大75MB · 先頭120秒まで変換</small>
         <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac">
       </div>
       <p id="file-meta" class="meta" aria-live="polite">音声未選択</p>
@@ -68,7 +68,7 @@
     </section>
     <section class="notice">
       <strong>研究用プレビューについて</strong>
-      <p>現在のR2.1 STFTアルゴリズムをJavaScriptで試聴する版です。処理は端末内で完結し、音声はサーバーへ送信されません。リアルタイム処理や完成VSTではありません。</p>
+      <p>現在のR2.1 STFTアルゴリズムを共通Rust/WASMエンジンで試聴する版です。DSP本体は共通Rustエンジンから生成したWASMで動き、音声はサーバーへ送信されません。リアルタイム処理や完成VSTではありません。</p>
       <p>ノイズ・残響・複雑な音では成分欠落、位相ずれ、音量変化が発生します。テスト対象帯域は20Hz〜min(16kHz, サンプルレート×0.45)で、この帯域外や未追跡成分は試作上出力されません。これは製品仕様として採用した帯域外ルールではありません。</p>
       <p>Qualityの段階はこのブラウザ試作品専用の計算設定であり、完成版VST3の品質段階とは異なります。</p>
     </section>

@@ -1,0 +1,13 @@
+[package]
+name = "frequency-warp-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared offline spectral warp DSP engine for native plugin adapters and WebAssembly"
+
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
