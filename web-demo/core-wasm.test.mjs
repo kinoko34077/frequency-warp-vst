@@ -107,7 +107,9 @@ test("real native-shared Rust WASM streaming ABI processes continuous 128-frame 
       }
       return Math.hypot(re,im);
     };
-    assert.ok(magnitude(2520)>magnitude(500)*4,"stream did not move the tone");
+    // The spectral pivot (350Hz) now remains fixed through inversion:
+    // g(500)=2520Hz, g(350)=2670Hz => 350+(2520-2670)=200Hz.
+    assert.ok(magnitude(200)>magnitude(500)*4,"inverted pivot-mapped stream lost tone");
     assert.equal(e.warp_stream_set(ptr,100,3000,.5,.4,2,0,1),0);
     assert.equal(e.warp_stream_reset(ptr),0);
   }finally{
