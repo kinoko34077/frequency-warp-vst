@@ -73,7 +73,7 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
     node.replaceChildren(fragment);
   };
   populate("#math-variables",variables);
-  const pivot=actual?.axisPivot??Number($("#axis-pivot-value").value)||0;
+  const pivot=actual?.axisPivot??(Number($("#axis-pivot-value").value)||0);
   populate("#coordinate-details",[
     ["起点",fmt(pivot)+" Hz"],
     ["傾き",fmt(actual?.axisSlope??Number($("#axis-slope").value))+" 倍"],
