@@ -50,6 +50,7 @@
           </div>
           <div class="control"><div class="control-heading"><label for="axis-shift">周波数軸の上下移動</label><span class="axis-value-tools"><output id="axis-shift-value">0</output><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
             <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
+            <label class="axis-numeric-label" for="axis-shift-number">移動量の数値指定 <input id="axis-shift-number" type="number" min="-2" max="2" step=".05" value="0"></label>
             <div class="ends"><span>下降 −</span><span>上昇 ＋</span></div>
             <small class="axis-explainer" id="axis-explainer">基準350Hzに対して 0 Hz</small><small class="axis-mode-hint" id="axis-mode-hint">倍率移動だけを聴くときは反転量0%にしてください。</small>
           </div>
