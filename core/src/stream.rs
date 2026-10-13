@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,map_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -46,7 +46,7 @@ impl Stream {
         if engine>3||zero_mode>2||![4,8].contains(&hop_div)||
            !pitch_ratio.is_finite()||pitch_ratio<=0.0||pitch_ratio>4.0||
            !shift_hz.is_finite()||shift_hz.abs()>20000.0||
-           !carrier_hz.is_finite()||carrier_hz<0.0||carrier_hz>20000.0 {
+           !carrier_hz.is_finite()||carrier_hz< -1.0||carrier_hz>20000.0 {
             return Err("invalid streaming engine settings");
         }
         if !sample_rate.is_finite()||sample_rate<=0.0||!(1..=2).contains(&channels)
@@ -92,7 +92,7 @@ impl Stream {
         pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,zero_mode:u32)->Result<(),&'static str>{
         if engine>3||zero_mode>2||!pitch_ratio.is_finite()||pitch_ratio<=0.0||pitch_ratio>4.0||
            !shift_hz.is_finite()||shift_hz.abs()>20000.0||
-           !carrier_hz.is_finite()||carrier_hz<0.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
+           !carrier_hz.is_finite()||carrier_hz< -1.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
         self.configure(settings,outside)?;
         if self.engine!=engine {self.reset();}
         self.engine=engine;self.pitch_ratio=pitch_ratio;self.shift_hz=shift_hz;
@@ -115,7 +115,13 @@ impl Stream {
         }
         // Engine 2 is a true sample-by-sample ring modulator, without FFT lookahead.
         if self.engine==2 {
-            let inc=TAU*self.carrier_hz/self.sample_rate;
+            // -1 is a stable ABI sentinel: link Ring carrier to the Rust
+            // mapping's *input-domain* Fold kink. A Blend has no kink; fail
+            // closed by using 0 Hz rather than manufacturing a midpoint.
+            let carrier=if self.carrier_hz==-1.0 {
+                fold_frequency(self.settings).unwrap_or(0.0)
+            }else{self.carrier_hz};
+            let inc=TAU*carrier/self.sample_rate;
             for i in 0..frames {
                 let carrier=self.ring_phase.cos() as f32;
                 for c in 0..self.channels {output[c*frames+i]=input[c*frames+i]*carrier;}
@@ -441,6 +447,22 @@ mod tests{
         assert!((out[0]-1.0).abs()<1e-5);
         assert!((out[1]-(TAU*500.0/8192.0).cos() as f32*(TAU*300.0/8192.0).cos() as f32).abs()<1e-5);
         st.configure_extended(settings(),1,2,1.0,0.0,600.0,0).unwrap();
+    }
+    #[test]
+    fn linked_ring_carrier_uses_core_fold_point_and_tracks_live_settings(){
+        let mut st=Stream::new_extended(8192.0,1,
+            Settings{low:100.0,high:1000.0,curvature:1.0,invert:0.25,
+                mode:Progression::FoldHigh,quality:0},
+            1,2,1.0,0.0,-1.0,0,4).unwrap();
+        let source=vec![1.0;128];let mut dst=vec![0.0;128];
+        st.process(&source,&mut dst,128).unwrap();
+        assert!((dst[1]-(TAU*775.0/8192.0).cos() as f32).abs()<1e-4);
+        let changed=Settings{low:100.0,high:1000.0,curvature:1.0,invert:0.25,
+            mode:Progression::FoldLow,quality:0};
+        st.configure_extended(changed,1,2,1.0,0.0,-1.0,0).unwrap();
+        assert_eq!(st.carrier_hz,-1.0);
+        st.reset();st.process(&source,&mut dst,128).unwrap();
+        assert!((dst[1]-(TAU*325.0/8192.0).cos() as f32).abs()<1e-4);
     }
     #[test]
     fn alternate_spectral_and_harmonic_engines_stream(){
