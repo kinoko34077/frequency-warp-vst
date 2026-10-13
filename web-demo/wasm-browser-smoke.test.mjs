@@ -65,7 +65,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       const snapshot=await page.evaluate(()=>({
         status:document.querySelector("#status").textContent,
         indicator:document.querySelector("#rt-indicator").textContent,
-        buttons:[document.querySelector("#play-wet").disabled,document.querySelector("#stop").disabled]
+        buttons:[document.querySelector("#play-wet").disabled,document.querySelector("#stop").disabled],
+        diag:window.__warpDebug?.()
       }));
       throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
     }
