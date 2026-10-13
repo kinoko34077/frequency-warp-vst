@@ -1,81 +1,68 @@
-# Frequency Warp — Web試聴版（共通Rust/WASM DSP）
+# Web Audio Preview — real-time playback via shared Rust DSP
 
-**GitHub Pages公開URL（デプロイ成功後有効）**:
-https://kinoko34077.github.io/frequency-warp-vst/
+GitHub Pages: https://kinoko34077.github.io/frequency-warp-vst/
 
-このページは **VST3アダプターと共通利用するRust音声処理コア** を
-WebAssemblyにコンパイルし、ブラウザのWeb Workerから実行する研究版。
-ブラウザはファイル読込、波形描画、原音／Wet再生、WAV保存を担当する。
-以前のJavaScript製独立STFTプロセッサは削除済み。
+## Real-time behavior (Issue #14)
 
-## 使い方
-1. Pagesを開き、WAV/MP3等の音声ファイルを選ぶ（アップロードは発生しない）。
-2. Curvature、Invert、Fold/Blend、Wet、Qualityを設定。
-3. 「音声を変換する」を押し、処理後に原音／変換音を聴き比べる。
-4. 必要ならWAV保存。Wetだけは変換後もすぐ混合割合を変えられる。
+**Play original** or **Play real-time warp** starts audio without first
+processing the whole 10–120 second recording. The source is decoded once
+in the browser, streamed through **AudioWorklet 128-sample quanta**, with
+actual spectral transformation in \`core/src/stream.rs\` compiled to WASM.
+The exact same Rust source is also compiled for the native library
+(and its persistent \`warp_stream_*\` C ABI can later feed VST3).
 
-**先頭最大120秒**を対象にする。長尺・高品質設定ではCPUとメモリ使用量が
-増え、処理完了まで時間を要する。現行処理はWorker上の一括実行で、
-中間の実進捗率は測れない。不要ならページ再読込で中止できる。
-5分以上などのさらに長い音声やストリーミングは今後の課題。
+L/H, Curvature, Invert, Fold L/H/Blend and outside Pass/Kill update the
+persistent DSP on the audio rendering thread. They do **not** schedule a
+new whole-file render. Wet is mixed as a WebAudio gain change instantly.
+Quality changes replace/reset the stream because FFT size and lookahead
+change.
 
-## ローカル実行
-Rustツールチェーン、wasm32-unknown-unknown、Pythonが必要。
+Click or touch **any point on the waveform** to start/restart from that
+sample position. Keyboard: Enter/Space starts playback at current seek
+marker; arrows step by two seconds. Playback loops for experimentation.
+A vertical marker shows current play position and the elapsed time.
+
+**WAV export** is an explicitly separate, collapsible offline facility.
+Only file export requires rendering the complete file. Preview/playback
+never waits for this render. Audio stays entirely on the device.
+
+## Important DSP limitations
+
+- This is a **research-grade R2.1 peak/sinusoid streaming candidate**,
+  not the full mature offline re-synthesizer, and not a completed VST3.
+  It uses the same Rust frequency map and peak/phase principles but a
+  computationally cheaper overlapping oscillator resynthesis in the
+  streaming path. It may distort, drop transients/noise, or produce
+  artifacts; acoustic equivalence with offline output is not claimed.
+- Rust streaming uses a finite Hann STFT window. Current test presets:
+  Eco FFT1024/hop256, Standard FFT2048/hop256, High FFT4096/hop512.
+  DSP reported lookahead is N−1 samples; for Eco at 48kHz, about 21.3ms,
+  plus device/browser output latency. It is **not zero latency**.
+- Quality/CPU capacity depends on platform and audio device. AudioWorklet
+  has a hard scheduling deadline. The runtime exposes approximate DSP
+  processing time for sampled render quanta; success in CI does not
+  guarantee glitch-free performance on all mobile devices.
+- Input outside [L,H] Pass/Kill operates via spectral reconstruction of
+  complementary FFT bins. Negative destination frequency Reflect/Kill/Fade
+  remains a separate unimplemented requirement.
+- Page decodes up to 120 seconds, max input 75 MB, mono/stereo; heavy browser
+  memory usage is possible. Do not imply full-length rendering is instantaneous.
+
+## Build / verification
+
 \`\`\`sh
+cargo test --manifest-path core/Cargo.toml
 rustup target add wasm32-unknown-unknown
 cargo build --manifest-path core/Cargo.toml --release --target wasm32-unknown-unknown
 cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm web-demo/dsp_core.wasm
+node --test web-demo/core-wasm.test.mjs
 python3 -m http.server 8000
 \`\`\`
-http://localhost:8000/web-demo/ を開く。単体 \`standalone.html\` は
-**旧JS独立版の提供を終了したためPagesへの案内**に変更した。
 
-## 音質・処理境界
-- 共通DSPは現時点で **R2.1のオフラインSTFT候補**。ノイズ・残響・交差音などの
-  成分欠落、位相・音量変化、トランジェントの劣化が残る。完成VST3でも
-  最終アルゴリズムでもない。
-- 解析の暫定範囲は20Hz〜min(16000,サンプルレート×0.45)。帯域外を消す
-  実装上の暫定挙動は製品要件の決定ではない。Reflect/Kill/Fadeも未実装。
-- Qualityは処理予算の暫定3段階であり、高品質ほど常に聴感が良いという保証はない。
-- AudioContext.decodeAudioDataによりブラウザの出力サンプルレートへ
-  リサンプルされる場合がある。このデモは入力フォーマットの完全な
-  ビット単位保存を保証しない。
-- Web上の試聴とVST側の最終サウンドが一致するためには、今後の
-  VST3アダプターも **同じRust DSP処理実装**へ接続する。
+Open http://localhost:8000/web-demo/ . GitHub CI additionally runs
+headless Chrome, loads 12-second WAV audio, starts AudioWorklet streaming,
+changes a live parameter, and clicks a waveform seek position without
+instantiating the legacy whole-file Worker. Original/reference Python
+tests remain separate evidence.
 
-## テスト
-\`\`\`sh
-cargo test --manifest-path core/Cargo.toml
-node --test web-demo/core-wasm.test.mjs
-node --test web-demo/wasm-browser-smoke.test.mjs
-\`\`\`
-Node/WASMおよびChrome統合試験はコンパイル済み
-\`web-demo/dsp_core.wasm\` を要求する。正式CIは\n\`web-preview-tests.yml\`、公開ビルドは \`pages.yml\` に記録する。
-
-設計正本: [#10](https://github.com/kinoko34077/frequency-warp-vst/issues/10) /
-[共通DSP設計](../docs/SHARED_DSP_ARCHITECTURE.md)。
-
-## Effect-style controls (2026-10-13)
-
-- **L/H**: logarithmic range knobs; min 20Hz, max 20kHz or sample-rate-safe
-  cap, L < H. These actually control the Rust DSP range, not just the graph.
-- **Invert Mode**: simple blend / L-side fold / H-side fold. The two signed
-  folds are mathematically distinct midway yet both reach the same complete
-  reflection at Invert=100%.
-- **Outside band**: Pass preserves FFT-bin components outside [L,H],
-  Kill discards those components. This does **not** implement the separate
-  0Hz-below Reflect/Kill/Fade output policy.
-- **Automatic updates** enabled by default: setting changes initiate a new
-  Rust/WASM offline rendering after brief debounce. While listening to the
-  processed sound, the existing audio continues uninterrupted, and after
-  the updated buffer is ready the player crossfades at approximately the
-  same playhead (85ms crossfade). This is a **deferred, effect-like preview**,
-  not instant true streaming low-latency DSP. At high Quality or for long
-  files an audible delay between knob change and result is expected.
-- **Wet** applies immediately using AudioContext gain automation, without
-  recomputing the spectrum. Exported WAV uses the current Wet value.
-- Preview playback loops until the Stop control is pressed to facilitate
-  live knob experimentation.
-
-Audio quality limitations of the unselected R2.1 method remain unchanged.
-For acceptance and actual test evidence see Issue #12.
+Technical owner: [Issue #14](https://github.com/kinoko34077/frequency-warp-vst/issues/14).
