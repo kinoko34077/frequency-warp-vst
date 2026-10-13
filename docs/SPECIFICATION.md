@@ -30,3 +30,27 @@ This is an initial research scope, not an approved complete product specificatio
 - Invert progression: **Blend / Fold at L / Fold at H**; at invert 0 identity and at 1 all modes same full inversion.
 - Web knob changes during preview are applied by background Rust/WASM offline re-render and playhead-synchronized brief crossfade while old audio keeps playing. Wet uses WebAudio gain automation without rerender. This does **not** imply sample-accurate realtime DSP or that VST3 itself already exists.
 - Web trial remains up to 120s; no final DSP sound-quality selection has been made. See `docs/SHARED_DSP_ARCHITECTURE.md` and [Issue #3](https://github.com/kinoko34077/frequency-warp-vst/issues/3).
+
+
+## 2026-10-13 true realtime Web preview + waveform seek (Issue #14)
+The user clarified that effect-style controls must apply during **realtime audio
+rendering**, **not** trigger an offline whole-recording re-render. The previous
+full-file Worker/crossfade interface in #12 is superseded for audition.
+
+- Shared Rust core added a persistent streaming ABI
+  \`warp_stream_create/set/process/reset/latency/free\`, compiled to both native
+  and WASM. The \`core/src/stream.rs\` algorithm incrementally processes STFT
+  peaks with buffered overlap-add and input-band Pass/Kill on 128-frame WebAudio
+  render quanta; no entire-track processing is required for preview.
+- AudioWorklet hosts the WASM state and accepts L/H, Curvature, Invert, three
+  Invert progression modes and Outside Pass/Kill parameter updates. Wet uses
+  WebAudio gain adjustment. A Quality/FFT-size change requires stream rebuild.
+- Waveform click/tap seeks and starts playback from the indicated position;
+  keyboard supports Enter/Space and ±2-second arrows. State reset prevents
+  spectral history leaking between unrelated positions. Playhead/time displayed.
+- Separate offline full-buffer processing is retained **only for WAV export**.
+- This is an experimental new *streaming resynthesis* method, not acoustically
+  identical to R2.1 offline and not an installed VST3. Finite lookahead:
+  N−1 samples (Eco 1023, Standard 2047, High 4095); actual output latency adds
+  device/buffer overhead. Sound fidelity, CPU performance on mobile and streaming
+  peak tracking remain empirical research questions.
