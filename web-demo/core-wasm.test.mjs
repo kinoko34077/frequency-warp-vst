@@ -261,3 +261,34 @@ test("synthesis engine 0 accepts independent shift + Ring options through Rust",
   assert.ok(mean>.015,"frequency axis movement not connected to Rust audio");
  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+
+test("audible pitch case: zero inversion + log axis maps 500Hz actual PCM to ~1kHz",async()=>{
+  const e=await load();
+  const rate=8192,n=16384,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  assert.ok(src&&dst);
+  try{
+    const input=new Float32Array(e.memory.buffer,src,n);
+    for(let i=0;i<n;i++)input[i]=0.45*Math.cos(2*Math.PI*500*i/rate);
+    const run=(amount)=>{
+      const rc=e.warp_stream_render_f32_axis_ext(src,dst,n,1,rate,
+        20,3000,0,0,0,0,0,0,1,0,0,0,4,0,1,amount,350,0,0);
+      assert.equal(rc,0);
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,n));
+    };
+    const unshifted=run(0),shifted=run(Math.log(2));
+    function projection(samples,frequency){
+      let r=0,im=0;
+      for(let i=5000;i<15000;i++){
+        const a=2*Math.PI*frequency*i/rate;
+        r+=samples[i]*Math.cos(a);im+=samples[i]*Math.sin(a);
+      }
+      return Math.hypot(r,im);
+    }
+    const p0=projection(unshifted,500),p1=projection(shifted,1000);
+    const leak=projection(shifted,500);
+    assert.ok(p0>5,"identity warp did not preserve 500Hz sinusoidal energy");
+    assert.ok(p1>10,"translated audio contains no 1kHz pitch-shifted energy");
+    assert.ok(p1>leak*2,"old pitch remained stronger than the new target: target="+p1+" source="+leak);
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
