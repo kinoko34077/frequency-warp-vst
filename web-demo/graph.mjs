@@ -43,6 +43,15 @@ export function drawFrequencyGraph(canvas,settings,warp,translate) {
       ctx.fillStyle="#e1b67b";ctx.fillText(label,xx,top+4*ratio);
     }
   }
+  // Explicit pivot/anchor (not a generic "reference" hidden in F/m).
+  // Same physical square scale is used on x and y.
+  if(settings.axisPivot>=DISPLAY_MIN && settings.axisPivot<=DISPLAY_MAX){
+    const xx=x(settings.axisPivot);
+    ctx.save();ctx.setLineDash([3*ratio,5*ratio]);ctx.strokeStyle="#ffd37e";
+    ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,bottom);ctx.stroke();
+    ctx.restore();ctx.fillStyle="#ffd37e";ctx.textAlign="center";
+    ctx.fillText("起点",xx,top+5*ratio);
+  }
   const rows=graphSegments(settings,warp,translate);
   for(let channel=0;channel<(settings.ringEnabled?2:1);channel++){
     ctx.lineWidth=2.4*ratio;ctx.strokeStyle=channel===0?"#66e9ba":"#f0b97b";
