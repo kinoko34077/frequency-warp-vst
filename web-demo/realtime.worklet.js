@@ -13,6 +13,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     this.channels = 0;
     this.src = 0;
     this.dst = 0;
+    this.inputView = null;
+    this.outputView = null;
     this.latency = 0;
     this.delay = [];
     this.position = 0;
@@ -51,6 +53,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         throw Error("WASM audio-block memory allocation failed");
       }
       this.exports=e; this.stream=stream;this.src=src;this.dst=dst;this.channels=channels;
+      this.inputView=new Float32Array(e.memory.buffer,src,frames);
+      this.outputView=new Float32Array(e.memory.buffer,dst,frames);
       this.latency=e.warp_stream_latency(stream);
       this.delay=Array.from({length:channels},()=>new Float32Array(this.latency+256));
       this.position=0;this.blocks=0;this.renderCost=0;this.overBudget=0;
@@ -67,6 +71,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     if(this.src)e.warp_free_f32(this.src,count);
     if(this.dst)e.warp_free_f32(this.dst,count);
     this.stream=0;this.src=0;this.dst=0;this.exports=null;
+    this.inputView=null;this.outputView=null;
   }
   command(data) {
     if (!data) return;
@@ -103,9 +108,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     const e=this.exports;
     const frames=wet[0].length;
     if(frames!==128)return true;
-    const memory=e.memory.buffer;
-    const inp=new Float32Array(memory,this.src,frames*this.channels);
-    const out=new Float32Array(memory,this.dst,frames*this.channels);
+    const inp=this.inputView;
+    const out=this.outputView;
     for(let c=0;c<this.channels;c++){
       const samples=input[c]||input[0];
       const base=c*frames;
