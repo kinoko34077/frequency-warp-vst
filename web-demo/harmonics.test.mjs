@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {deriveHarmonics,graphSegments} from "./harmonics.mjs";
-import {mapFrequency} from "./dsp.mjs";
+import {mapFrequency} from "./mapping-oracle.test-helper.mjs";
 
 test("Issue16 F=100 -75Hz => virtual root 25Hz and sparse indices 1,5,9...",()=>{
   const v=deriveHarmonics(100,4,-3,1,1,5);
