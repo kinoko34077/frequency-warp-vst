@@ -335,12 +335,12 @@ mod tests {
     }
     #[test]
     fn tone_and_stereo_survive() {
-        let channels=vec![tone(500.0,0.0,.7,4096),tone(500.0,.5,.52,4096)];
+        let channels=vec![tone(500.0,0.0,0.7,4096),tone(500.0,0.5,0.52,4096)];
         let result=process(&channels,8192.0,config()).unwrap();
         assert_eq!(result.channels.len(),2);
         let channel=&result.channels[0];
         let rms=(channel.iter().map(|&x| (x as f64)*(x as f64)).sum::<f64>()/channel.len() as f64).sqrt();
-        assert!(rms>.30,"output rms {rms}");
+        assert!(rms>0.30,"output rms {rms}");
         let mut spectrum=channel.iter().map(|&x| Complex{r:x as f64,i:0.0}).collect::<Vec<_>>();
         fft(&mut spectrum,false);
         let peak=(1..2048).max_by(|&a,&b| spectrum[a].magnitude().total_cmp(&spectrum[b].magnitude())).unwrap();
@@ -350,7 +350,7 @@ mod tests {
         let a=spectrum[peak].angle();
         let b=right[peak].angle();
         let phase=(b-a+PI).rem_euclid(TAU)-PI;
-        assert!((phase-.5).abs()<.12,"stereo phase mismatch: {phase}");
+        assert!((phase-0.5).abs()<0.12,"stereo phase mismatch: {phase}");
     }
     #[test]
     fn c_abi_works() {
@@ -359,6 +359,6 @@ mod tests {
         let status=unsafe{warp_process_f32(input.as_ptr(),output.as_mut_ptr(),
             input.len() as u32,1,8192.0,20.0,3000.0,1.0,1.0,0,0)};
         assert_eq!(status,0);
-        assert!(output.iter().map(|x|x.abs()).fold(0.0f32,f32::max)>.5);
+        assert!(output.iter().map(|x|x.abs()).fold(0.0f32,f32::max)>0.5);
     }
 }
