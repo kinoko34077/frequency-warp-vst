@@ -117,3 +117,37 @@ The site reports approximate DSP callback time and the count of callback
 deadlines exceeded on the testing machine, without guaranteeing mobile
 real-time performance. All engine paths use Rust WASM; the Web UI draws
 formula and graph previews only and does not implement a separate DSP.
+
+
+## 2026-10-13 user-first workstation (#19)
+
+The Web page is reorganized around auditioning results rather than around
+DSP implementation parts:
+
+- Desktop: two-column workstation. Left: import, clickable waveform,
+  transport, Invert, Curvature, Wet and L/H. Right: square 20–2000 Hz
+  graph with an adjacent Harmonic Lab tab. Mobile: reflows to single
+  column without horizontal overflow.
+- Gear button opens a modal with audio-engine selection, Fold mode, L/H
+  outside policy, FFT/hop, and negative-frequency handling. A live change
+  goes to the Rust AudioWorklet; changing FFT shape/engine rebuilds the
+  stream at the approximate current playhead. Closing settings doesn't
+  reset transport.
+- Harmonic F, m, n, q, r and Ring carrier have **both draggable ranges
+  and exact numeric fields**, synchronized in real time. A checkbox
+  links carrier c to the current *input-domain Fold kink* and displays
+  the resolved Hz from the Rust WASM mapping. Checked + Blend uses manual
+  Hz with a clear message because Blend has no Fold kink.
+- Browser graph calls shared Rust WASM warp_map_frequency rather than
+  running separate JavaScript curve arithmetic. The independent JS
+  reference is test-only. WAV export routes through the **same Rust
+  streaming DSP** as realtime audition, offset by its algorithmic
+  lookahead; it no longer exports a different offline algorithm.
+- Reset affects effect parameters but not the loaded file or seek position.
+
+UI quality was assessed against the entire user-supplied
+「利用者起点 UI/UX 設計原則」 and is documented in
+docs/SHARED_DSP_ARCHITECTURE.md / Issue #19. Automated native,
+WebAssembly and Chrome tests demonstrate controls and responsive layout;
+actual iPhone gesture/audio quality and human usability remain
+UNVERIFIED pending physical testing.
