@@ -1,6 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {mapFrequency,mixWet,QUALITY} from "./dsp.mjs";
+import {mixWet,QUALITY} from "./dsp.mjs";
+import {mapFrequency} from "./mapping-oracle.test-helper.mjs";
 
 test("UI preview follows the shared curvature formula",()=>{
   for(const p of [0,.001,.25,.5,1]){
