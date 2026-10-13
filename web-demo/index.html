@@ -42,19 +42,19 @@
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <div class="control-grid">
-          <div class="control"><div class="control-heading"><label for="invert">反転量</label><output id="invert-value">100%</output></div>
-            <input id="invert" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>通常</span><span>反転</span></div>
+          <div class="control"><div class="control-heading"><label for="invert">反転量</label><output id="invert-value">0%</output></div>
+            <input id="invert" type="range" min="0" max="1" step=".05" value="0"><div class="ends"><span>通常</span><span>反転</span></div>
           </div>
           <div class="control"><div class="control-heading"><label for="curvature">曲率</label><output id="curvature-value">1.00</output></div>
-            <input id="curvature" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div>
+            <input id="curvature" type="range" min="0" max="1" step=".05" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-shift">周波数軸の上下移動</label><output id="axis-shift-value">0</output></div>
-            <input id="axis-shift" type="range" min="-2" max="2" step=".005" value="0">
+          <div class="control"><div class="control-heading"><label for="axis-shift">周波数軸の上下移動</label><span class="axis-value-tools"><output id="axis-shift-value">0</output><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
+            <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
             <div class="ends"><span>下降 −</span><span>上昇 ＋</span></div>
-            <small class="axis-explainer" id="axis-explainer">基準350Hzに対して 0 Hz</small>
+            <small class="axis-explainer" id="axis-explainer">基準350Hzに対して 0 Hz</small><small class="axis-mode-hint" id="axis-mode-hint">倍率移動だけを聴くときは反転量0%にしてください。</small>
           </div>
                     <div class="control"><div class="control-heading"><label for="wet">変換音の割合</label><output id="wet-value">100%</output></div>
-            <input id="wet" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
+            <input id="wet" type="range" min="0" max="1" step=".05" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
           </div>
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">部分音追跡</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
@@ -91,7 +91,7 @@
       <div id="view-math" role="tabpanel" aria-labelledby="tab-math" hidden>
         <div class="section-header"><div><p class="eyebrow">HARMONIC LAB / ISSUE #16</p><h2>仮想基音と搬送波</h2></div></div>
         <p class="math-note">理想的な整数倍音列の計算です。録音から基音を自動検出した値ではありません。</p>
-        <p class="math-note" id="math-axis-note">仮想基音の追従値を準備中…</p>
+        <p class="math-note" id="math-axis-note">仮想基音の追従値は変換条件から計算します</p>
         <div class="math-controls">
           <div class="math-field"><label for="fundamental">元基音 F <small>Hz</small></label><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"><input id="fundamental" type="number" min="20" max="2000" step="1" value="350"></div></div>
           <div class="math-field"><label for="denominator">分母 m</label><div class="math-input"><input id="denominator-range" type="range" min="1" max="64" step="1" value="4"><input id="denominator" type="number" min="1" max="64" step="1" value="4"></div></div>
