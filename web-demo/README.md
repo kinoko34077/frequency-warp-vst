@@ -50,8 +50,7 @@ node --test web-demo/core-wasm.test.mjs
 node --test web-demo/wasm-browser-smoke.test.mjs
 \`\`\`
 Node/WASMおよびChrome統合試験はコンパイル済み
-\`web-demo/dsp_core.wasm\` を要求する。正式CIは
-\`shared-core-tests.yml\`、公開ビルドは \`pages.yml\` に記録する。
+\`web-demo/dsp_core.wasm\` を要求する。正式CIは\n\`web-preview-tests.yml\`、公開ビルドは \`pages.yml\` に記録する。
 
 設計正本: [#10](https://github.com/kinoko34077/frequency-warp-vst/issues/10) /
 [共通DSP設計](../docs/SHARED_DSP_ARCHITECTURE.md)。
