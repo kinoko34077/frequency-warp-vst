@@ -46,9 +46,14 @@
             <input id="invert" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>通常</span><span>反転</span></div>
           </div>
           <div class="control"><div class="control-heading"><label for="curvature">曲率</label><output id="curvature-value">1.00</output></div>
-            <input id="curvature" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>対数</span><span>線形</span></div>
+            <input id="curvature" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="wet">変換音の割合</label><output id="wet-value">100%</output></div>
+          <div class="control"><div class="control-heading"><label for="axis-shift">周波数軸の上下移動</label><output id="axis-shift-value">0</output></div>
+            <input id="axis-shift" type="range" min="-2" max="2" step=".005" value="0">
+            <div class="ends"><span>下降 −</span><span>上昇 ＋</span></div>
+            <small class="axis-explainer" id="axis-explainer">基準350Hzに対して 0 Hz</small>
+          </div>
+                    <div class="control"><div class="control-heading"><label for="wet">変換音の割合</label><output id="wet-value">100%</output></div>
             <input id="wet" type="range" min="0" max="1" step=".01" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
           </div>
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">部分音追跡</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
@@ -59,6 +64,13 @@
           <div class="control"><div class="control-heading"><label for="high">上限 H</label><output id="high-value">16 kHz</output></div>
             <input id="high" type="range" min="0" max="1000" step="1" value="968"><div class="ends"><span>20Hz</span><span>20kHz</span></div></div>
         </div>
+      </section>
+      <section class="panel sine-monitor" aria-labelledby="sine-heading">
+        <div class="section-header"><div><p class="eyebrow">REFERENCE SINE</p><h2 id="sine-heading">補助信号</h2></div>
+          <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
+        <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
+        <div class="sine-meta"><strong id="sine-note">A4</strong><span id="sine-cent">±0 cent</span><strong id="sine-hz">440.00 Hz</strong></div>
+        <p class="setting-help">サイン波だけを小音量で再生します。素材を読み込まなくても使用できます。</p>
       </section>
     </div>
 
@@ -79,6 +91,7 @@
       <div id="view-math" role="tabpanel" aria-labelledby="tab-math" hidden>
         <div class="section-header"><div><p class="eyebrow">HARMONIC LAB / ISSUE #16</p><h2>仮想基音と搬送波</h2></div></div>
         <p class="math-note">理想的な整数倍音列の計算です。録音から基音を自動検出した値ではありません。</p>
+        <p class="math-note" id="math-axis-note">仮想基音の追従値を準備中…</p>
         <div class="math-controls">
           <div class="math-field"><label for="fundamental">元基音 F <small>Hz</small></label><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"><input id="fundamental" type="number" min="20" max="2000" step="1" value="350"></div></div>
           <div class="math-field"><label for="denominator">分母 m</label><div class="math-input"><input id="denominator-range" type="range" min="1" max="64" step="1" value="4"><input id="denominator" type="number" min="1" max="64" step="1" value="4"></div></div>
@@ -112,15 +125,19 @@
   <div class="settings-body">
     <fieldset><legend>音声処理方式</legend>
       <label for="engine">エンジン</label><select id="engine">
-        <option value="0">A · 部分音追跡＋位相変調</option>
-        <option value="1">B · STFTビン再配置</option>
-        <option value="2">C · Warp → Ring Mod（両側波帯）</option>
-        <option value="3">D · Warp → Pitch → Hz Shift</option>
+        <option value="0">A · 部分音追跡＋再合成（実験）</option>
+        <option value="1">B · STFTビン再配置（実験）</option>
         <option disabled>候補 · 解析信号による線形反転（未実装）</option>
         <option disabled>候補 · 部分音＋残差（研究中）</option>
         <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
       </select>
-      <p class="setting-help">各方式は共通Rustエンジンを実切替。未実装方式は選べません。</p>
+      <p class="setting-help">ここでは音声の解析・再合成方式だけを選択。周波数の移動・Ring Mod・Bit Crusherは別の操作です。</p>
+    </fieldset>
+    <fieldset><legend>周波数操作・付加効果</legend>
+      <label class="setting-checkbox"><input id="rational-enabled" type="checkbox"> #24の有理数倍音配置（r・n/m）を前段に適用</label>
+      <p class="setting-help">入力の理想基音 F は数式欄で指定。通常はOFFとして「周波数軸の上下移動」だけを利用できます。</p>
+      <label class="setting-checkbox"><input id="ring-enabled" type="checkbox"> Ring Modを重ねる（上下の側波帯）</label>
+      <p class="setting-help">Ring搬送波は倍音ラボで調整。通常のHz/Pitch移動の代替方式ではありません。</p>
     </fieldset>
     <fieldset><legend>反転と帯域</legend>
       <div class="settings-pair">

@@ -32,7 +32,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "memory","warp_alloc_f32","warp_free_f32","warp_stream_create",
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
-        "warp_stream_process","warp_stream_latency","warp_stream_set_crusher"
+        "warp_stream_process","warp_stream_latency","warp_stream_set_crusher",
+        "warp_stream_set_transform"
       ];
       for (const name of required) {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
@@ -47,6 +48,10 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         options.zeroMode,options.hopDiv
       );
       if (!stream) throw Error("Rust streaming DSP initialization failed");
+      if(e.warp_stream_set_transform(stream,options.axisShift,
+        options.axisReference,options.ringEnabled?1:0,options.rationalEnabled?1:0)!==0){
+        e.warp_stream_free(stream);throw Error("Rust frequency-axis mapping failed");
+      }
       if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
         e.warp_stream_free(stream);throw Error("Rust bitcrusher initialization failed");
       }
@@ -99,7 +104,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         p.mode==="blend"?1:p.mode==="fold-l"?2:0,
         p.qualityIndex,p.outside==="pass"?1:0,p.engine,p.pitchRatio,
         p.shiftHz,p.carrierHz,p.zeroMode);
-      const fx=code===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):code;
+      const axis=code===0?e.warp_stream_set_transform(this.stream,p.axisShift,
+        p.axisReference,p.ringEnabled?1:0,p.rationalEnabled?1:0):code;
+      const fx=axis===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):axis;
       if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {

@@ -41,22 +41,25 @@ export function resolvedCarrierHz(foldPoint){
   }
   return p.manualCarrier;
 }
-export function renderHarmonicPanel(foldPoint){
+export function renderHarmonicPanel(foldPoint,axisMarker){
   const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
   const count=Number($("#harmonic-count").value)||7;
   const z=deriveHarmonics(F,m,n,q,r,count);
   const c=resolvedCarrierHz(foldPoint);
+  const movedH=axisMarker?.(z.H);
+  const moving=Number.isFinite(movedH)?fmt(movedH)+" Hz":"計算中";
   $("#math-results").textContent=[
-    "仮想基音: H = F / m = "+fmt(z.H)+" Hz",
-    "シフト: Δ = (n/m)F = "+fmt(z.delta)+" Hz",
-    "倍音列: f′k = (mk+n)H = kF+Δ",
-    "Warp後 Pitch→Hz Shift: f′=r·g(f)+Δ（帯域内）",
-    "0Hz折返し: f′k = |kF − S|",
-    "第q倍音がHへ: S=(q+1/m)F = "+fmt(z.foldShift)+" Hz",
+    "入力の仮想格子: F′=rF="+fmt(r*F)+" Hz / H=F′/m="+fmt(z.H)+" Hz",
+    "上下移動後のH位置マーカー = "+moving+"（必ずしも倍音列の公約数ではない）",
+    "有理数シフト: Δ = (n/m)F′ = "+fmt(z.delta)+" Hz",
+    "有理数格子: f′k = (mk+n)H = rkF+Δ",
+    "処理順: Warp g(f) → 任意の有理数変換 → C_p軸で上下移動",
+    "0Hz折返し: f′k = |krF − S|",
+    "第q倍音がHへ: S=(q+1/m)rF = "+fmt(z.foldShift)+" Hz",
     "Ring Mod: cos(2πft)cos(2πct) = ½cos(2π(f+c)t)+½cos(2π(f−c)t)",
     "搬送波 c = "+fmt(c)+" Hz / 両側波帯 f+c, |f−c|",
     "変換順: Pitch→Shift = r·f+Δ / Shift→Pitch = r·(f+Δ)",
-    "注: F/mは理論的な倍音格子。入力音の基音を自動検出しません。"
+    "注: 移動後のHは位置マーカーです。純粋な一定Hz移動では倍音格子の真の共通基音と異なり得ます。"
   ].join("\n");
   const frag=document.createDocumentFragment();
   for(const row of z.rows){
@@ -68,10 +71,11 @@ export function renderHarmonicPanel(foldPoint){
     frag.appendChild(tr);
   }
   $("#harmonics-body").replaceChildren(frag);
-  $("#mini-fundamental").textContent="H = "+fmt(z.H)+" Hz / Δ "+fmt(z.delta)+" Hz";
+  $("#mini-fundamental").textContent="H "+fmt(z.H)+" → "+moving+" / Δ "+fmt(z.delta)+" Hz";
   $("#mini-harmonics").replaceChildren(...z.rows.slice(0,3).map(row=>{
     const div=document.createElement("div");
-    div.textContent="第"+row.k+"倍音 "+fmt(row.input)+" → "+fmt(row.translated)+" Hz";
+    const shifted=axisMarker?.(row.translated);
+    div.textContent="第"+row.k+"倍音 "+fmt(row.input)+" → "+fmt(Number.isFinite(shifted)?shifted:row.translated)+" Hz";
     return div;
   }));
   $("#harmonic-table-title").textContent="第1〜"+count+"倍音の数値表を見る";
@@ -90,8 +94,8 @@ export function renderHarmonicPanel(foldPoint){
   }
   return z;
 }
-export function attachHarmonicPanel(onChange,foldPoint){
-  const respond=id=>{renderHarmonicPanel(foldPoint);onChange(id);};
+export function attachHarmonicPanel(onChange,foldPoint,axisMarker){
+  const respond=id=>{renderHarmonicPanel(foldPoint,axisMarker);onChange(id);};
   for(const id of IDS){
     const number=$("#"+id),range=$("#"+id+"-range");
     // Preserve direct typing for exact values while making typical changes
@@ -115,6 +119,6 @@ export function attachHarmonicPanel(onChange,foldPoint){
     syncPair(id);
   }
   $("#carrier-link").addEventListener("change",()=>respond("carrier-link"));
-  $("#harmonic-count").addEventListener("change",()=>renderHarmonicPanel(foldPoint));
-  renderHarmonicPanel(foldPoint);
+  $("#harmonic-count").addEventListener("change",()=>renderHarmonicPanel(foldPoint,axisMarker));
+  renderHarmonicPanel(foldPoint,axisMarker);
 }

@@ -12,7 +12,7 @@ const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",processing:false,
-  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null
+  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null
 };
 const hzFromScale=value=>20*Math.exp(Math.log(1000)*Number(value)/1000);
 const scaleFromHz=hz=>Math.round(1000*Math.log(Math.max(20,hz)/20)/Math.log(1000));
@@ -54,8 +54,12 @@ function settings(){
     mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
     engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
     pitchRatio:harmonicParameters().r,
-    shiftHz:harmonicParameters().n*harmonicParameters().F/harmonicParameters().m,
+    shiftHz:harmonicParameters().n*harmonicParameters().r*harmonicParameters().F/harmonicParameters().m,
     carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode,
+    axisShift:Number($("#axis-shift").value),
+    axisReference:harmonicParameters().r*harmonicParameters().F,
+    ringEnabled:$("#ring-enabled").checked,
+    rationalEnabled:$("#rational-enabled").checked,
     crusherBits:$("#crusher-enabled").checked?Number($("#crusher-bits").value):0,
     crusherHold:Number($("#crusher-hold").value)
   };
@@ -65,6 +69,14 @@ function labels(id=""){
   $("#curvature-value").textContent=Number($("#curvature").value).toFixed(2);
   $("#invert-value").textContent=Math.round(100*Number($("#invert").value))+"%";
   $("#wet-value").textContent=Math.round(100*Number($("#wet").value))+"%";
+  const u=Number($("#axis-shift").value),p=Number($("#curvature").value);
+  const ref=harmonicParameters().r*harmonicParameters().F;
+  $("#axis-shift-value").textContent=(u>=0?"+":"")+u.toFixed(3);
+  $("#axis-explainer").textContent=p===0?
+    "対数移動: ×"+Math.exp(u).toFixed(3)+" / "+(1200*u/Math.log(2)).toFixed(1)+" cent":
+    p===1?"線形移動: "+(u*ref>=0?"+":"")+(u*ref).toFixed(2)+" Hz":
+    "中間軸 p="+p.toFixed(2)+" · 位置によりHz差が変化";
+
 }
 function foldPoint(){
   const core=state.mathCore;
@@ -73,10 +85,16 @@ function foldPoint(){
   return core.warp_fold_frequency(p.low,p.high,p.curvature,p.invert,
     p.mode==="blend"?1:p.mode==="fold-l"?2:0);
 }
+function axisMarker(f){
+  const core=state.mathCore;
+  if(!core||!(f>0))return NaN;
+  const p=settings();
+  return core.warp_translate_frequency(f,p.axisReference,p.curvature,p.axisShift);
+}
 function drawCurve(){
   const canvas=$("#curve");
   if(!state.mathCore){
-    const width=Math.max(250,Math.round(canvas.getBoundingClientRect().width||320));
+    const width=Math.max(160,Math.round(canvas.getBoundingClientRect().width||260));
     canvas.width=width;canvas.height=width;return;
   }
   const p=settings();
@@ -84,7 +102,9 @@ function drawCurve(){
   const map=(f,l,h,curvature,invert,mode)=>
     state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
       mode==="blend"?1:mode==="fold-l"?2:0);
-  drawFrequencyGraph(canvas,shown,map);
+  const translate=(f,reference,axis,amount)=>
+    state.mathCore.warp_translate_frequency(f,reference,axis,amount);
+  drawFrequencyGraph(canvas,shown,map,translate);
 }
 async function ensureSharedCore(){
   if(!state.wasmPromise){
@@ -95,9 +115,10 @@ async function ensureSharedCore(){
       const instance=new WebAssembly.Instance(new WebAssembly.Module(bytes),{});
       const core=instance.exports;
       if(typeof core.warp_fold_frequency!=="function"||
-        typeof core.warp_map_frequency!=="function")throw Error("共通数式APIがありません");
+        typeof core.warp_map_frequency!=="function"||
+        typeof core.warp_translate_frequency!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
-      drawCurve();renderHarmonicPanel(foldPoint);
+      drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
       return bytes;
     })().catch(error=>{
       state.wasmPromise=null;
@@ -110,14 +131,13 @@ async function ensureSharedCore(){
 function updateEngineInfo(){
   const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
   const latency=1000*(q.fftSize-1)/rate;
-  const names=["部分音追跡＋発振","FFTビン再配置","Warp → Ring Mod","Warp → Pitch → Hz Shift"];
+  const names=["部分音追跡＋再合成","STFTビン再配置"];
   const explain=[
-    "部分音追跡したピークを発振器で再合成。倍音/残響が欠ける場合があります。",
-    "FFTビンを直接再配置。時間方向の位相連続性が弱く、量子化ノイズや変調感が出ます。",
-    "Warp後のRing Mod：周波数ワープ後の成分から和・差の2つの側波帯を作ります。",
-    "Warpで反転・曲率を適用してから r倍し、Δ=(n/m)F Hzの単方向シフト。Fは手動値です。"
+    "部分音追跡と発振器による実験的な再合成方式です。残差や過渡音は完全に復元されません。",
+    "FFTビン再配置による実験的な再合成方式です。位相・離散格子誤差に注意してください。"
   ];
-  $("#engine-description").textContent=explain[s.engine];
+  $("#engine-description").textContent=explain[s.engine]+
+    (s.ringEnabled?" / Ring Mod ON":"")+(s.rationalEnabled?" / #24倍音配置 ON":"");
   $("#engine-summary").textContent=names[s.engine];
   $("#engine-stats").textContent=
     "方式: "+names[s.engine]+" ｜FFT窓 "+q.fftSize+
@@ -321,7 +341,7 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
-  labels(changed);drawCurve();renderHarmonicPanel(foldPoint);
+  labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
   state.offline=null;controls.download.disabled=true;
   const p=state.player;
   if(!p)return;
@@ -345,7 +365,7 @@ function updateParams(changed){
   });
   indicator("リアルタイム動作中 · パラメータ更新中…");
 }
-for(const name of ["low","high","curvature","invert","mode","outside","quality","overlap","engine"]){
+for(const name of ["low","high","curvature","invert","axis-shift","mode","outside","quality","overlap","engine","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#wet").addEventListener("input",()=>{labels();tuneWet();});
@@ -474,11 +494,12 @@ dialog.addEventListener("click",event=>{
 });
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"0",high:"968",curvature:"1",invert:"1",wet:"1",
+    low:"0",high:"968",curvature:"1",invert:"1",wet:"1","axis-shift":"0",
     engine:"0",mode:"fold-h",outside:"pass",quality:"eco",
     overlap:"4","zero-mode":"0"
   };
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
+  $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="4";
   $("#crusher-bits-value").textContent="8 bit";
@@ -506,6 +527,43 @@ for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
     showTab(next);$("#tab-"+next).focus();
   });
 }
-attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint);
+// WebAudio reference sine is a monitoring aid, not a competing DSP engine.
+const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+const sinePitch=()=>Number($("#sine-pitch").value);
+const sineFrequency=()=>440*2**((sinePitch()-69)/12);
+function updateSineLabel(){
+  const value=sinePitch(),nearest=Math.round(value);
+  const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
+  const cents=Math.round((value-nearest)*100);
+  $("#sine-note").textContent=note;
+  $("#sine-cent").textContent=(cents>=0?"+":"")+cents+" cent";
+  $("#sine-hz").textContent=sineFrequency().toFixed(2)+" Hz";
+  if(state.sine&&state.ctx)state.sine.osc.frequency.setTargetAtTime(sineFrequency(),state.ctx.currentTime,.012);
+}
+function stopSine(){
+  const sine=state.sine;state.sine=null;
+  if(!sine)return;
+  try{sine.osc.stop();sine.osc.disconnect();sine.gain.disconnect();}catch{}
+}
+$("#sine-pitch").addEventListener("input",updateSineLabel);
+$("#sine-enabled").addEventListener("change",async()=>{
+  if(!$("#sine-enabled").checked){stopSine();return;}
+  try{
+    const ctx=await context();
+    if(!$("#sine-enabled").checked)return;
+    stopSine();
+    const osc=ctx.createOscillator(),gain=ctx.createGain();
+    osc.type="sine";osc.frequency.value=sineFrequency();
+    gain.gain.value=0.08;
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.start();state.sine={osc,gain};updateSineLabel();
+  }catch(error){
+    stopSine();$("#sine-enabled").checked=false;
+    message("補助サイン波の起動失敗: "+error.message,"error");
+  }
+});
+window.addEventListener("pagehide",stopSine);
+updateSineLabel();
+attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker);
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});

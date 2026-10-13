@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,fold_frequency,map_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,translate_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -18,6 +18,10 @@ pub struct Stream {
     shift_hz:f64,
     carrier_hz:f64,
     ring_phase:f64,
+    ring_enabled:bool,
+    axis_shift:f64,
+    axis_reference:f64,
+    rational_enabled:bool,
     crusher_bits:u32,
     crusher_hold:u32,
     crusher_counter:u64,
@@ -62,7 +66,8 @@ impl Stream {
         Ok(Self{
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
-            ring_phase:0.0,crusher_bits:0,crusher_hold:1,crusher_counter:0,
+            ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
+            axis_reference:350.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],zero_mode,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
@@ -104,6 +109,18 @@ impl Stream {
         self.carrier_hz=carrier_hz;self.zero_mode=zero_mode;
         Ok(())
     }
+    pub fn set_transform(&mut self,shift:f64,reference:f64,ring_enabled:u32,
+        rational_enabled:u32)->Result<(),&'static str>{
+        if !shift.is_finite()||shift.abs()>4.0||!reference.is_finite()
+           ||!(1.0..=20000.0).contains(&reference)||ring_enabled>1||rational_enabled>1{
+            return Err("invalid axis shift / effect parameters");
+        }
+        self.axis_shift=shift;
+        self.axis_reference=reference;
+        self.ring_enabled=ring_enabled!=0;
+        self.rational_enabled=rational_enabled!=0;
+        Ok(())
+    }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
             return Err("invalid bit-crusher settings");
@@ -120,8 +137,8 @@ impl Stream {
         let inc=TAU*carrier/self.sample_rate;
         let levels=(1u32<<self.crusher_bits.saturating_sub(1)) as f32;
         for i in 0..frames{
-            let modulator=if self.engine==2 {self.ring_phase.cos() as f32}else{1.0};
-            if self.engine==2{self.ring_phase=(self.ring_phase+inc).rem_euclid(TAU);}
+            let modulator=if self.ring_enabled {self.ring_phase.cos() as f32}else{1.0};
+            if self.ring_enabled{self.ring_phase=(self.ring_phase+inc).rem_euclid(TAU);}
             for c in 0..self.channels{
                 let idx=c*frames+i;
                 let sample=output[idx]*modulator;
@@ -207,7 +224,12 @@ impl Stream {
                 for k in 1..half {
                     let f=k as f64*step;
                     let target=if f>=self.settings.low&&f<=self.settings.high {
-                        map_frequency(f,self.settings).unwrap_or(f)
+                        let base=map_frequency(f,self.settings).unwrap_or(f);
+                        let old=if self.rational_enabled {
+                            self.pitch_ratio*base+self.shift_hz
+                        }else{base};
+                        translate_frequency(old.max(0.0000001),self.axis_reference,
+                            self.settings.curvature,self.axis_shift)
                     }else if self.outside==1 {f} else {continue};
                     if target<=0.0||target>=self.sample_rate*0.5 {continue;}
                     let dest=(target/step).round() as usize;
@@ -254,13 +276,15 @@ impl Stream {
                 self.interpolate(k,step)
             };
             if !frequency.is_finite() ||frequency<self.settings.low||frequency>self.settings.high{continue;}
-            let target=if self.engine==3 {
-                // #16 ideal harmonic spacing model: Pitch first, then constant Hz shift.
-                // Negative target handled by explicit 0Hz policy below.
-                let mapped=map_frequency(frequency,self.settings).unwrap_or(frequency);
+            // Transform semantics are orthogonal to the resynthesis engine:
+            // g(f) -> optional Issue #24 rational lattice -> axis-translation.
+            let mapped=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
+            let staged=if self.rational_enabled {
                 self.pitch_ratio*mapped+self.shift_hz
-            }else{
-                match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue}
+            }else{mapped};
+            let target=if staged<=0.0 {staged}else {
+                translate_frequency(staged,self.axis_reference,
+                    self.settings.curvature,self.axis_shift)
             };
             let (target,fade_gain)=if target<0.0 {
                 match self.zero_mode {
@@ -435,16 +459,26 @@ pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u
     match (&mut *ptr).set_crusher(bits,hold){Ok(())=>0,Err(_)=>-2}
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_transform(ptr:*mut Stream,shift:f64,
+    reference:f64,ring:u32,rational:u32)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_transform(shift,reference,ring,rational){
+        Ok(())=>0,Err(_)=>-2
+    }
+}
+
 /// Render a whole file through the *identical* persistent DSP stream used
 /// by the Web AudioWorklet and future native host: optional WAV export adapter.
 /// Input and output are non-overlapping planar contiguous f32 buffers.
 /// Offline allocations are permitted here, but NOT in the realtime process.
 #[no_mangle]
-pub unsafe extern "C" fn warp_stream_render_f32_fx_ext(
+pub unsafe extern "C" fn warp_stream_render_f32_axis_ext(
     input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
     low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -453,7 +487,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_fx_ext(
         engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div) {
         Ok(st)=>st,Err(_)=>return -2
     };
-    if st.set_crusher(crusher_bits,crusher_hold).is_err(){return -2;}
+    if st.set_crusher(crusher_bits,crusher_hold).is_err()||
+       st.set_transform(axis_shift,axis_reference,ring,rational).is_err(){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -488,6 +523,19 @@ pub unsafe extern "C" fn warp_stream_render_f32_fx_ext(
         t+=length;
     }
     0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_fx_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+)->i32{
+    warp_stream_render_f32_axis_ext(input,output,frames,channels,rate,
+       low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,
+       shift_hz,carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,
+       0.0,350.0,if engine==2 {1}else{0},if engine==3 {1}else{0})
 }
 
 #[no_mangle]
@@ -597,6 +645,19 @@ mod tests{
         assert_eq!(status,0);
         assert!(output.iter().all(|x|x.is_finite()));
         assert!(output.iter().any(|x|x.abs()>0.001));
+    }
+    #[test]
+    fn common_transform_and_ring_are_independent_of_engine_selection(){
+        let mut a=Stream::new_extended(8192.0,1,settings(),1,0,1.0,0.0,300.0,0,4).unwrap();
+        a.set_transform(0.5,400.0,0,0).unwrap();
+        let mapped=map_frequency(500.0,a.settings).unwrap();
+        let shifted=translate_frequency(mapped,400.0,1.0,0.5);
+        assert!((shifted-(mapped+200.0)).abs()<1e-7);
+        a.set_transform(0.0,400.0,1,0).unwrap();
+        assert!(a.ring_enabled);
+        a.set_transform(0.0,400.0,0,0).unwrap();
+        assert!(!a.ring_enabled);
+        assert!(a.set_transform(0.0,0.0,0,0).is_err());
     }
     #[test]
     fn stream_parameter_changes_and_reset(){
