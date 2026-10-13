@@ -238,13 +238,20 @@ impl Stream {
             }else{
                 match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue}
             };
-            let target=if target<0.0 {
+            let (target,fade_gain)=if target<0.0 {
                 match self.zero_mode {
-                    0=>target.abs(), // Reflect about 0Hz
+                    0=>(target.abs(),1.0), // Reflect about 0Hz
                     1=>continue, // Kill negative output
-                    _=>{ if target.abs()>step {continue;} 0.0 } // rudimentary fade edge
+                    _=>{
+                        // One FFT-bin-wide experimental fade beyond the 0Hz
+                        // crossing. The old implementation mapped to 0Hz and
+                        // immediately discarded the sample, making Fade = Kill.
+                        let negative=target.abs();
+                        if negative>=step {continue;}
+                        (negative, (1.0-negative/step).clamp(0.0,1.0))
+                    }
                 }
-            }else{target};
+            }else{(target,1.0)};
             if !(target>0.0&&target<self.sample_rate/2.0){continue;}
             let diff=target-frequency;
             let mut closest=None;
@@ -269,7 +276,7 @@ impl Stream {
             let rot_r=omega.cos();let rot_i=omega.sin();
             for c in 0..self.channels{
                 let z=self.spectrum[c][k];
-                let amplitude=4.0*z.magnitude()/self.n as f64;
+                let amplitude=4.0*z.magnitude()/self.n as f64*fade_gain;
                 if amplitude<1e-9{continue;}
                 let centre_phase=z.angle()+PI*k as f64+shift;
                 let start_phase=centre_phase-omega*(self.n as f64/2.0);
