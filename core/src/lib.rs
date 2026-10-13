@@ -49,6 +49,29 @@ fn inverse_coordinate(u: f64, low: f64, p: f64) -> f64 {
     low * (if p == 0.0 {u} else {(p * u).ln_1p() / p}).exp()
 }
 
+/// Shift a positive source frequency by a constant amount in the chosen
+/// frequency coordinate. At p=0 this is multiplication by exp(shift);
+/// at p=1 this is addition of shift*reference Hz. Intermediate p is
+/// the identical log/expm1 coordinate family used by nonlinear warp.
+/// Signed extension below zero is a mathematical convention: the audio
+/// engine must still apply Reflect/Kill/Fade at the target-0 boundary.
+pub fn translate_frequency(f:f64,reference:f64,p:f64,shift:f64)->f64{
+    if !f.is_finite()||f<=0.0||!reference.is_finite()||reference<=0.0||
+       !p.is_finite()||!(0.0..=1.0).contains(&p)||!shift.is_finite()||shift.abs()>4.0 {
+        return f64::NAN;
+    }
+    if shift==0.0{return f;}
+    let u=coordinate(f,reference,p)+shift;
+    if p==0.0{return reference*u.exp();}
+    let v=1.0+p*u;
+    if v>=0.0{reference*v.powf(1.0/p)}
+    else{-reference*(-v).powf(1.0/p)}
+}
+#[no_mangle]
+pub extern "C" fn warp_translate_frequency(f:f64,reference:f64,p:f64,shift:f64)->f64{
+    translate_frequency(f,reference,p,shift)
+}
+
 /// Research mapping is *only* defined for positive frequencies in [L,H].
 pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
     if !s.low.is_finite() || !s.high.is_finite() || s.low <= 0.0 || s.high <= s.low
@@ -448,6 +471,16 @@ mod tests {
         assert!((low_side-325.0).abs()<1e-9);
         assert!(fold_frequency(Settings{mode:Progression::Blend,..s}).is_none());
         assert!((warp_fold_frequency(100.0,1000.0,1.0,0.25,0)-775.0).abs()<1e-9);
+    }
+    #[test]
+    fn unified_axis_translation_pitch_at_log_and_hz_at_linear(){
+        let f=400.0;let reference=200.0;let shift=0.5;
+        assert!((translate_frequency(f,reference,0.0,shift)-f*shift.exp()).abs()<1e-8);
+        assert!((translate_frequency(f,reference,1.0,shift)-(f+100.0)).abs()<1e-8);
+        assert!((translate_frequency(f,reference,0.5,0.0)-f).abs()<1e-8);
+        let mid=translate_frequency(f,reference,0.5,shift);
+        assert!(mid>f+100.0 && mid<f*shift.exp());
+        assert!((warp_translate_frequency(f,reference,1.0,-2.5)+100.0).abs()<1e-8);
     }
     #[test]
     fn c_abi_works() {
