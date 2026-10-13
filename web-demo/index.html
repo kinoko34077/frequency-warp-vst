@@ -29,6 +29,10 @@
       <div class="eyebrow">02 / SPECTRAL MAPPING</div>
       <div class="panels">
         <div class="controls">
+          <div class="bounds">
+            <div class="control"><div class="control-heading"><label for="low">L · 下限周波数</label><output id="low-value">20 Hz</output></div><input id="low" type="range" min="0" max="1000" step="1" value="0"><div class="ends"><span>20 Hz</span><span>20 kHz</span></div></div>
+            <div class="control"><div class="control-heading"><label for="high">H · 上限周波数</label><output id="high-value">16 kHz</output></div><input id="high" type="range" min="0" max="1000" step="1" value="968"><div class="ends"><span>20 Hz</span><span>20 kHz</span></div></div>
+          </div>
           <div class="control"><div class="control-heading"><label for="curvature">Curvature</label><output id="curvature-value">1.00</output></div>
             <input id="curvature" type="range" min="0" max="1" step=".01" value="1">
             <div class="ends"><span>Logarithmic</span><span>Linear</span></div>
@@ -42,21 +46,23 @@
             <div class="ends"><span>Original</span><span>Processed</span></div>
           </div>
           <div class="selectors">
-            <div><label for="mode">Invert Mode</label><select id="mode"><option value="fold" selected>Fold / L-H 折返し</option><option value="blend">Blend / 単純補間</option></select></div>
+            <div><label for="mode">Invert Mode</label><select id="mode"><option value="blend">単純補間</option><option value="fold-l">L側で折返し</option><option value="fold-h" selected>H側で折返し</option></select></div>
+            <div><label for="outside">帯域外の音</label><select id="outside"><option value="pass" selected>そのまま通過</option><option value="kill">除去</option></select></div>
             <div><label for="quality">Quality</label><select id="quality"><option value="eco">Eco / Fast</option><option value="standard" selected>Standard</option><option value="high">High / Slow</option></select></div>
           </div>
         </div>
         <div class="curve-panel">
           <div class="graph-title">FREQUENCY MAPPING <span>f → f′</span></div>
           <canvas id="curve" aria-label="周波数変換曲線"></canvas>
-          <div class="ends"><span>Input: 20Hz</span><span>20kHz</span></div>
-          <p class="graph-note">グラフは理論写像。実音のDSP品質とは異なります。</p>
+          <div class="ends"><span id="graph-low">L</span><span id="graph-high">H</span></div>
+          <p class="graph-note">周波数範囲と反転方式を変更すると曲線が更新されます。線形座標で表示する理論写像です。</p>
         </div>
       </div>
     </section>
     <section class="panel">
       <div class="eyebrow">03 / RENDER & LISTEN</div>
-      <button class="primary" id="render" disabled>音声を変換する</button>
+      <button class="primary" id="render" disabled>音声を変換・更新する</button>
+      <label class="auto-label"><input id="auto-update" type="checkbox" checked> 操作に連動して自動変換（再生位置を維持）</label>
       <progress id="progress" value="0" max="100" aria-label="変換進捗"></progress>
       <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを読み込んでください。</div>
       <div class="actions">
@@ -68,8 +74,8 @@
     </section>
     <section class="notice">
       <strong>研究用プレビューについて</strong>
-      <p>現在のR2.1 STFTアルゴリズムを共通Rust/WASMエンジンで試聴する版です。DSP本体は共通Rustエンジンから生成したWASMで動き、音声はサーバーへ送信されません。リアルタイム処理や完成VSTではありません。</p>
-      <p>ノイズ・残響・複雑な音では成分欠落、位相ずれ、音量変化が発生します。テスト対象帯域は20Hz〜min(16kHz, サンプルレート×0.45)で、この帯域外や未追跡成分は試作上出力されません。これは製品仕様として採用した帯域外ルールではありません。</p>
+      <p>共通Rust/WASM DSPを使用します。再生中のツマミ変更は別スレッドで再変換し、完成後に同じ再生位置へクロスフェードして反映します。<strong>瞬時のリアルタイムDSPではなく、処理待ちを伴う動的プレビューです。</strong>音声はサーバーへ送信しません。</p>
+      <p>L/Hの外側は「そのまま通過／除去」を選べます。ノイズ・残響・複雑な音の未追跡成分には欠落・位相ずれが残ります。出力側の0Hz以下に関するReflect/Kill/Fadeは別仕様で未実装です。</p>
       <p>Qualityの段階はこのブラウザ試作品専用の計算設定であり、完成版VST3の品質段階とは異なります。</p>
     </section>
     <footer><a href="https://github.com/kinoko34077/frequency-warp-vst">Source / frequency-warp-vst</a><span>Local-only DSP · No upload</span></footer>
