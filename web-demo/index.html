@@ -48,23 +48,54 @@
             <div class="ends"><span>Original</span><span>Processed</span></div>
           </div>
           <div class="selectors">
+            <div class="engine-choice"><label for="engine">音声処理エンジン（Rust DSPを実切替）</label>
+              <select id="engine">
+                <option value="0">A: 部分音追跡＋位相変調（現行）</option>
+                <option value="1">B: STFT/FFTビン再配置（高速・粗精度）</option>
+                <option value="2">C: Ring Mod（積による上下側波帯・低遅延）</option>
+                <option value="3">D: Pitch → Hz Shift（#16 仮想基音系）</option>
+                <option disabled>候補: 線形反転専用の解析信号直接系（未実装）</option>
+                <option disabled>候補: 正弦波追跡＋残差再構成（#5 R2.2未完）</option>
+                <option disabled>候補: chirplet／非一様スペクトル解析（未検証）</option>
+              </select>
+            </div>
             <div><label for="mode">Invert Mode</label><select id="mode"><option value="blend">単純補間</option><option value="fold-l">L側で折返し</option><option value="fold-h" selected>H側で折返し</option></select></div>
             <div><label for="outside">帯域外の音</label><select id="outside"><option value="pass" selected>そのまま通過</option><option value="kill">除去</option></select></div>
-            <div><label for="quality">Quality</label><select id="quality"><option value="eco" selected>Eco / Real-time</option><option value="standard">Standard</option><option value="high">High / Slow</option></select></div>
+            <div><label for="quality">FFT窓 / 精度・レイテンシ</label><select id="quality"><option value="eco" selected>1024 samples · 軽量</option><option value="standard">2048 samples · 標準</option><option value="high">4096 samples · 高分解能</option></select></div>
+            <div><label for="overlap">FFT重ね合わせ / 内部hop</label><select id="overlap"><option value="4" selected>4× overlap · N/4 hop</option><option value="8">8× overlap · N/8 hop（高負荷）</option></select></div>
           </div>
         </div>
         <div class="curve-panel">
-          <div class="graph-title">FREQUENCY MAPPING <span>f → f′</span></div>
+          <div class="graph-title">20 Hz – 2 kHz / 全域マッピング <span>f → f′</span></div>
           <canvas id="curve" aria-label="周波数変換曲線"></canvas>
-          <div class="ends"><span id="graph-low">L</span><span id="graph-high">H</span></div>
-          <p class="graph-note">周波数範囲と反転方式を変更すると曲線が更新されます。線形座標で表示する理論写像です。</p>
+          <div class="ends"><span>入力 20 Hz</span><span>2 kHz</span></div>
+          <div class="graph-legend"><span>━ 変換帯域</span><span>┄ 無変換</span><span>▧ L–H 範囲</span></div>
+          <p class="graph-note">X/Yとも20Hz–2000Hz固定、等倍率の正方形です。L/Hより外側は通過なら対角線、除去なら空白。2kHzより外側は描画されません（実DSPの処理範囲は別）。</p>
         </div>
       </div>
+      <details id="harmonic-lab" class="math-lab" open>
+        <summary>数式・倍音列の変換を表示（Issue #16）</summary>
+        <p>下記は<strong>理想的な整数倍音列に対する数値計算</strong>です。録音の基音自動検出や実際の知覚音高を表しません。</p>
+        <div class="math-controls">
+          <label>元基音 F（Hz）<input id="fundamental" type="number" value="350" min="20" max="2000" step="1"></label>
+          <label>分母 m<input id="denominator" type="number" value="4" min="1" max="64" step="1"></label>
+          <label>符号付き分子 n<input id="numerator" type="number" value="-3" min="-128" max="128" step="1"></label>
+          <label>折返し元倍音 q<input id="harmonic-index" type="number" value="1" min="1" max="32" step="1"></label>
+          <label>前段Pitch倍率 r<input id="pitch-ratio" type="number" value="1" min=".25" max="4" step=".05"></label>
+          <label>Ring搬送周波数 c（Hz）<input id="carrier" type="number" value="350" min="0" max="20000" step="1"></label>
+          <label>0Hz以下のシフト先<select id="zero-mode"><option value="0">Reflect / 折返し</option><option value="1">Kill / 除去</option><option value="2">Fade / 減衰（実験版）</option></select></label>
+        </div>
+        <div class="math-results" id="math-results" aria-live="polite"></div>
+        <div class="math-table"><table><thead><tr><th>k</th><th>入力 kF</th><th>kF+Δ</th><th>|kF−S|</th><th>倍音番号 mk+n</th></tr></thead><tbody id="harmonics-body"></tbody></table></div>
+        <p class="math-note">Ring Modは f+c と |f−c| の<strong>二系列</strong>です。[L,H]でのFoldと0HzでのReflectは別概念。現行試作では位相・聴感・仮想基音の知覚を保証しません。</p>
+      </details>
     </section>
     <section class="panel">
       <div class="eyebrow">03 / REALTIME LISTEN</div>
       <div class="realtime-lead">曲全体を変換する必要はありません。再生中の音声を128サンプルずつ連続変換します。</div>
       <div class="rt-indicator" id="rt-indicator">停止中 · Rust / WASM AudioWorklet</div>
+      <div id="engine-description" class="engine-description" aria-live="polite"></div>
+      <div id="engine-stats" class="engine-stats"></div>
       <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを読み込んでください。</div>
       <div class="actions">
         <button id="play-dry" disabled>▶ 原音を再生</button>
