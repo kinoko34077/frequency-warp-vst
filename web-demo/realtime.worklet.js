@@ -26,7 +26,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     try {
       if (this.stream) this.release();
       this.port.postMessage({type:"init-started"});
-      const instance = new WebAssembly.Instance(data.module, {});
+      const instance = new WebAssembly.Instance(new WebAssembly.Module(data.bytes), {});
       const e = instance.exports;
       const required = [
         "memory","warp_alloc_f32","warp_free_f32","warp_stream_create",
@@ -71,6 +71,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     this.stream=0;this.src=0;this.dst=0;this.exports=null;
   }
   command(data) {
+    this.port.postMessage({type:"command-received",command:data?.type||"null"});
     if (!data) return;
     if (data.type==="init")return this.initialize(data);
     if (!this.stream)return;
