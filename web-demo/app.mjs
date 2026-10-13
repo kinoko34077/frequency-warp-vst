@@ -47,6 +47,9 @@ function bounds(changed=""){
   state.effective={low,high};
   $("#low-value").value=String(Math.round(low));
   $("#high-value").value=String(Math.round(high));
+  const rail=$("#dual-range");
+  rail.style.setProperty("--lo",($("#low").value/10)+"%");
+  rail.style.setProperty("--hi",($("#high").value/10)+"%");
   return state.effective;
 }
 function settings(){
@@ -69,7 +72,9 @@ function settings(){
     ringEnabled:$("#ring-enabled").checked,
     rationalEnabled:$("#rational-enabled").checked,
     crusherBits:$("#crusher-enabled").checked?Number($("#crusher-bits").value):0,
-    crusherHold:Number($("#crusher-hold").value)
+    crusherHold:Number($("#crusher-hold").value),
+    aMinHz:hzFromScale($("#a-min").value),
+    aReverb:Number($("#a-reverb").value)/100
   };
 }
 function labels(id=""){
@@ -83,6 +88,8 @@ function labels(id=""){
   const u=Number($("#axis-shift").value),p=Number($("#curvature").value);
   const ref=harmonicParameters().r*harmonicParameters().F;
   $("#axis-shift-value").value=u.toFixed(2);
+  $("#a-min-value").value=String(Math.round(hzFromScale($("#a-min").value)));
+  $("#a-reverb-value").value=$("#a-reverb").value;
   $("#axis-mode-hint").textContent=Number($("#invert").value)>0?"反転も適用中":"";
   $("#axis-explainer").textContent=p===0?"移動倍率 ×"+Math.exp(u).toFixed(2):
     p===1?"移動 "+Math.round(u*ref)+" Hz":"移動：中間尺度";
@@ -99,15 +106,17 @@ function axisMarker(f){
   const core=state.mathCore;
   if(!core||!(f>0))return NaN;
   const p=settings();
-  return core.warp_translate_frequency_controls(f,p.axisPivot,p.axisSlope,p.axisReference,p.curvature,p.axisShift);
+  const {warp,translate}=mathCallbacks();
+  const result=mapAtFrequency(f,p,warp,translate);
+  return result.raw??NaN;
 }
 function mathCallbacks(){
+  const core=state.mathCore,reference=settings().axisReference;
   return {
     warp:(f,l,h,curvature,invert,mode)=>
-      state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
-        mode==="blend"?1:mode==="fold-l"?2:0),
-    translate:(f,pivot,curvature,shift,slope)=>
-      state.mathCore.warp_translate_frequency_controls(f,pivot,slope,settings().axisReference,curvature,shift)
+      core.warp_map_frequency(f,l,h,curvature,invert,mode==="blend"?1:mode==="fold-l"?2:0),
+    translate:(f,pivot,curvature,shift,slope,anchor)=>
+      core.warp_translate_frequency_anchored(f,anchor,pivot,slope,reference,curvature,shift)
   };
 }
 function updateListeningGuide(){
@@ -126,11 +135,8 @@ function updateListeningGuide(){
     const x=mapAtFrequency(f,p,warp,translate);
     return f+"Hz → "+(x.outputs.length?x.outputs.map(hz).join(" / "):x.reason);
   });
-  $("#coordinate-details").textContent="起点 "+hz(p.axisPivot)+
-    " / 傾き ×"+p.axisSlope.toFixed(2)+
-    " / 対数倍率 ×"+Math.exp(p.axisShift).toFixed(3)+
-    " / 線形移動 "+(p.axisShift*p.axisReference).toFixed(1)+"Hz"+
-    " / 反転後の起点 "+hz(warpPivot)+"\\n"+details.join("　|　");
+  // Mathematical descriptions and actual variables are rendered in
+  // the separate semantic grid, not poured into a status paragraph.
 }
 
 function drawCurve(){
@@ -156,7 +162,7 @@ async function ensureSharedCore(){
       const core=instance.exports;
       if(typeof core.warp_fold_frequency!=="function"||
         typeof core.warp_map_frequency!=="function"||
-        typeof core.warp_translate_frequency_controls!=="function")throw Error("共通数式APIがありません");
+        typeof core.warp_translate_frequency_anchored!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
       return bytes;
@@ -171,11 +177,12 @@ async function ensureSharedCore(){
 function updateEngineInfo(){
   const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
   const latency=1000*(q.fftSize-1)/rate;
-  const names=["部分音追跡＋再合成","STFTビン再配置"];
+  const names=["A · 部分音再合成","B · STFT変換"];
   const explain=[
     "部分音追跡と発振器による実験的な再合成方式です。残差や過渡音は完全に復元されません。",
     "FFTビン再配置による実験的な再合成方式です。位相・離散格子誤差に注意してください。"
   ];
+  $("#engine-a-settings").hidden=s.engine!==0;
   $("#engine-description").textContent=explain[s.engine]+
     (s.ringEnabled?" / Ring Mod ON":"")+(s.rationalEnabled?" / #24倍音配置 ON":"");
   $("#engine-summary").textContent=names[s.engine];
@@ -452,6 +459,8 @@ function updateParams(changed){
 }
 // Value fields are the readout themselves. Editing one immediately moves its slider.
 const inline={
+  "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",20,20000],
+  "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
   "low-value":["low",v=>scaleFromHz(v),"low",20,20000],
   "high-value":["high",v=>scaleFromHz(v),"high",20,20000],
   "axis-pivot-value":["axis-pivot",v=>scaleFromPivot(v),"axis-pivot",0,20000],
@@ -477,11 +486,23 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   field.addEventListener("change",apply);
   field.addEventListener("keydown",event=>{if(event.key==="Enter"){field.blur();}});
 }
+// The two handles share a physical track. Touching the bare rail selects
+// whichever endpoint is closest; the handles themselves remain draggable.
+$("#dual-range").addEventListener("pointerdown",event=>{
+  if(event.target!==$("#dual-range"))return;
+  const box=event.currentTarget.getBoundingClientRect();
+  const normalized=clamp((event.clientX-box.left)/box.width,0,1);
+  const target=normalized*1000;
+  const low=Number($("#low").value),high=Number($("#high").value);
+  const slider=Math.abs(target-low)<=Math.abs(target-high)?$("#low"):$("#high");
+  slider.value=String(Math.round(target));
+  slider.dispatchEvent(new Event("input",{bubbles:true}));
+});
 $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;drawCurve();});
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
 });
-for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","mode","outside","quality","overlap","engine","ring-enabled","rational-enabled"]){
+for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","mode","outside","quality","overlap","engine","a-min","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#wet").addEventListener("input",()=>{labels();tuneWet();drawCurve();});
@@ -622,11 +643,13 @@ dialog.addEventListener("click",event=>{
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
-    engine:"0",mode:"fold-h",outside:"pass",quality:"eco",
+    engine:"1",mode:"fold-h",outside:"pass",quality:"eco",
     overlap:"4","zero-mode":"0"
   };
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
+  $("#a-min").value="0";$("#a-reverb").value="0";
+  $("#a-min-value").value="20";$("#a-reverb-value").value="0";
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="4";
   $("#crusher-bits-value").value="8";

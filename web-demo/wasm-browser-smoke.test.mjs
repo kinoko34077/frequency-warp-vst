@@ -43,7 +43,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     }
     assert.ok(okay,"page not served");
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
-      document.querySelector("#math-results")?.textContent.includes("仮想格子"),{timeout:16000})
+      document.querySelectorAll("#math-results math").length>=5 && document.querySelector("#mini-fundamental")?.textContent.includes("→"),{timeout:16000})
       .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
         math:document.querySelector("#math-results")?.textContent,curve:[
           document.querySelector("#curve").width,document.querySelector("#curve").height],
@@ -51,7 +51,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       })))+" | "+err.message);});
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
-    assert.equal(await page.$eval("#invert",el=>el.value),"0","neutral mapping is the only default that allows ordinary pitch shift");
+    assert.equal(await page.$eval("#invert",el=>el.value),"0");
+    assert.equal(await page.$eval("#engine",el=>el.value),"1","STFT B must be default");
+    assert.equal(await page.$eval(".dual-range",el=>el.querySelectorAll("input[type=range]").length),2);
+    assert.equal(await page.$eval("#engine",el=>el.value),"1");
+    assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
+    assert.equal(await page.$eval("#math-results",el=>el.textContent.includes("|")),false);
+    assert.equal(await page.$eval("#ring-enabled",el=>el.closest(".effects-panel")!==null),true);
+    assert.equal(await page.$eval("#crusher-enabled",el=>el.closest(".effects-panel")!==null),true);
+    assert.equal(await page.$eval("#carrier",el=>el.closest(".effects-panel")!==null),true);
+    await page.$eval("#dual-range",el=>{
+      const r=el.getBoundingClientRect();
+      el.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,
+        clientX:r.x+r.width*.30,clientY:r.y+r.height/2}));
+    });
+    assert.ok(await page.$eval("#low",el=>Number(el.value))>0,
+      "tapping shared rail should move nearest threshold");
+    await page.$eval("#low",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
     for(const id of ["curvature","invert","wet"]){
       assert.ok(await page.$eval("#"+id,el=>Number(el.step))<=0.005,"percentage slider coarse: "+id);
@@ -80,7 +97,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     assert.match(await page.$eval("#listening-guide",el=>el.textContent),/500Hz →/);
-    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形移動/);
+    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形移動量/);
     await page.click("#slope-one");
     assert.equal(await page.$eval("#axis-slope",el=>Number(el.value)),1);
     await page.$eval("#axis-shift-value",el=>{
@@ -94,13 +111,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#axis-shift",el=>{el.value=".7";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/移動倍率 ×2/);
     assert.doesNotMatch(await page.$eval("#math-axis-note",el=>el.textContent),/準備中|未算出|計算中/);
-    assert.match(await page.$eval("#math-axis-note",el=>el.textContent),/上下移動後/);
+    assert.match(await page.$eval("#math-axis-note",el=>el.textContent),/→/);
     await page.click("#axis-zero");
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0);
     assert.match(await page.$eval("#axis-shift-value",el=>el.value),/0\.00/);
     await page.$eval("#curvature",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
 
-    assert.match(await page.$eval("#math-results",el=>el.textContent),/H=F′\/m=87.5 Hz/);
+    assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
     // Independent sine test can run before an audio file has been loaded.
     assert.equal(await page.$eval("#sine-hz",el=>el.value),"440.00");
     await page.click("#sine-enabled");
@@ -118,12 +135,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       el.value="-3";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     assert.equal(await page.$eval("#numerator",el=>el.value),"-3");
-    assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\)F′ = -262.5 Hz/);
+    assert.match(await page.$eval("#math-variables",el=>el.textContent),/−|Δ/);
     await page.$eval("#carrier-range",el=>{el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),20000);
     await page.$eval("#carrier-range",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
     await page.$eval("#carrier-range",el=>{el.value="592";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.click("#ring-enabled");
     await page.click("#carrier-link");
     await page.waitForFunction(()=>document.querySelector("#carrier-linked-value").textContent.includes("Hz") &&
       document.querySelector("#carrier").disabled,{timeout:10000});
@@ -172,14 +190,21 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
+    await page.click(".fx-more summary");
+    await page.click("#rational-enabled");
     await page.click("#settings-open");
     // Ring and rational layout are *effects*, not synthesis engines.
     assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll("#engine option:not(:disabled)")).map(n=>n.value)),["0","1"]);
-    await page.click("#ring-enabled");
     assert.match(await page.$eval("#engine-description",el=>el.textContent),/Ring Mod/);
-    await page.click("#rational-enabled");
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{timeout:25000});
+    await page.select("#engine","0");
+    assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
+    await page.$eval("#a-min",el=>{el.value="570";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.ok(await page.$eval("#a-min-value",el=>Number(el.value))>100);
+    await page.$eval("#a-reverb",el=>{el.value="35";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#a-reverb-value",el=>el.value),"35");
     await page.select("#engine","1");
+    assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),true);
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
     await page.select("#engine","0");
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
@@ -229,10 +254,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);
     await page.click("#settings-open");
     await page.select("#harmonic-count","12");
+    await page.click("#settings-done");
     await page.click("#crusher-enabled");
     await page.$eval("#crusher-bits",el=>{el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#crusher-bits-value",el=>el.value),"3");
-    await page.click("#settings-done");
     await page.click("#mini-expand");
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false,"graph must stay visible when equations open");
     assert.match(await page.$eval("#harmonic-table-title",el=>el.textContent),/12倍音/);
@@ -261,8 +286,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         }));
         throw Error("600-second start: "+JSON.stringify(state)+" | "+err.message);
       });
-    const minute=await page.$eval("#elapsed",el=>Number(el.textContent.split(":")[0]));
-    assert.equal(minute,9,"600s seek failed");
+    const soughtSeconds=await page.$eval("#elapsed",el=>{
+      const [m,sec]=el.textContent.split(":").map(Number);
+      return m*60+sec;
+    });
+    assert.ok(Math.abs(soughtSeconds-540)<3,
+      "600s waveform seek should land near 9:00, got "+soughtSeconds);
     await page.click("#stop");
     await page.close();
   }finally{

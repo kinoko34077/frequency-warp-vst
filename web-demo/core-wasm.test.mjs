@@ -107,7 +107,9 @@ test("real native-shared Rust WASM streaming ABI processes continuous 128-frame 
       }
       return Math.hypot(re,im);
     };
-    assert.ok(magnitude(2520)>magnitude(500)*4,"stream did not move the tone");
+    // The spectral pivot (350Hz) now remains fixed through inversion:
+    // g(500)=2520Hz, g(350)=2670Hz => 350+(2520-2670)=200Hz.
+    assert.ok(magnitude(200)>magnitude(500)*4,"inverted pivot-mapped stream lost tone");
     assert.equal(e.warp_stream_set(ptr,100,3000,.5,.4,2,0,1),0);
     assert.equal(e.warp_stream_reset(ptr),0);
   }finally{
@@ -360,4 +362,31 @@ test("zero pivot physical slope makes an octave in both FFT and peak audio paths
      assert.ok(high>10 && high>low*2,"engine "+engine+" must pitch 500Hz to 1000Hz by slope alone: "+high+"/"+low);
    }
  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
+
+test("A minimum partial frequency and synthesis reverb change real PCM without affecting B",async()=>{
+  const e=await load();
+  assert.equal(typeof e.warp_stream_render_f32_a_ext,"function");
+  assert.equal(typeof e.warp_stream_set_a_options,"function");
+  assert.equal(typeof e.warp_translate_frequency_anchored,"function");
+  assert.ok(Math.abs(e.warp_translate_frequency_anchored(2520,2670,350,1,350,1,0)-200)<1e-6);
+  const rate=8192,frames=16384,src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+  try{
+    const input=new Float32Array(e.memory.buffer,src,frames);
+    for(let i=0;i<frames;i++)input[i]=.45*Math.cos(2*Math.PI*500*i/rate);
+    const render=(engine,minHz,verb)=>{
+      const rc=e.warp_stream_render_f32_a_ext(src,dst,frames,1,rate,
+        20,3000,1,0,0,0,0,engine,1,0,0,0,4,0,1,0,350,0,0,350,1,minHz,verb);
+      assert.equal(rc,0);
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,frames));
+    };
+    const energy=x=>x.slice(2500,14000).reduce((v,y)=>v+y*y,0);
+    const normal=render(0,20,0),cut=render(0,900,0),
+      wet=render(0,20,.5),bin=render(1,900,1);
+    assert.ok(energy(normal)>100,"A should reconstruct the 500Hz partial");
+    assert.ok(energy(cut)<energy(normal)*.02,"A minimum Hz cutoff not applied");
+    assert.ok(energy(bin)>100,"A settings leaked into B");
+    const delta=normal.slice(2500,14000).reduce((v,x,i)=>v+Math.abs(x-wet[i+2500]),0);
+    assert.ok(delta>20,"A reverb amount didn't alter actual sound");
+  }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
 });

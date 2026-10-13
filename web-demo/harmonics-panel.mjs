@@ -3,7 +3,7 @@ import {deriveHarmonics} from "./harmonics.mjs";
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
 const $=id=>document.querySelector(id);
-const fmt=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
+const fmt=value=>Number.isFinite(value)?Number(value.toFixed(2)).toString():"—";
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
@@ -50,23 +50,34 @@ export function renderHarmonicPanel(foldPoint,axisMarker){
   const moving=Number.isFinite(movedH)?fmt(movedH)+" Hz":"未算出";
   const axis=Number($("#curvature").value),shift=Number($("#axis-shift").value);
   const axisName=axis===0?"対数／倍率":axis===1?"線形／一定Hz":"中間座標";
-  $("#math-axis-note").textContent="仮想基音 H="+fmt(z.H)+
-    " Hz → 上下移動後 "+moving+
-    "（"+axisName+"、移動量 "+(shift>=0?"+":"")+shift.toFixed(2)+"）";
-
-  $("#math-results").textContent=[
-    "入力の仮想格子: F′=rF="+fmt(r*F)+" Hz / H=F′/m="+fmt(z.H)+" Hz",
-    "上下移動後のH位置マーカー = "+moving+"（必ずしも倍音列の公約数ではない）",
-    "有理数シフト: Δ = (n/m)F′ = "+fmt(z.delta)+" Hz",
-    "有理数格子: f′k = (mk+n)H = rkF+Δ",
-    "処理順: Warp g(f) → 任意の有理数変換 → C_p軸で上下移動",
-    "0Hz折返し: f′k = |krF − S|",
-    "第q倍音がHへ: S=(q+1/m)rF = "+fmt(z.foldShift)+" Hz",
-    "Ring Mod: cos(2πft)cos(2πct) = ½cos(2π(f+c)t)+½cos(2π(f−c)t)",
-    "搬送波 c = "+fmt(c)+" Hz / 両側波帯 f+c, |f−c|",
-    "変換順: Pitch→Shift = r·f+Δ / Shift→Pitch = r·(f+Δ)",
-    "注: 移動後のHは位置マーカーです。純粋な一定Hz移動では倍音格子の真の共通基音と異なり得ます。"
-  ].join("\n");
+  $("#math-axis-note").textContent="仮想基音： "+fmt(z.H)+" Hz → "+moving;
+  const variables=[
+    ["F · 元基音",fmt(F)+" Hz"],["r · ピッチ比",fmt(r)],
+    ["F′ · 基音",fmt(r*F)+" Hz"],["m · 間隔",String(m)],
+    ["n · 番号ずれ",String(n)],["q · 折返す倍音",String(q)],
+    ["H · 仮想基音",fmt(z.H)+" Hz"],["Δ · 番号移動",fmt(z.delta)+" Hz"],
+    ["S · 折返し量",fmt(z.foldShift)+" Hz"],["c · リング搬送波",fmt(c)+" Hz"]
+  ];
+  const populate=(id,rows)=>{
+    const node=$(id),fragment=document.createDocumentFragment();
+    for(const [name,value] of rows){
+      const dt=document.createElement("dt"),dd=document.createElement("dd");
+      dt.textContent=name;dd.textContent=value;
+      fragment.append(dt,dd);
+    }
+    node.replaceChildren(fragment);
+  };
+  populate("#math-variables",variables);
+  const pivot=Number($("#axis-pivot-value").value)||0;
+  populate("#coordinate-details",[
+    ["起点",fmt(pivot)+" Hz"],
+    ["傾き",fmt(Number($("#axis-slope").value))+" 倍"],
+    ["対数移動倍率",fmt(Math.exp(shift))+" 倍"],
+    ["線形移動量",fmt(shift*r*F)+" Hz"],
+    ["反転率",fmt(100*Number($("#invert").value))+" %"],
+    ["移動の尺度",axisName],
+    ["備考","移動0なら起点が固定。上下移動を指定すると起点も移動します。"]
+  ]);
   const frag=document.createDocumentFragment();
   for(const row of z.rows){
     const tr=document.createElement("tr");

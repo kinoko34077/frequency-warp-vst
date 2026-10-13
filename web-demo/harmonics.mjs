@@ -39,9 +39,10 @@ export function mapAtFrequency(f,
   let transformed=base;
   if(inside){
     if(rationalEnabled)transformed=pitchRatio*transformed+shiftHz;
-    if(transformed>0){
-      transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope);
-    }
+    const pivotInside=axisPivot>=low&&axisPivot<=high;
+    const pivotBase=pivotInside?warp(axisPivot,low,high,curvature,invert,mode):axisPivot;
+    const sourceAnchor=pivotBase;
+    transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
   }
   if(!Number.isFinite(transformed))return {f,inside,outputs:[],reason:"座標計算不能"};
   if(transformed<0){
