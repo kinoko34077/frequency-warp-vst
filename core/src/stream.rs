@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,translate_frequency_controls,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,map_frequency_anchored,translate_frequency_affine,translate_frequency_controls,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -271,7 +271,7 @@ impl Stream {
                 for k in 1..half {
                     let f=k as f64*step;
                     let target=if f>=self.settings.low&&f<=self.settings.high {
-                        let base=map_frequency(f,self.settings).unwrap_or(f);
+                        let base=map_frequency_anchored(f,self.settings,self.axis_pivot).unwrap_or(f);
                         let old=if self.rational_enabled {
                             self.pitch_ratio*base+self.shift_hz
                         }else{base};
@@ -335,7 +335,7 @@ impl Stream {
             if !frequency.is_finite() ||frequency<self.settings.low.max(self.peak_min_hz)||frequency>self.settings.high{continue;}
             // Transform semantics are orthogonal to the resynthesis engine:
             // g(f) -> optional Issue #24 rational lattice -> axis-translation.
-            let mapped=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
+            let mapped=match map_frequency_anchored(frequency,self.settings,self.axis_pivot){Ok(f)=>f,Err(_)=>continue};
             let staged=if self.rational_enabled {
                 self.pitch_ratio*mapped+self.shift_hz
             }else{mapped};
