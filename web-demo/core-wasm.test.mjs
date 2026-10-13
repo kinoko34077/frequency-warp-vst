@@ -223,3 +223,41 @@ test("shared Rust WASM crusher changes actual output and accepts live updates",a
     }finally{e.warp_stream_free(ptr);}
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("unified scale: p=0 ratio, p=1 constant Hz, p=.5 intermediate",async()=>{
+ const e=await load();
+ assert.equal(typeof e.warp_translate_frequency,"function");
+ assert.ok(Math.abs(e.warp_translate_frequency(400,200,0,.5)-400*Math.exp(.5))<1e-6);
+ assert.ok(Math.abs(e.warp_translate_frequency(400,200,1,.5)-500)<1e-6);
+ const mid=e.warp_translate_frequency(400,200,.5,.5);
+ assert.ok(mid>500&&mid<400*Math.exp(.5));
+ assert.ok(e.warp_translate_frequency(400,200,1,-2.5)<0);
+ assert.ok(Number.isNaN(e.warp_translate_frequency(-20,200,0,.5)));
+});
+test("synthesis engine 0 accepts independent shift + Ring options through Rust",async()=>{
+ const e=await load();
+ assert.equal(typeof e.warp_stream_set_transform,"function");
+ assert.equal(typeof e.warp_stream_render_f32_axis_ext,"function");
+ const ptr=e.warp_stream_create_ext(8192,1,20,3000,1,1,0,0,1,0,1,0,300,0,4);
+ assert.ok(ptr>0);
+ try{
+  assert.equal(e.warp_stream_set_transform(ptr,.5,350,0,0),0);
+  assert.equal(e.warp_stream_set_transform(ptr,.5,350,1,0),0);
+  assert.equal(e.warp_stream_set_transform(ptr,0,350,0,1),0);
+  assert.equal(e.warp_stream_set_transform(ptr,0,0,0,0),-2);
+ }finally{e.warp_stream_free(ptr);}
+ const n=4096,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+ try{
+  const pcm=new Float32Array(e.memory.buffer,src,n);
+  for(let i=0;i<n;i++)pcm[i]=.6*Math.cos(2*Math.PI*600*i/8192);
+  const results=[];
+  for(const axis of [0,.3]){
+   const rc=e.warp_stream_render_f32_axis_ext(src,dst,n,1,8192,
+    20,3000,1,1,0,0,1,0,1,0,300,0,4,0,1,axis,350,0,0);
+   assert.equal(rc,0);
+   results.push(Array.from(new Float32Array(e.memory.buffer,dst,n)));
+  }
+  const mean=results[0].slice(2048).reduce((acc,x,i)=>acc+Math.abs(x-results[1][2048+i]),0)/2048;
+  assert.ok(mean>.015,"frequency axis movement not connected to Rust audio");
+ }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
