@@ -200,3 +200,9 @@ frequency mapping (Rust) and the audio-host/transport/monitor controls
 (WebAudio). Neither the analytic complex modulation method nor the
 residual-inclusive reference has been promoted to a certified real-time
 DSP algorithm; research in Issue #5/#17 remains open.
+
+## 2026-10-14 frequency pivot, spectral slope, and silence audit (#29)
+
+The shared Rust geometry now defines T(f)=C_p^-1(s*C_p(f;P)+u;P), with C_0(f;P)=ln(f/P) and C_p(f;P)=((f/P)^p-1)/p for p>0. P is an independent pivot in Hz, s is a positive spectral slope, u is the signed axis translation, and p is the existing curvature. For p=0 and s=1 this is uniform pitch ratio exp(u); for p=1 and s=1 it adds u*P Hz; for s!=1 the spacing changes about P. Nonlinear frequency inversion is applied before this operation and can move the chosen pivot.
+
+Confirmed bug: FFT-bin resynthesis formerly discarded negative target frequencies regardless of the Reflect/Kill/Fade setting, and clamped some negative intermediates before mapping. Both FFT-bin and peak engines now share Stream::resolve_zero. Web displays mapping-drop reasons and real AudioWorklet source/output RMS, because the geometrical graph alone cannot confirm that source energy survives peak detection, processing or the Nyquist limit. Live WASM API warp_stream_set_geometry and offline warp_stream_render_f32_geometry_ext use the same Rust code. Browser percentages use 0.005 steps (0.5%), signed shift number field uses 0.05 increments, with 0/1 reset controls. The listening guide shows effective frequency changes, ratios/semitones, source examples, geometric parameters and estimated mute reasons. CI validates 500Hz negative translated to 200Hz in Reflect mode versus Kill for both engines. Audible quality across arbitrary real recordings remains experimental.
