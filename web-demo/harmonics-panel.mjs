@@ -47,7 +47,13 @@ export function renderHarmonicPanel(foldPoint,axisMarker){
   const z=deriveHarmonics(F,m,n,q,r,count);
   const c=resolvedCarrierHz(foldPoint);
   const movedH=axisMarker?.(z.H);
-  const moving=Number.isFinite(movedH)?fmt(movedH)+" Hz":"計算中";
+  const moving=Number.isFinite(movedH)?fmt(movedH)+" Hz":"未算出";
+  const axis=Number($("#curvature").value),shift=Number($("#axis-shift").value);
+  const axisName=axis===0?"対数／倍率":axis===1?"線形／一定Hz":"中間座標";
+  $("#math-axis-note").textContent="仮想基音 H="+fmt(z.H)+
+    " Hz → 上下移動後 "+moving+
+    "（"+axisName+"、移動量 "+(shift>=0?"+":"")+shift.toFixed(2)+"）";
+
   $("#math-results").textContent=[
     "入力の仮想格子: F′=rF="+fmt(r*F)+" Hz / H=F′/m="+fmt(z.H)+" Hz",
     "上下移動後のH位置マーカー = "+moving+"（必ずしも倍音列の公約数ではない）",
