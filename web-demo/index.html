@@ -42,33 +42,33 @@
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <div class="control-grid">
-          <div class="control"><div class="control-heading"><label for="invert">反転</label><input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.5" value="0" aria-label="invert-value の数値"></div>
+          <div class="control"><div class="control-heading"><label for="invert">反転</label><input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="invert-value の数値"></div>
             <input id="invert" type="range" min="0" max="1" step=".005" value="0"><div class="ends"><span>通常</span><span>反転</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="curvature">移動の尺度</label><input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.005" value="1" aria-label="curvature-value の数値"></div>
+          <div class="control"><div class="control-heading"><label for="curvature">移動の尺度</label><input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="curvature-value の数値"></div>
             <input id="curvature" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.05" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
+          <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.001" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
             <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
             
             <div class="ends"><span>下降 −</span><span>上昇 ＋</span></div>
             <small class="axis-explainer" id="axis-explainer">基準350Hzに対して 0 Hz</small><small class="axis-mode-hint" id="axis-mode-hint">倍率移動だけを聴くときは反転量0%にしてください。</small>
           </div>
-                    <div class="control"><div class="control-heading"><label for="wet">Mix</label><input class="inline-value" id="wet-value" type="number" min="0" max="100" step="0.5" value="100" aria-label="wet-value の数値"></div>
+                    <div class="control"><div class="control-heading"><label for="wet">Mix</label><input class="inline-value" id="wet-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="wet-value の数値"></div>
             <input id="wet" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-pivot">起点</label><input class="inline-value" id="axis-pivot-value" type="number" min="0" max="20000" step="0.1" value="350" aria-label="axis-pivot-value の数値"></div>
+          <div class="control"><div class="control-heading"><label for="axis-pivot">起点</label><input class="inline-value" id="axis-pivot-value" type="number" min="0" max="20000" step="0.001" value="350" aria-label="axis-pivot-value の数値"></div>
             <input id="axis-pivot" type="range" min="0" max="1000" step="1" value="414">
             <div class="ends"><span>0 Hz</span><span>20 kHz</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-slope">傾き</label><span class="axis-value-tools"><input class="inline-value" id="axis-slope-value" type="number" min="0.1" max="4" step="0.01" value="1" aria-label="axis-slope-value の数値"><button id="slope-one" type="button" class="zero-button" aria-label="傾きを1へ戻す">1へ</button></span></div>
+          <div class="control"><div class="control-heading"><label for="axis-slope">傾き</label><span class="axis-value-tools"><input class="inline-value" id="axis-slope-value" type="number" min="0.1" max="4" step="0.001" value="1" aria-label="axis-slope-value の数値"><button id="slope-one" type="button" class="zero-button" aria-label="傾きを1へ戻す">1へ</button></span></div>
             <input id="axis-slope" type="range" min="0.1" max="4" step=".01" value="1">
             <div class="ends"><span>間隔を縮める</span><span>間隔を広げる</span></div>
           </div>
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="bounds-heading"><strong>変換範囲</strong><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="1" value="20"></label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="1" value="16000"></label></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="0.001" value="20"></label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="0.001" value="16000"></label></div>
           <div class="dual-range" id="dual-range" style="--lo:0%;--hi:96.8%">
             <input id="low" type="range" aria-label="帯域下限" min="0" max="1000" step="1" value="0">
             <input id="high" type="range" aria-label="帯域上限" min="0" max="1000" step="1" value="968">
@@ -80,7 +80,7 @@
           <div class="fx-item">
             <label class="fx-toggle"><input id="ring-enabled" type="checkbox"> リング変調</label>
             <div class="fx-body">
-              <div class="control-heading"><label for="carrier">搬送波</label><input id="carrier" class="inline-value" type="number" min="0" max="20000" step="1" value="350"></div>
+              <div class="control-heading"><label for="carrier">搬送波</label><input id="carrier" class="inline-value" type="number" min="0" max="20000" step="0.001" value="350"></div>
               <input id="carrier-range" type="range" min="0" max="1000" step="1" value="592" aria-label="搬送波周波数"><label class="link-carrier"><input id="carrier-link" type="checkbox"> 折返し点に連動</label>
       
               <small id="carrier-linked-value" class="fx-help"></small>
@@ -100,7 +100,7 @@
         <div class="section-header"><div><p class="eyebrow">REFERENCE SINE</p><h2 id="sine-heading">基準音</h2></div>
           <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
         <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
-        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="1" value="0" aria-label="基準音 セント"><input class="inline-value" id="sine-hz" type="number" min="65" max="2100" step=".01" value="440" aria-label="基準音 Hz"></div>
+        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="0.001" value="0" aria-label="基準音 セント"><input class="inline-value" id="sine-hz" type="number" min="65" max="2100" step="0.001" value="440" aria-label="基準音 Hz"></div>
         <p class="setting-help">音の比較用サイン波。</p>
       </section>
     </div>
@@ -127,11 +127,11 @@
         <div id="math-axis-note" class="math-caption" aria-live="polite"></div>
         <details class="math-debug"><summary>変換の詳しい値</summary><dl id="coordinate-details" class="variable-grid"></dl></details>
         <div class="math-controls">
-          <div class="math-field"><label for="fundamental">元基音 F <small>Hz</small></label><input id="fundamental" type="number" min="20" max="2000" step="1" value="350"><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"></div></div>
+          <div class="math-field"><label for="fundamental">元基音 F <small>Hz</small></label><input id="fundamental" type="number" min="20" max="2000" step="0.001" value="350"><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"></div></div>
           <div class="math-field"><label for="denominator">分母 m</label><input id="denominator" type="number" min="1" max="64" step="1" value="4"><div class="math-input"><input id="denominator-range" type="range" min="1" max="64" step="1" value="4"></div></div>
           <div class="math-field"><label for="numerator">分子 n <small>符号付き</small></label><input id="numerator" type="number" min="-128" max="128" step="1" value="-3"><div class="math-input"><input id="numerator-range" type="range" min="-128" max="128" step="1" value="-3"></div></div>
           <div class="math-field"><label for="harmonic-index">折返す倍音 q</label><input id="harmonic-index" type="number" min="1" max="32" step="1" value="1"><div class="math-input"><input id="harmonic-index-range" type="range" min="1" max="32" step="1" value="1"></div></div>
-          <div class="math-field"><label for="pitch-ratio">前段ピッチ比 r</label><input id="pitch-ratio" type="number" min=".25" max="4" step=".05" value="1"><div class="math-input"><input id="pitch-ratio-range" type="range" min=".25" max="4" step=".05" value="1"></div></div>
+          <div class="math-field"><label for="pitch-ratio">前段ピッチ比 r</label><input id="pitch-ratio" type="number" min=".25" max="4" step="0.001" value="1"><div class="math-input"><input id="pitch-ratio-range" type="range" min=".25" max="4" step=".05" value="1"></div></div>
         <section class="formula-section">
           <h3>数式</h3>
           <div id="math-results" class="formula-grid" aria-live="polite">
@@ -175,8 +175,8 @@
       <p class="setting-help">Bは周波数成分を再配置。Aは強い部分音を再合成する実験方式です。</p>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
-          <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="1" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
-          <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="1" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
+          <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
+          <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
         </div>
         <p class="setting-help">Aのみ。部分音の最低周波数と、再合成後の残響を調整します。</p>
       </div>

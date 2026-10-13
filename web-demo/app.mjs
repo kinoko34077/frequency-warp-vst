@@ -14,6 +14,7 @@ const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",processing:false,
+  precise:Object.create(null),
   effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0
 };
 const hzFromScale=value=>20*Math.exp(Math.log(1000)*Number(value)/1000);
@@ -22,6 +23,13 @@ const scaleFromPivot=hz=>hz<=0?0:1+Math.round(999*Math.log(Math.max(20,hz)/20)/M
 const scaleFromHz=hz=>Math.round(1000*Math.log(Math.max(20,hz)/20)/Math.log(1000));
 const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":Math.round(hz)+" Hz";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
+const view2=value=>Number(value.toFixed(2)).toString();
+const scalar=(name,fallback)=>state.precise[name]??fallback();
+function showNumber(id,value){
+  const field=$("#"+id);
+  if(document.activeElement!==field&&Number.isFinite(value))field.value=view2(value);
+}
 const fmtTime=seconds=>{
   const s=Math.max(0,seconds);
   return Math.floor(s/60)+":"+(s%60).toFixed(1).padStart(4,"0");
@@ -31,8 +39,8 @@ function message(text,type="info"){$("#status").textContent=text;$("#status").da
 function indicator(text){$("#rt-indicator").textContent=text;}
 function bounds(changed=""){
   const cap=state.decoded?Math.min(20000,state.decoded.sampleRate*.45):20000;
-  let low=hzFromScale($("#low").value);
-  let high=Math.min(cap,hzFromScale($("#high").value));
+  let low=scalar("low",()=>hzFromScale($("#low").value));
+  let high=Math.min(cap,scalar("high",()=>hzFromScale($("#high").value)));
   low=Math.min(low,cap/1.08);
   if(high<low*1.06){
     if(changed==="low")high=Math.min(cap,low*1.08);
@@ -41,12 +49,12 @@ function bounds(changed=""){
   if(high<=low)low=Math.max(20,high/1.08);
   $("#low").value=String(scaleFromHz(low));
   $("#high").value=String(scaleFromHz(high));
-  low=Math.min(hzFromScale($("#low").value),cap/1.08);
-  high=Math.min(hzFromScale($("#high").value),cap);
+  low=Math.min(scalar("low",()=>hzFromScale($("#low").value)),cap/1.08);
+  high=Math.min(scalar("high",()=>hzFromScale($("#high").value)),cap);
   if(low>=high)low=high/1.08;
   state.effective={low,high};
-  $("#low-value").value=String(Math.round(low));
-  $("#high-value").value=String(Math.round(high));
+  showNumber("low-value",low);
+  showNumber("high-value",high);
   const rail=$("#dual-range");
   rail.style.setProperty("--lo",($("#low").value/10)+"%");
   rail.style.setProperty("--hi",($("#high").value/10)+"%");
@@ -56,45 +64,47 @@ function settings(){
   const {low,high}=bounds();
   const qualityIndex=({eco:0,standard:1,high:2}[$("#quality").value]);
   return {
-    low,high,curvature:Number($("#curvature").value),
-    invert:Number($("#invert").value),
+    low,high,curvature:scalar("curvature",()=>Number($("#curvature").value)),
+    invert:scalar("invert",()=>Number($("#invert").value)),
     mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
     engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
     pitchRatio:harmonicParameters().r,
     shiftHz:harmonicParameters().n*harmonicParameters().r*harmonicParameters().F/harmonicParameters().m,
     carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode,
-    axisShift:Number($("#axis-shift").value),
+    axisShift:scalar("axis-shift",()=>Number($("#axis-shift").value)),
     axisReference:harmonicParameters().r*harmonicParameters().F,
-    axisPivot:pivotFromScale($("#axis-pivot").value),
-    axisSlope:Number($("#axis-slope").value),
+    axisPivot:scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value)),
+    axisSlope:scalar("axis-slope",()=>Number($("#axis-slope").value)),
     sampleRate:state.ctx?.sampleRate||state.decoded?.sampleRate||48000,
-    wet:Number($("#wet").value),
+    wet:scalar("wet",()=>Number($("#wet").value)),
     ringEnabled:$("#ring-enabled").checked,
     rationalEnabled:$("#rational-enabled").checked,
-    crusherBits:$("#crusher-enabled").checked?Number($("#crusher-bits").value):0,
-    crusherHold:Number($("#crusher-hold").value),
-    aMinHz:hzFromScale($("#a-min").value),
-    aReverb:Number($("#a-reverb").value)/100
+    crusherBits:$("#crusher-enabled").checked?scalar("crusher-bits",()=>Number($("#crusher-bits").value)):0,
+    crusherHold:scalar("crusher-hold",()=>Number($("#crusher-hold").value)),
+    aMinHz:scalar("a-min",()=>hzFromScale($("#a-min").value)),
+    aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100)
   };
 }
 function labels(id=""){
   bounds(id);
-  $("#curvature-value").value=Number($("#curvature").value).toFixed(3);
-  const pivot=pivotFromScale($("#axis-pivot").value);
-  $("#axis-pivot-value").value=pivot.toFixed(1);
-  $("#axis-slope-value").value=Number($("#axis-slope").value).toFixed(2);
-  $("#invert-value").value=(100*Number($("#invert").value)).toFixed(1);
-  $("#wet-value").value=(100*Number($("#wet").value)).toFixed(1);
-  const u=Number($("#axis-shift").value),p=Number($("#curvature").value);
-  const ref=harmonicParameters().r*harmonicParameters().F;
-  $("#axis-shift-value").value=u.toFixed(2);
-  $("#a-min-value").value=String(Math.round(hzFromScale($("#a-min").value)));
-  $("#a-reverb-value").value=$("#a-reverb").value;
-  $("#axis-mode-hint").textContent=Number($("#invert").value)>0?"反転も適用中":"";
-  $("#axis-explainer").textContent=p===0?"移動倍率 ×"+Math.exp(u).toFixed(2):
-    p===1?"移動 "+Math.round(u*ref)+" Hz":"移動：中間尺度";
-
+  const p=settings();
+  showNumber("curvature-value",p.curvature);
+  showNumber("axis-pivot-value",p.axisPivot);
+  showNumber("axis-slope-value",p.axisSlope);
+  showNumber("invert-value",100*p.invert);
+  showNumber("wet-value",100*p.wet);
+  showNumber("axis-shift-value",p.axisShift);
+  showNumber("a-min-value",p.aMinHz);
+  showNumber("a-reverb-value",100*p.aReverb);
+  showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
+  showNumber("crusher-hold-value",p.crusherHold);
+  const u=p.axisShift,ref=p.axisReference;
+  $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
+  $("#axis-explainer").textContent=p.curvature===0?
+    "移動倍率 ×"+Math.exp(u).toFixed(2):p.curvature===1?
+    "移動 "+Math.round(u*ref)+" Hz":"移動：中間尺度";
 }
+
 function foldPoint(){
   const core=state.mathCore;
   if(!core)return NaN;
@@ -164,7 +174,7 @@ async function ensureSharedCore(){
         typeof core.warp_map_frequency!=="function"||
         typeof core.warp_translate_frequency_anchored!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
-      drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
+      drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
       return bytes;
     })().catch(error=>{
       state.wasmPromise=null;
@@ -274,7 +284,7 @@ function makeBuffer(){
 function tuneWet(){
   const p=state.player;
   if(!p)return;
-  const now=state.ctx.currentTime,wet=p.mode==="wet"?Number($("#wet").value):0;
+  const now=state.ctx.currentTime,wet=p.mode==="wet"?settings().wet:0;
   p.wet.gain.setTargetAtTime(wet,now,.012);
   p.dry.gain.setTargetAtTime(1-wet,now,.012);
 }
@@ -433,7 +443,7 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
-  labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
+  labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   state.offline=null;controls.download.disabled=true;
   const p=state.player;
   if(!p)return;
@@ -474,17 +484,44 @@ const inline={
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   const field=$("#"+id);
+  const integer=range==="crusher-bits"||range==="crusher-hold";
+  const normalized=value=>{
+    const v=clamp(value,min,max);
+    return integer?Math.round(v):round3(v);
+  };
+  const toDsp=value=>range==="invert"||range==="wet"||range==="a-reverb"?
+    value/100:normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
     const raw=Number(field.value);
     if(!Number.isFinite(raw))return;
-    const value=clamp(raw,min,max);
+    const value=normalized(raw);
+    // Slider is only a coarse visual/gesture proxy. The exact value is
+    // kept separately and sent to Rust instead of reading snapped range.value.
+    state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
-    if(range==="wet"){tuneWet();drawCurve();}
+    if(range==="wet"){labels();tuneWet();drawCurve();}
     else {updateParams(changed);updateEngineInfo();}
   };
+  field.addEventListener("focus",()=>{
+    if(state.precise[range]!==undefined){
+      const number=state.precise[range];
+      const typed=range==="invert"||range==="wet"||range==="a-reverb"?
+        number*100:number;
+      field.value=String(round3(typed));
+    }
+    field.select();
+  });
+  field.addEventListener("input",apply);
   field.addEventListener("change",apply);
-  field.addEventListener("keydown",event=>{if(event.key==="Enter"){field.blur();}});
+  field.addEventListener("blur",()=>{
+    apply();
+    // The interface rounds to 2 decimals, but the DSP value remains 3-decimal exact.
+    const native=state.precise[range];
+    const human=range==="invert"||range==="wet"||range==="a-reverb"?native*100:native;
+    if(Number.isFinite(human))showNumber(id,human);
+  });
+  field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
 }
 // The two handles share a physical track. Touching the bare rail selects
 // whichever endpoint is closest; the handles themselves remain draggable.
@@ -503,14 +540,16 @@ $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
 });
 for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","mode","outside","quality","overlap","engine","a-min","a-reverb","ring-enabled","rational-enabled"]){
-  $("#"+name).addEventListener("input",()=>{updateParams(name);updateEngineInfo();});
+  $("#"+name).addEventListener("input",()=>{delete state.precise[name];updateParams(name);updateEngineInfo();});
 }
-$("#wet").addEventListener("input",()=>{labels();tuneWet();drawCurve();});
+$("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
 $("#slope-one").addEventListener("click",()=>{
+  delete state.precise["axis-slope"];
   $("#axis-slope").value="1";
   updateParams("axis-slope");updateEngineInfo();
 });
 $("#axis-zero").addEventListener("click",()=>{
+  delete state.precise["axis-shift"];
   $("#axis-shift").value="0";
   updateParams("axis-shift");
   updateEngineInfo();
@@ -518,6 +557,7 @@ $("#axis-zero").addEventListener("click",()=>{
 
 for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
   $("#"+id).addEventListener("input",()=>{
+    delete state.precise[id];
     $("#crusher-bits-value").value=$("#crusher-bits").value;
     $("#crusher-hold-value").value=$("#crusher-hold").value;
     updateParams(id);updateEngineInfo();
@@ -529,24 +569,47 @@ controls.wet.addEventListener("click",()=>play("wet"));
 controls.stop.addEventListener("click",()=>stop());
 window.addEventListener("resize",()=>{drawCurve();drawAudio();});
 window.addEventListener("pagehide",()=>{if(state.rebuildTimer)clearTimeout(state.rebuildTimer);stop();if(state.offlineWorker)state.offlineWorker.terminate();});
-// Decoding must NOT wait on AudioContext.resume(): after the iOS file
-// picker closes the resume promise can remain pending until another gesture.
-// OfflineAudioContext decodes independently of the real-time output lifecycle.
-async function decodeFileWithoutPlayback(file,token){
-  if(typeof OfflineAudioContext==="undefined"){
-    throw Error("このブラウザで音声の読み込みは利用できません");
-  }
-  const bytes=await file.arrayBuffer();
-  if(token!==state.loadToken)return null;
-  message("音声を解析中…");
-  const decoder=new OfflineAudioContext(1,1,44100);
+// Cold-start audio decode on iOS can stall after the file picker closes.
+// A single OfflineAudioContext promise with a 45s timeout produced the
+// reported "loading forever" appearance; do not require a second picker tap.
+async function withDecodeDeadline(promise,ms,phase){
   let timer;
   try{
-    const timeout=new Promise((_,reject)=>{
-      timer=setTimeout(()=>reject(Error("読み込みが時間切れです。もう一度ファイルを選んでください")),45000);
-    });
-    return await Promise.race([decoder.decodeAudioData(bytes),timeout]);
+    return await Promise.race([promise,new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(Error(phase+"が応答しませんでした")),ms);
+    })]);
   }finally{clearTimeout(timer);}
+}
+async function decodeFileWithoutPlayback(file,token){
+  // No AudioContext.resume(): playback still requires the later user gesture.
+  let firstFailure=null;
+  if(typeof OfflineAudioContext!=="undefined"){
+    try{
+      message("音声を解析中…");
+      const buffer=await withDecodeDeadline(file.arrayBuffer(),10000,"ファイル読み込み");
+      if(token!==state.loadToken)return null;
+      const offline=new OfflineAudioContext(1,1,44100);
+      return await withDecodeDeadline(offline.decodeAudioData(buffer),6500,"初回デコード");
+    }catch(error){firstFailure=error;}
+  }
+  if(token!==state.loadToken)return null;
+  message("別の読み込み方法に切り替えています…");
+  const Constructor=window.AudioContext||window.webkitAudioContext;
+  if(!Constructor)throw Error("このブラウザでは音声ファイルを解析できません");
+  let ctx,owned=false;
+  try{
+    // Create a decode-only context. decodeAudioData is allowed while it is
+    // suspended: do not await resume() and lose the picker gesture on iOS.
+    try{ctx=new Constructor();owned=true;}
+    catch(error){if(state.ctx)ctx=state.ctx;else throw error;}
+    const bytes=await withDecodeDeadline(file.arrayBuffer(),12000,"再読み込み");
+    if(token!==state.loadToken)return null;
+    return await withDecodeDeadline(ctx.decodeAudioData(bytes),16000,"代替デコード");
+  }catch(error){
+    throw Error((firstFailure?firstFailure.message+"。":"")+"代替経路も失敗: "+error.message);
+  }finally{
+    if(owned&&ctx?.close)void ctx.close().catch(()=>{});
+  }
 }
 async function load(file){
   if(!file)return;
@@ -649,7 +712,7 @@ function makeWav(channels,rate){
 }
 controls.download.addEventListener("click",()=>{
   if(!state.offline)return;
-  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,Number($("#wet").value)));
+  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,settings().wet));
   const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
   const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
   document.body.append(el);el.click();el.remove();
@@ -672,6 +735,7 @@ $("#settings-reset").addEventListener("click",()=>{
     engine:"1",mode:"fold-h",outside:"pass",quality:"eco",
     overlap:"4","zero-mode":"0"
   };
+  state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#a-min").value="0";$("#a-reverb").value="0";
@@ -705,15 +769,15 @@ for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
 }
 // WebAudio reference sine is a monitoring aid, not a competing DSP engine.
 const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
-const sinePitch=()=>Number($("#sine-pitch").value);
+const sinePitch=()=>state.sineExactPitch??Number($("#sine-pitch").value);
 const sineFrequency=()=>440*2**((sinePitch()-69)/12);
 function updateSineLabel(){
   const value=sinePitch(),nearest=Math.round(value);
   const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
-  const cents=Math.round((value-nearest)*100);
+  const cents=round3((value-nearest)*100);
   $("#sine-note").textContent=note;
-  $("#sine-cent").value=String(cents);
-  $("#sine-hz").value=sineFrequency().toFixed(2);
+  showNumber("sine-cent",cents);
+  showNumber("sine-hz",sineFrequency());
   if(state.sine&&state.ctx)state.sine.osc.frequency.setTargetAtTime(sineFrequency(),state.ctx.currentTime,.012);
 }
 function stopSine(){
@@ -721,18 +785,32 @@ function stopSine(){
   if(!sine)return;
   try{sine.osc.stop();sine.osc.disconnect();sine.gain.disconnect();}catch{}
 }
-$("#sine-pitch").addEventListener("input",updateSineLabel);
-$("#sine-hz").addEventListener("change",()=>{
-  const hz=clamp(Number($("#sine-hz").value)||440,65,2100);
-  $("#sine-pitch").value=String(clamp(69+12*Math.log2(hz/440),36,96));
+$("#sine-pitch").addEventListener("input",()=>{delete state.sineExactPitch;updateSineLabel();});
+$("#sine-hz").addEventListener("input",()=>{
+  const raw=Number($("#sine-hz").value);
+  if(!Number.isFinite(raw)||$("#sine-hz").value==="")return;
+  const hz=round3(clamp(raw,65,2100));
+  state.sineExactPitch=clamp(69+12*Math.log2(hz/440),36,96);
+  $("#sine-pitch").value=String(state.sineExactPitch);
   updateSineLabel();
 });
-$("#sine-cent").addEventListener("change",()=>{
-  const cents=clamp(Number($("#sine-cent").value)||0,-50,50);
-  const root=Math.round(Number($("#sine-pitch").value));
-  $("#sine-pitch").value=String(clamp(root+cents/100,36,96));
+$("#sine-hz").addEventListener("focus",()=>{
+  $("#sine-hz").value=String(round3(sineFrequency()));$("#sine-hz").select();
+});
+$("#sine-hz").addEventListener("blur",()=>{
+  showNumber("sine-hz",sineFrequency());
+});
+$("#sine-cent").addEventListener("input",()=>{
+  if($("#sine-cent").value==="")return;
+  const cents=round3(clamp(Number($("#sine-cent").value),-50,50));
+  if(!Number.isFinite(cents))return;
+  const root=Math.round(sinePitch());
+  state.sineExactPitch=clamp(root+cents/100,36,96);
+  $("#sine-pitch").value=String(state.sineExactPitch);
   updateSineLabel();
 });
+$("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(round3((sinePitch()-Math.round(sinePitch()))*100));});
+$("#sine-cent").addEventListener("blur",()=>showNumber("sine-cent",(sinePitch()-Math.round(sinePitch()))*100));
 $("#sine-enabled").addEventListener("change",async()=>{
   if(!$("#sine-enabled").checked){stopSine();return;}
   try{
@@ -751,6 +829,6 @@ $("#sine-enabled").addEventListener("change",async()=>{
 });
 window.addEventListener("pagehide",stopSine);
 updateSineLabel();
-attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker);
+attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker,settings);
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});
