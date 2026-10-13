@@ -44,14 +44,16 @@ export function resolvedCarrierHz(foldPoint){
   }
   return p.manualCarrier;
 }
-export function renderHarmonicPanel(foldPoint,axisMarker){
+export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
   const count=Number($("#harmonic-count").value)||7;
   const z=deriveHarmonics(F,m,n,q,r,count);
   const c=resolvedCarrierHz(foldPoint);
   const movedH=axisMarker?.(z.H);
   const moving=Number.isFinite(movedH)?fmt(movedH)+" Hz":"未算出";
-  const axis=Number($("#curvature").value),shift=Number($("#axis-shift").value);
+  const actual=resolveSettings?.();
+  const axis=actual?.curvature??Number($("#curvature").value);
+  const shift=actual?.axisShift??Number($("#axis-shift").value);
   const axisName=axis===0?"対数／倍率":axis===1?"線形／一定Hz":"中間座標";
   $("#math-axis-note").textContent="仮想基音： "+fmt(z.H)+" Hz → "+moving;
   const variables=[
@@ -71,13 +73,13 @@ export function renderHarmonicPanel(foldPoint,axisMarker){
     node.replaceChildren(fragment);
   };
   populate("#math-variables",variables);
-  const pivot=Number($("#axis-pivot-value").value)||0;
+  const pivot=actual?.axisPivot??Number($("#axis-pivot-value").value)||0;
   populate("#coordinate-details",[
     ["起点",fmt(pivot)+" Hz"],
-    ["傾き",fmt(Number($("#axis-slope").value))+" 倍"],
+    ["傾き",fmt(actual?.axisSlope??Number($("#axis-slope").value))+" 倍"],
     ["対数移動倍率",fmt(Math.exp(shift))+" 倍"],
     ["線形移動量",fmt(shift*r*F)+" Hz"],
-    ["反転率",fmt(100*Number($("#invert").value))+" %"],
+    ["反転率",fmt(100*(actual?.invert??Number($("#invert").value)))+" %"],
     ["移動の尺度",axisName],
     ["備考","移動0なら起点が固定。上下移動を指定すると起点も移動します。"]
   ]);
@@ -114,8 +116,8 @@ export function renderHarmonicPanel(foldPoint,axisMarker){
   }
   return z;
 }
-export function attachHarmonicPanel(onChange,foldPoint,axisMarker){
-  const respond=id=>{renderHarmonicPanel(foldPoint,axisMarker);onChange(id);};
+export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSettings){
+  const respond=id=>{renderHarmonicPanel(foldPoint,axisMarker,resolveSettings);onChange(id);};
   for(const id of IDS){
     const number=$("#"+id),range=$("#"+id+"-range");
     // Preserve direct typing for exact values while making typical changes
@@ -152,6 +154,6 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker){
     syncPair(id);
   }
   $("#carrier-link").addEventListener("change",()=>respond("carrier-link"));
-  $("#harmonic-count").addEventListener("change",()=>renderHarmonicPanel(foldPoint,axisMarker));
-  renderHarmonicPanel(foldPoint,axisMarker);
+  $("#harmonic-count").addEventListener("change",()=>renderHarmonicPanel(foldPoint,axisMarker,resolveSettings));
+  renderHarmonicPanel(foldPoint,axisMarker,resolveSettings);
 }
