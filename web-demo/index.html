@@ -65,7 +65,7 @@
             <input id="axis-slope" type="range" min="0.1" max="4" step=".01" value="1">
             <div class="ends"><span>間隔を縮める</span><span>間隔を広げる</span></div>
           </div>
-          <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">部分音追跡</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
+          <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
           <div class="control"><div class="control-heading"><label for="low">下限</label><input class="inline-value" id="low-value" type="number" min="20" max="20000" step="1" value="20" aria-label="low-value の数値"></div>
@@ -137,13 +137,20 @@
   <div class="settings-body">
     <fieldset><legend>音声処理方式</legend>
       <label for="engine">エンジン</label><select id="engine">
-        <option value="0">A · 部分音追跡＋再合成（実験）</option>
-        <option value="1">B · STFTビン再配置（実験）</option>
+        <option value="0">A · 部分音再合成（実験）</option>
+        <option value="1" selected>B · STFT変換（標準）</option>
         <option disabled>候補 · 解析信号による線形反転（未実装）</option>
         <option disabled>候補 · 部分音＋残差（研究中）</option>
         <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
       </select>
-      <p class="setting-help">ここでは音声の解析・再合成方式だけを選択。周波数の移動・Ring Mod・Bit Crusherは別の操作です。</p>
+      <p class="setting-help">Bは周波数成分を再配置。Aは強い部分音を再合成する実験方式です。</p>
+      <div id="engine-a-settings" hidden>
+        <div class="settings-pair">
+          <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="1" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
+          <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="1" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
+        </div>
+        <p class="setting-help">Aのみ。部分音の最低周波数と、再合成後の残響を調整します。</p>
+      </div>
     </fieldset>
     <fieldset><legend>周波数操作・付加効果</legend>
       <label class="setting-checkbox"><input id="rational-enabled" type="checkbox"> #24の有理数倍音配置（r・n/m）を前段に適用</label>
