@@ -1,0 +1,43 @@
+name: Shared Rust DSP / WASM / Chrome verification
+
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'web-demo/**'
+      - '.github/workflows/shared-core-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'web-demo/**'
+      - '.github/workflows/shared-core-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Add bare WASM Rust target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Native Rust DSP and C-ABI tests
+        run: cargo test --manifest-path core/Cargo.toml --verbose
+      - name: Compile SAME Rust core to WebAssembly
+        run: |
+          cargo build --manifest-path core/Cargo.toml --release --target wasm32-unknown-unknown
+          cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm web-demo/dsp_core.wasm
+          ls -lh web-demo/dsp_core.wasm
+      - name: WASM ABI and audio regression
+        run: node --test web-demo/core-wasm.test.mjs
+      - name: Install Puppeteer client (system Chrome)
+        run: |
+          npm install --no-save --no-package-lock puppeteer-core@24
+          command -v google-chrome
+      - name: Browser: load 12-second WAV, render via SAME wasm, A/B controls
+        run: node --test web-demo/wasm-browser-smoke.test.mjs
