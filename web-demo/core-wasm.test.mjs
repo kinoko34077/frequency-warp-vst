@@ -193,7 +193,8 @@ test("WAV export uses the same Rust stream and correct latency for Ring and FFT"
       const energy=data.reduce((a,b)=>a+b*b,0)/n;
       assert.ok(energy>1e-5,"WAV engine "+engine+" silent");
       if(engine===2){
-        const err=data.reduce((a,b,i)=>a+Math.abs(b-samples[i]),0)/n;
+        const currentInput=new Float32Array(e.memory.buffer,src,n);
+        const err=data.reduce((a,b,i)=>a+Math.abs(b-currentInput[i]),0)/n;
         assert.ok(err<1e-5,"Ring WAV bypass differs from live stream");
       }
     }
