@@ -106,8 +106,8 @@ function axisMarker(f){
 function mathCallbacks(){
   return {
     warp:(f,l,h,curvature,invert,mode)=>
-      state.mathCore.warp_map_frequency(f,l,h,curvature,invert,
-        mode==="blend"?1:mode==="fold-l"?2:0),
+      state.mathCore.warp_map_frequency_anchored(f,l,h,curvature,invert,
+        mode==="blend"?1:mode==="fold-l"?2:0,settings().axisPivot),
     translate:(f,pivot,curvature,shift,slope)=>
       state.mathCore.warp_translate_frequency_controls(f,pivot,slope,settings().axisReference,curvature,shift)
   };
@@ -115,24 +115,35 @@ function mathCallbacks(){
 function updateListeningGuide(){
   if(!state.mathCore)return;
   const p=settings(),{warp,translate}=mathCallbacks();
-  const pivot=Math.max(20,p.axisPivot);
-  const input=500,point=mapAtFrequency(input,p,warp,translate);
-  const output=point.outputs[0];
-  const diff=Number.isFinite(output)?12*Math.log2(output/input):NaN;
-  const hz=n=>Number.isFinite(n)?(Math.round(n*10)/10)+"Hz":"—";
-  const effect=Number.isFinite(diff)?(diff>=0?"+":"")+diff.toFixed(1)+"半音":"範囲外";
-  $("#listening-guide").textContent=point.outputs.length?
-    "500Hz → "+hz(output)+"  ·  "+effect:"500Hz → "+point.reason;
-  const warpPivot=warp(pivot,p.low,p.high,p.curvature,p.invert,p.mode);
-  const details=[250,500,1000].map(f=>{
-    const x=mapAtFrequency(f,p,warp,translate);
-    return f+"Hz → "+(x.outputs.length?x.outputs.map(hz).join(" / "):x.reason);
-  });
-  $("#coordinate-details").textContent="起点 "+hz(p.axisPivot)+
-    " / 傾き ×"+p.axisSlope.toFixed(2)+
-    " / 対数倍率 ×"+Math.exp(p.axisShift).toFixed(3)+
-    " / 線形移動 "+(p.axisShift*p.axisReference).toFixed(1)+"Hz"+
-    " / 反転後の起点 "+hz(warpPivot)+"\\n"+details.join("　|　");
+  const hz=v=>Number.isFinite(v)?Number(v.toFixed(2))+" Hz":"—";
+  const note=mapAtFrequency(500,p,warp,translate);
+  const out=note.outputs[0];
+  const semitones=Number.isFinite(out)?12*Math.log2(out/500):NaN;
+  $("#listening-guide").textContent=note.outputs.length?
+    "500 Hz → "+hz(out)+" （"+(semitones>=0?"+":"")+semitones.toFixed(2)+"半音）":
+    "500 Hz： "+note.reason;
+  const mappedPivot=p.axisPivot>=p.low&&p.axisPivot<=p.high?
+    warp(p.axisPivot,p.low,p.high,p.curvature,p.invert,p.mode):p.axisPivot;
+  const rows=[
+    ["起点",hz(p.axisPivot)],["傾き","×"+p.axisSlope.toFixed(2)],
+    ["対数倍率","×"+Math.exp(p.axisShift).toFixed(2)],
+    ["線形移動",hz(p.axisShift*p.axisReference)],
+    ["反転後の起点",hz(mappedPivot)],
+    ...[250,500,1000].map(f=>{
+      const x=mapAtFrequency(f,p,warp,translate);
+      return [f+" Hz",x.outputs.length?x.outputs.map(hz).join("、"):x.reason];
+    })
+  ];
+  const box=$("#coordinate-details");
+  box.replaceChildren();
+  const table=document.createElement("table");table.className="variable-table";
+  for(const [label,value] of rows){
+    const tr=document.createElement("tr");
+    const th=document.createElement("th");th.scope="row";th.textContent=label;
+    const td=document.createElement("td");td.textContent=value;
+    tr.append(th,td);table.append(tr);
+  }
+  box.append(table);
 }
 
 function drawCurve(){
@@ -157,7 +168,7 @@ async function ensureSharedCore(){
       const instance=new WebAssembly.Instance(new WebAssembly.Module(bytes),{});
       const core=instance.exports;
       if(typeof core.warp_fold_frequency!=="function"||
-        typeof core.warp_map_frequency!=="function"||
+        typeof core.warp_map_frequency_anchored!=="function"||
         typeof core.warp_translate_frequency_controls!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker);
