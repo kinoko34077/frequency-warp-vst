@@ -11,6 +11,10 @@ pub struct Stream {
     hop:usize,
     max_peaks:usize,
     floor:f64,
+    peak_min_hz:f64,
+    peak_reverb:f32,
+    reverb_delays:Vec<Vec<Vec<f32>>>,
+    reverb_positions:[usize;3],
     settings:Settings,
     outside:u32,
     engine:u32, // 0 peak oscillator, 1 FFT bin relocation, 2 Ring Mod, 3 harmonic pitch->shift
@@ -67,7 +71,11 @@ impl Stream {
         // Per-block processing has no persistent large file buffer.
         Ok(Self{
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
-            floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
+            floor:q.floor,peak_min_hz:20.0,peak_reverb:0.0,
+            reverb_delays:[0.0297,0.0371,0.0411].iter().map(|secs|{
+                (0..channels).map(|_|vec![0.0;(sample_rate*secs).round().max(1.0) as usize]).collect()
+            }).collect(),
+            reverb_positions:[0;3],settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],zero_mode,received:0,
@@ -130,6 +138,15 @@ impl Stream {
         }
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
+    pub fn set_peak_fx(&mut self,min_hz:f64,reverb:f32)->Result<(),&'static str>{
+        if !min_hz.is_finite()||!(20.0..=20000.0).contains(&min_hz)||
+           !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
+            return Err("invalid peak analysis/effect parameters");
+        }
+        self.peak_min_hz=min_hz;
+        self.peak_reverb=reverb;
+        Ok(())
+    }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
             return Err("invalid bit-crusher settings");
@@ -150,7 +167,18 @@ impl Stream {
             if self.ring_enabled{self.ring_phase=(self.ring_phase+inc).rem_euclid(TAU);}
             for c in 0..self.channels{
                 let idx=c*frames+i;
-                let sample=output[idx]*modulator;
+                let mut sample=output[idx];
+                if self.engine==0 {
+                    let mut tail=0.0f32;
+                    for d in 0..3 {
+                        let p=self.reverb_positions[d];
+                        let delayed=self.reverb_delays[d][c][p];
+                        self.reverb_delays[d][c][p]=sample+delayed*[0.56,0.49,0.44][d];
+                        tail+=delayed/3.0;
+                    }
+                    sample=sample*(1.0-self.peak_reverb)+tail*self.peak_reverb;
+                }
+                sample*=modulator;
                 output[idx]=if self.crusher_bits==0{sample}else{
                     if self.crusher_counter%(self.crusher_hold as u64)==0 {
                         self.crusher_value[c]=
@@ -160,6 +188,12 @@ impl Stream {
                 };
             }
             self.crusher_counter+=1;
+            if self.engine==0 {
+                for d in 0..3 {
+                    self.reverb_positions[d]=(self.reverb_positions[d]+1)%
+                        self.reverb_delays[d][0].len();
+                }
+            }
         }
     }
     pub fn reset(&mut self){
@@ -167,6 +201,10 @@ impl Stream {
         self.ring_phase=0.0;
         self.crusher_counter=0;
         self.crusher_value.fill(0.0);
+        self.reverb_positions=[0;3];
+        for voices in &mut self.reverb_delays {
+            for channel in voices { channel.fill(0.0); }
+        }
         for x in &mut self.input{x.fill(0.0);}
         for x in &mut self.output{x.fill(0.0);}
         for x in &mut self.spectrum{x.fill(Complex::ZERO);}
@@ -294,7 +332,7 @@ impl Stream {
             }else{
                 self.interpolate(k,step)
             };
-            if !frequency.is_finite() ||frequency<self.settings.low||frequency>self.settings.high{continue;}
+            if !frequency.is_finite() ||frequency<self.settings.low.max(self.peak_min_hz)||frequency>self.settings.high{continue;}
             // Transform semantics are orthogonal to the resynthesis engine:
             // g(f) -> optional Issue #24 rational lattice -> axis-translation.
             let mapped=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
@@ -478,6 +516,12 @@ pub unsafe extern "C" fn warp_stream_set_ext(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_peak_fx(ptr:*mut Stream,min_hz:f64,reverb:f32)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_peak_fx(min_hz,reverb){Ok(())=>0,Err(_)=>-2}
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u32)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_crusher(bits,hold){Ok(())=>0,Err(_)=>-2}
@@ -503,12 +547,13 @@ pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slop
 /// Input and output are non-overlapping planar contiguous f32 buffers.
 /// Offline allocations are permitted here, but NOT in the realtime process.
 #[no_mangle]
-pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
+pub unsafe extern "C" fn warp_stream_render_f32_peak_ext(
     input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
     low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    min_peak_hz:f64,peak_reverb:f32,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -519,7 +564,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
     };
     if st.set_crusher(crusher_bits,crusher_hold).is_err()||
        st.set_transform(axis_shift,axis_reference,ring,rational).is_err()||
-       st.set_geometry(axis_pivot,axis_slope).is_err(){return -2;}
+       st.set_geometry(axis_pivot,axis_slope).is_err()||
+       st.set_peak_fx(min_peak_hz,peak_reverb).is_err(){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -554,6 +600,20 @@ pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
         t+=length;
     }
     0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+)->i32{
+    warp_stream_render_f32_peak_ext(input,output,frames,channels,rate,
+        low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,shift_hz,
+        carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,
+        axis_shift,axis_reference,ring,rational,axis_pivot,axis_slope,20.0,0.0)
 }
 
 #[no_mangle]
@@ -739,6 +799,26 @@ mod tests{
                 assert!(output.iter().all(|x|x.is_finite()));
             }
         }
+    }
+    #[test]
+    fn peak_fx_threshold_reverb_live_update_reset_and_engine_b_unchanged(){
+        let s=settings();
+        let mut a=Stream::new_extended(8192.0,1,s,1,0,1.0,0.0,0.0,0,4).unwrap();
+        let mut b=Stream::new_extended(8192.0,1,s,1,1,1.0,0.0,0.0,0,4).unwrap();
+        assert!(a.set_peak_fx(500.0,0.7).is_ok());
+        assert!(a.set_peak_fx(0.0,0.2).is_err());
+        assert!(a.set_peak_fx(200.0,1.2).is_err());
+        assert!(b.set_peak_fx(500.0,0.7).is_ok());
+        let mut data=vec![0.0;128];let mut output=vec![0.0;128];
+        for block in 0..24 {
+            for i in 0..128 {data[i]=(TAU*520.0*(block*128+i) as f64/8192.0).cos() as f32*0.4;}
+            a.process(&data,&mut output,128).unwrap();
+            b.process(&data,&mut output,128).unwrap();
+        }
+        assert!(a.reverb_positions.iter().any(|&pos|pos>0));
+        a.reset();
+        assert_eq!(a.reverb_positions,[0;3]);
+        assert!(a.reverb_delays.iter().all(|voices|voices.iter().all(|c|c.iter().all(|&x|x==0.0))));
     }
     #[test]
     fn stream_parameter_changes_and_reset(){
