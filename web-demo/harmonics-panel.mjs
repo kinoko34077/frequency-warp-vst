@@ -3,7 +3,7 @@ import {deriveHarmonics} from "./harmonics.mjs";
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
 const $=id=>document.querySelector(id);
-const fmt=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
+const fmt=value=>Number.isFinite(value)?Number(value.toFixed(2)).toString():"—";
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
@@ -50,23 +50,30 @@ export function renderHarmonicPanel(foldPoint,axisMarker){
   const moving=Number.isFinite(movedH)?fmt(movedH)+" Hz":"未算出";
   const axis=Number($("#curvature").value),shift=Number($("#axis-shift").value);
   const axisName=axis===0?"対数／倍率":axis===1?"線形／一定Hz":"中間座標";
-  $("#math-axis-note").textContent="仮想基音 H="+fmt(z.H)+
-    " Hz → 上下移動後 "+moving+
-    "（"+axisName+"、移動量 "+(shift>=0?"+":"")+shift.toFixed(2)+"）";
+  $("#math-axis-note").textContent="仮想基音 "+fmt(z.H)+" Hz → "+moving+"（"+axisName+"）";
 
-  $("#math-results").textContent=[
-    "入力の仮想格子: F′=rF="+fmt(r*F)+" Hz / H=F′/m="+fmt(z.H)+" Hz",
-    "上下移動後のH位置マーカー = "+moving+"（必ずしも倍音列の公約数ではない）",
-    "有理数シフト: Δ = (n/m)F′ = "+fmt(z.delta)+" Hz",
-    "有理数格子: f′k = (mk+n)H = rkF+Δ",
-    "処理順: Warp g(f) → 任意の有理数変換 → C_p軸で上下移動",
-    "0Hz折返し: f′k = |krF − S|",
-    "第q倍音がHへ: S=(q+1/m)rF = "+fmt(z.foldShift)+" Hz",
-    "Ring Mod: cos(2πft)cos(2πct) = ½cos(2π(f+c)t)+½cos(2π(f−c)t)",
-    "搬送波 c = "+fmt(c)+" Hz / 両側波帯 f+c, |f−c|",
-    "変換順: Pitch→Shift = r·f+Δ / Shift→Pitch = r·(f+Δ)",
-    "注: 移動後のHは位置マーカーです。純粋な一定Hz移動では倍音格子の真の共通基音と異なり得ます。"
-  ].join("\n");
+  // Equations are actual MathML, descriptions and current values are a
+  // separate semantic table: no literal escaped newline, pipes or code dump.
+  const math=(body)=>'<math xmlns="http://www.w3.org/1998/Math/MathML" display="block">'+body+'</math>';
+  const formulas=[
+    ["仮想基音",math('<mi>H</mi><mo>=</mo><mfrac><mrow><mi>r</mi><mi>F</mi></mrow><mi>m</mi></mfrac>')],
+    ["倍音の移動",math('<msub><mi>f</mi><mi>k</mi></msub><mo>=</mo><mo>(</mo><mi>m</mi><mi>k</mi><mo>+</mo><mi>n</mi><mo>)</mo><mi>H</mi>')],
+    ["加算シフト",math('<mi>Δ</mi><mo>=</mo><mi>n</mi><mi>H</mi>')],
+    ["折返しの基準",math('<mi>S</mi><mo>=</mo><mo>(</mo><mi>q</mi><mo>+</mo><mfrac><mn>1</mn><mi>m</mi></mfrac><mo>)</mo><mi>r</mi><mi>F</mi>')],
+    ["リング変調",math('<mi>cos</mi><mo>(</mo><mi>a</mi><mo>)</mo><mi>cos</mi><mo>(</mo><mi>b</mi><mo>)</mo><mo>=</mo><mfrac><mn>1</mn><mn>2</mn></mfrac><mo>[</mo><mi>cos</mi><mo>(</mo><mi>a</mi><mo>+</mo><mi>b</mi><mo>)</mo><mo>+</mo><mi>cos</mi><mo>(</mo><mi>a</mi><mo>−</mo><mi>b</mi><mo>)</mo><mo>]</mo>')]
+  ];
+  $("#math-results").innerHTML='<div class="formula-grid">'+
+    formulas.map(([title,markup])=>'<div class="formula-card"><strong>'+title+'</strong>'+markup+'</div>').join("")+
+    '</div><table class="variable-table"><caption>記号と現在値</caption><thead><tr><th>記号</th><th>意味</th><th>値</th></tr></thead><tbody>'+
+    [
+      ["F","元の基音",fmt(F)+" Hz"],["r","倍率",fmt(r)],
+      ["m","倍音の間隔",fmt(m)],["n","番号の移動",fmt(n)],
+      ["q","折返す倍音",fmt(q)],["H","仮想基音",fmt(z.H)+" Hz"],
+      ["Δ","一定Hz移動",fmt(z.delta)+" Hz"],["S","折返し基準",fmt(z.foldShift)+" Hz"],
+      ["c","搬送波",fmt(c)+" Hz"]
+    ].map(([sym,desc,val])=>'<tr><th scope="row">'+sym+'</th><td>'+desc+'</td><td>'+val+'</td></tr>').join("")+
+    '</tbody></table><p class="math-note">数式は入力を整数倍音と仮定した例です。非線形変換後の録音音声が整数倍音になる保証はありません。</p>';
+
   const frag=document.createDocumentFragment();
   for(const row of z.rows){
     const tr=document.createElement("tr");
