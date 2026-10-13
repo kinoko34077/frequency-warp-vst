@@ -2,7 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
-use super::{fft,fold_frequency,map_frequency,translate_frequency,quality,Complex,Progression,Settings,Track,PI,TAU};
+use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
     sample_rate:f64,
@@ -21,6 +21,7 @@ pub struct Stream {
     ring_enabled:bool,
     axis_shift:f64,
     axis_reference:f64,
+    axis_slope:f64,
     rational_enabled:bool,
     crusher_bits:u32,
     crusher_hold:u32,
@@ -67,7 +68,7 @@ impl Stream {
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
-            axis_reference:350.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
+            axis_reference:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],zero_mode,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
@@ -120,6 +121,13 @@ impl Stream {
         self.ring_enabled=ring_enabled!=0;
         self.rational_enabled=rational_enabled!=0;
         Ok(())
+    }
+    pub fn set_geometry(&mut self,pivot:f64,slope:f64)->Result<(),&'static str>{
+        if !pivot.is_finite()||!(20.0..=20000.0).contains(&pivot)||
+           !slope.is_finite()||!(0.1..=4.0).contains(&slope) {
+            return Err("invalid frequency pivot/slope");
+        }
+        self.axis_reference=pivot;self.axis_slope=slope;Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
@@ -228,14 +236,24 @@ impl Stream {
                         let old=if self.rational_enabled {
                             self.pitch_ratio*base+self.shift_hz
                         }else{base};
-                        translate_frequency(old.max(0.0000001),self.axis_reference,
-                            self.settings.curvature,self.axis_shift)
+                        if old<=0.0 {old}else{
+                            translate_frequency_affine(old,self.axis_reference,
+                                self.settings.curvature,self.axis_shift,self.axis_slope)
+                        }
                     }else if self.outside==1 {f} else {continue};
-                    if target<=0.0||target>=self.sample_rate*0.5 {continue;}
-                    let dest=(target/step).round() as usize;
-                    if dest==0||dest>=half {continue;}
-                    self.relocated[dest].r+=self.spectrum[c][k].r;
-                    self.relocated[dest].i+=self.spectrum[c][k].i;
+                    // Exact same signed/DC policy used by the peak-resynthesis
+                    // engine. Previously FFT-bin mode *always killed* negative
+                    // targets (and clamped pre-shift negatives to 1e-7).
+                    let (target,_gain)=match self.resolve_zero(target,step){
+                        Some(v)=>v,None=>continue
+                    };
+                    if target>=self.sample_rate*0.5 {continue;}
+                    // No representable DC bin after a positive sub-bin shift:
+                    // bin 1 is the nearest audible FFT cell.
+                    let dest=((target/step).round() as usize).max(1);
+                    if dest>=half {continue;}
+                    self.relocated[dest].r+=self.spectrum[c][k].r*_gain;
+                    self.relocated[dest].i+=self.spectrum[c][k].i*_gain;
                 }
                 fft(&mut self.relocated,true);
                 for i in 0..self.n {
@@ -283,23 +301,12 @@ impl Stream {
                 self.pitch_ratio*mapped+self.shift_hz
             }else{mapped};
             let target=if staged<=0.0 {staged}else {
-                translate_frequency(staged,self.axis_reference,
-                    self.settings.curvature,self.axis_shift)
+                translate_frequency_affine(staged,self.axis_reference,
+                    self.settings.curvature,self.axis_shift,self.axis_slope)
             };
-            let (target,fade_gain)=if target<0.0 {
-                match self.zero_mode {
-                    0=>(target.abs(),1.0), // Reflect about 0Hz
-                    1=>continue, // Kill negative output
-                    _=>{
-                        // One FFT-bin-wide experimental fade beyond the 0Hz
-                        // crossing. The old implementation mapped to 0Hz and
-                        // immediately discarded the sample, making Fade = Kill.
-                        let negative=target.abs();
-                        if negative>=step {continue;}
-                        (negative, (1.0-negative/step).clamp(0.0,1.0))
-                    }
-                }
-            }else{(target,1.0)};
+            let (target,fade_gain)=match self.resolve_zero(target,step){
+                Some(v)=>v,None=>continue
+            };
             if !(target>0.0&&target<self.sample_rate/2.0){continue;}
             let diff=target-frequency;
             let mut closest=None;
@@ -366,6 +373,22 @@ impl Stream {
         }
         std::mem::swap(&mut self.tracks,&mut self.next_tracks);
         std::mem::swap(&mut self.previous,&mut self.spectrum);
+    }
+    fn resolve_zero(&self,target:f64,step:f64)->Option<(f64,f64)>{
+        if !target.is_finite(){return None;}
+        let (frequency,gain)=if target<0.0 {
+            match self.zero_mode {
+                0=>(-target,1.0), // Reflect
+                1=>return None, // Kill
+                _=>{
+                    let negative=-target;
+                    if negative>=step{return None;}
+                    (negative,(1.0-negative/step).clamp(0.0,1.0))
+                }
+            }
+        }else{(target,1.0)};
+        if frequency<=0.0||frequency>=self.sample_rate*.5 {None}
+        else{Some((frequency,gain))}
     }
     fn interpolate(&self,k:usize,step:f64)->f64{
         let l=self.mag[k-1].max(1e-12).ln();
@@ -468,17 +491,23 @@ pub unsafe extern "C" fn warp_stream_set_transform(ptr:*mut Stream,shift:f64,
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slope:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_geometry(pivot,slope){Ok(())=>0,Err(_)=>-2}
+}
+
 /// Render a whole file through the *identical* persistent DSP stream used
 /// by the Web AudioWorklet and future native host: optional WAV export adapter.
 /// Input and output are non-overlapping planar contiguous f32 buffers.
 /// Offline allocations are permitted here, but NOT in the realtime process.
 #[no_mangle]
-pub unsafe extern "C" fn warp_stream_render_f32_axis_ext(
+pub unsafe extern "C" fn warp_stream_render_f32_geometry_ext(
     input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
     low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
-    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -488,7 +517,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_axis_ext(
         Ok(st)=>st,Err(_)=>return -2
     };
     if st.set_crusher(crusher_bits,crusher_hold).is_err()||
-       st.set_transform(axis_shift,axis_reference,ring,rational).is_err(){return -2;}
+       st.set_transform(axis_shift,axis_reference,ring,rational).is_err()||
+       st.set_geometry(axis_pivot,axis_slope).is_err(){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -523,6 +553,20 @@ pub unsafe extern "C" fn warp_stream_render_f32_axis_ext(
         t+=length;
     }
     0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_axis_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,
+)->i32{
+    warp_stream_render_f32_geometry_ext(input,output,frames,channels,rate,
+        low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,
+        shift_hz,carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,
+        axis_shift,axis_reference,ring,rational,axis_reference,1.0)
 }
 
 #[no_mangle]
@@ -658,6 +702,29 @@ mod tests{
         a.set_transform(0.0,400.0,0,0).unwrap();
         assert!(!a.ring_enabled);
         assert!(a.set_transform(0.0,0.0,0,0).is_err());
+    }
+    #[test]
+    fn both_resynthesis_engines_respect_signed_zero_policy_and_pivot_slope(){
+        let settings=Settings{low:20.0,high:3000.0,curvature:1.0,invert:0.0,
+            mode:Progression::FoldHigh,quality:0};
+        for engine in [0,1]{
+            let mut stream=Stream::new_extended(8192.0,1,settings,0,engine,
+                1.0,0.0,0.0,0,4).unwrap();
+            stream.set_transform(-2.0,350.0,0,0).unwrap();
+            stream.set_geometry(350.0,2.0).unwrap();
+            assert_eq!(stream.resolve_zero(-200.0,8.0),Some((200.0,1.0)));
+            stream.zero_mode=1;
+            assert_eq!(stream.resolve_zero(-200.0,8.0),None);
+            stream.zero_mode=2;
+            assert!(stream.resolve_zero(-4.0,8.0).unwrap().1>0.0);
+            assert_eq!(stream.resolve_zero(-20.0,8.0),None);
+            let mut output=vec![0.0f32;128];
+            for b in 0..70 {
+                let input=(0..128).map(|j|((2.0*std::f64::consts::PI*500.0*(b*128+j) as f64/8192.0).cos()*.5) as f32).collect::<Vec<_>>();
+                stream.process(&input,&mut output,128).unwrap();
+                assert!(output.iter().all(|x|x.is_finite()));
+            }
+        }
     }
     #[test]
     fn stream_parameter_changes_and_reset(){
