@@ -3,7 +3,7 @@ import {DISPLAY_MIN,DISPLAY_MAX,graphSegments} from "./harmonics.mjs";
 // function warp_map_frequency used by native streaming DSP.
 
 /** Equal-scale 20..2000 Hz full-field plot; no DSP performed in JavaScript. */
-export function drawFrequencyGraph(canvas,settings,warp) {
+export function drawFrequencyGraph(canvas,settings,warp,translate) {
   const ratio=Math.min(globalThis.devicePixelRatio||1,2);
   const size=Math.max(250,Math.round(canvas.getBoundingClientRect().width*ratio));
   canvas.width=size;canvas.height=size;
@@ -43,8 +43,8 @@ export function drawFrequencyGraph(canvas,settings,warp) {
       ctx.fillStyle="#e1b67b";ctx.fillText(label,xx,top+4*ratio);
     }
   }
-  const rows=graphSegments(settings,warp);
-  for(let channel=0;channel<(settings.engine===2?2:1);channel++){
+  const rows=graphSegments(settings,warp,translate);
+  for(let channel=0;channel<(settings.ringEnabled?2:1);channel++){
     ctx.lineWidth=2.4*ratio;ctx.strokeStyle=channel===0?"#66e9ba":"#f0b97b";
     ctx.beginPath();let active=false,lastInside=false,lastY=0;
     for(const point of rows){
