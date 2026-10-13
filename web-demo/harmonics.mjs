@@ -17,7 +17,13 @@ export function deriveHarmonics(F=350,m=4,n=-3,q=1,r=1,count=7){
   });
   return {F,m,n,q,r,H,delta,foldShift,rows};
 }
-export function graphSegments({low,high,curvature,invert,mode,outside,engine,pitchRatio,shiftHz,carrierHz},warp){
+function settingsZeroMode(mode,f){
+  if(mode===0)return [Math.abs(f)];
+  // Fade is a narrow phase-safe research placeholder: near zero, not an ideal analytic fold.
+  if(mode===2&&f>-20)return [0];
+  return [];
+}
+export function graphSegments({low,high,curvature,invert,mode,outside,engine,pitchRatio,shiftHz,carrierHz,zeroMode=0},warp){
   const values=[];
   const f0=DISPLAY_MIN, f1=DISPLAY_MAX;
   for(let i=0;i<=512;i++){
@@ -26,7 +32,9 @@ export function graphSegments({low,high,curvature,invert,mode,outside,engine,pit
     if(engine===2){
       outputs=[f+carrierHz,Math.abs(f-carrierHz)];
     }else if(engine===3){
-      outputs=inside?[Math.abs(pitchRatio*f+shiftHz)]:outside==="pass"?[f]:[];
+      const destination=pitchRatio*f+shiftHz;
+      outputs=inside?(destination>=0?[destination]:settingsZeroMode(zeroMode,destination))
+        :outside==="pass"?[f]:[];
     }else{
       outputs=inside?[warp(f,low,high,curvature,invert,mode)]:outside==="pass"?[f]:[];
     }
