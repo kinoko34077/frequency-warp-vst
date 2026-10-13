@@ -695,7 +695,7 @@ mod tests{
         let mut a=Stream::new_extended(8192.0,1,settings(),1,0,1.0,0.0,300.0,0,4).unwrap();
         a.set_transform(0.5,400.0,0,0).unwrap();
         let mapped=map_frequency(500.0,a.settings).unwrap();
-        let shifted=translate_frequency(mapped,400.0,1.0,0.5);
+        let shifted=translate_frequency_affine(mapped,400.0,1.0,0.5,1.0);
         assert!((shifted-(mapped+200.0)).abs()<1e-7);
         a.set_transform(0.0,400.0,1,0).unwrap();
         assert!(a.ring_enabled);
@@ -720,7 +720,7 @@ mod tests{
             assert_eq!(stream.resolve_zero(-20.0,8.0),None);
             let mut output=vec![0.0f32;128];
             for b in 0..70 {
-                let input=(0..128).map(|j|((2.0*std::f64::consts::PI*500.0*(b*128+j) as f64/8192.0).cos()*.5) as f32).collect::<Vec<_>>();
+                let input=(0..128).map(|j|((2.0*std::f64::consts::PI*500.0*(b*128+j) as f64/8192.0).cos()*0.5) as f32).collect::<Vec<_>>();
                 stream.process(&input,&mut output,128).unwrap();
                 assert!(output.iter().all(|x|x.is_finite()));
             }
