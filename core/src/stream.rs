@@ -567,7 +567,7 @@ mod tests{
         let mut st=Stream::new_extended(8192.0,1,settings(),1,0,1.0,0.0,0.0,0,4).unwrap();
         assert!(st.set_crusher(1,1).is_err());
         assert!(st.set_crusher(8,4).is_ok());
-        let mut out=vec![.53,.11,-.31,.99];
+        let mut out=vec![0.53,0.11,-0.31,0.99];
         st.post_process(&mut out,4);
         assert!((out[0]-out[1]).abs()<1e-7);
         assert!((out[0]-out[3]).abs()<1e-7);
