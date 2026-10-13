@@ -35,7 +35,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
         "warp_stream_process","warp_stream_latency","warp_stream_set_crusher",
-        "warp_stream_set_transform","warp_stream_set_geometry"
+        "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_peak_fx"
       ];
       for (const name of required) {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
@@ -56,6 +56,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       }
       if(e.warp_stream_set_geometry(stream,options.axisPivot,options.axisSlope)!==0){
         e.warp_stream_free(stream);throw Error("Rust axis pivot/slope failed");
+      }
+      if(e.warp_stream_set_peak_fx(stream,options.peakMinHz,options.peakReverb)!==0){
+        e.warp_stream_free(stream);throw Error("Rust peak FX parameters rejected");
       }
       if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
         e.warp_stream_free(stream);throw Error("Rust bitcrusher initialization failed");
@@ -113,7 +116,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       const axis=code===0?e.warp_stream_set_transform(this.stream,p.axisShift,
         p.axisReference,p.ringEnabled?1:0,p.rationalEnabled?1:0):code;
       const geometry=axis===0?e.warp_stream_set_geometry(this.stream,p.axisPivot,p.axisSlope):axis;
-      const fx=geometry===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):geometry;
+      const peak=geometry===0?e.warp_stream_set_peak_fx(this.stream,p.peakMinHz,p.peakReverb):geometry;
+      const fx=peak===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):peak;
       if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
