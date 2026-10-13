@@ -8,13 +8,16 @@ export function drawFrequencyGraph(canvas,settings,warp) {
   const size=Math.max(250,Math.round(canvas.getBoundingClientRect().width*ratio));
   canvas.width=size;canvas.height=size;
   const ctx=canvas.getContext("2d");
-  const left=36*ratio,top=13*ratio,right=size-13*ratio,bottom=size-35*ratio;
-  const width=right-left,height=bottom-top;
+  // Plot *inside* the canvas is square, not just the outer canvas.
+  // Thus 100 Hz has equal physical extent on both x and y axes.
+  const side=size-52*ratio,left=38*ratio,top=12*ratio;
+  const right=left+side,bottom=top+side;
+  const width=side,height=side;
   const x=f=>left+(f-DISPLAY_MIN)/(DISPLAY_MAX-DISPLAY_MIN)*width;
   const y=f=>bottom-(f-DISPLAY_MIN)/(DISPLAY_MAX-DISPLAY_MIN)*height;
   ctx.clearRect(0,0,size,size);
   ctx.fillStyle="#081a1f";ctx.fillRect(left,top,width,height);
-  if(settings.engine!==2){
+  {
     const lo=Math.max(DISPLAY_MIN,settings.low),hi=Math.min(DISPLAY_MAX,settings.high);
     if(hi>lo){ctx.fillStyle="rgba(60,212,168,.12)";ctx.fillRect(x(lo),top,x(hi)-x(lo),height);}
   }
@@ -32,7 +35,7 @@ export function drawFrequencyGraph(canvas,settings,warp) {
   }
   ctx.setLineDash([4*ratio,5*ratio]);ctx.strokeStyle="#70878b";
   ctx.beginPath();ctx.moveTo(left,bottom);ctx.lineTo(right,top);ctx.stroke();ctx.setLineDash([]);
-  if(settings.engine!==2){
+  {
     for(const [hz,label] of [[settings.low,"L"],[settings.high,"H"]]){
       if(hz<DISPLAY_MIN||hz>DISPLAY_MAX)continue;
       const xx=x(hz);ctx.setLineDash([3*ratio,3*ratio]);ctx.strokeStyle="#e1b67b";

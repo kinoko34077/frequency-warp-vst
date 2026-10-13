@@ -32,7 +32,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "memory","warp_alloc_f32","warp_free_f32","warp_stream_create",
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
-        "warp_stream_process","warp_stream_latency"
+        "warp_stream_process","warp_stream_latency","warp_stream_set_crusher"
       ];
       for (const name of required) {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
@@ -47,6 +47,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         options.zeroMode,options.hopDiv
       );
       if (!stream) throw Error("Rust streaming DSP initialization failed");
+      if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
+        e.warp_stream_free(stream);throw Error("Rust bitcrusher initialization failed");
+      }
       const frames=128*channels;
       const src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
       if (!src || !dst) {
@@ -96,7 +99,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         p.mode==="blend"?1:p.mode==="fold-l"?2:0,
         p.qualityIndex,p.outside==="pass"?1:0,p.engine,p.pitchRatio,
         p.shiftHz,p.carrierHz,p.zeroMode);
-      if(code!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+code});
+      const fx=code===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):code;
+      if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
       this.release();

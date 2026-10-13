@@ -31,6 +31,8 @@ test("ring modulation draws two actual ideal sidebands",()=>{
     engine:2,pitchRatio:1,shiftHz:0,carrierHz:300,zeroMode:0};
   const point=graphSegments(options,mapFrequency).find(p=>p.f>495&&p.f<505);
   assert.equal(point.outputs.length,2);
-  assert.ok(Math.abs(point.outputs[0]-800)<10);
-  assert.ok(Math.abs(point.outputs[1]-200)<10);
+  const mapped=mapFrequency(point.f,20,2000,1,1,"fold-h");
+  assert.ok(Math.abs(point.outputs[0]-(mapped+300))<1e-6);
+  assert.ok(Math.abs(point.outputs[1]-Math.abs(mapped-300))<1e-6);
+  assert.ok(Math.abs(point.outputs[0]-(point.f+300))>100,"Ring chain ignores Warp");
 });

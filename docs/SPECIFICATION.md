@@ -81,3 +81,13 @@ full-file Worker/crossfade interface in #12 is superseded for audition.
   Ring Mod bypasses this FFT processing.
 - Source: Issue #17 and shared DSP architecture. Chrome/native/WASM
   test evidence is attached to PR #18 and deployment actions.
+
+
+## 2026-10-13 user-requested live long-preview/analysis update (Issue #22)
+
+- Web audition duration maximum **600 seconds**; source file maximum remains 75MB. This changes Web preview only, not the native VST3 status. WAV export remains bounded to 40 million total decoded samples because full-buffer WASM rendering would risk exhausting iPhone/browser memory for long stereo high-sample-rate files. State the failure explicitly in the Web UI.
+- Graph display remains fixed at [20,2000] Hz on both axes but the **inner plotting rectangle must also be square** (equal pixel/Hz scale). Mobile display should be compact, not fill the screen width.
+- Show theoretical virtual H=F/m and up to 3 harmonic entries always with the plot. Detailed lab toggles in place and does not replace the graph. Settings controls 3/5/7/12/16/24/32 rows.
+- Engine 2 now follows nonlinear shared Rust frequency warp g(f) (Invert/Curvature/L/H) **before** Ring Mod. Its output has the ideal two sidebands at g(f)+c and |g(f)-c|, with the FFT latency/CPU of that nonlinear preprocessor. Engine 3 now applies pitch ratio r and constant offset Δ to the warped partial frequency: f'=r*g(f)+Δ for selected in-band partials. Outside-band Pass reconstruction stays unshifted for Engine 3; when Ring is a post-modulator it affects the total pre-warp output including passed material. This is an explicit difference; Ring is not the same operation as single-sideband shifting.
+- Bit Crusher is an independently toggled shared Rust **post** effect, not another proposed spectral algorithm. Controls: 2–16 quantization bits, 1–32 sample hold. WebAudio Worklet and WAV Rust stream export must process the same FX settings.
+- Research methods inventory: the five user-named methods are NOT all production/live implementations. Direct analytic/complex modulation and whole-file FFT reposition have offline research scope; STFT phase analysis and sinusoidal partial tracking are experimental/incomplete; advanced chirplet/nonuniform/high-resolution methods not implemented. Pending work remains #17/#5; do not silently mark those candidates complete.

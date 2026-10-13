@@ -158,6 +158,46 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
     assert.ok(layout.curve.width>200,"Mobile graph layout "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
+    assert.ok(layout.curve.width<=275,"Mobile graph should be compact "+JSON.stringify(layout));
+    assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
+    assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/第3倍音/);
+    await page.click("#settings-open");
+    await page.select("#harmonic-count","12");
+    await page.click("#crusher-enabled");
+    await page.$eval("#crusher-bits",el=>{el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#crusher-bits-value",el=>el.textContent),"3 bit");
+    await page.click("#settings-done");
+    await page.click("#mini-expand");
+    assert.equal(await page.$eval("#view-map",el=>el.hidden),false,"graph must stay visible when equations open");
+    assert.match(await page.$eval("#harmonic-table-title",el=>el.textContent),/12倍音/);
+    const harmonics=await page.$eval("#harmonics-body",el=>el.children.length);
+    assert.equal(harmonics,12);
+    await page.click("#tab-map");
+
+    // Check a 601s source is trimmed to 600s without rendering the track.
+    const longPath=path.join(temp,"six-hundred.wav");
+    await writeFile(longPath,sineWav(601));
+    await (await page.$("#audio-file")).uploadFile(longPath);
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("600.0秒"),{timeout:45000});
+    assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
+    await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
+    const longWave=await (await page.$("#wave")).boundingBox();
+    await page.mouse.click(longWave.x+longWave.width*.9,longWave.y+longWave.height/2);
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000})
+      .catch(async err=>{
+        const state=await page.evaluate(()=>({
+          status:document.querySelector("#status").textContent,
+          indicator:document.querySelector("#rt-indicator").textContent,
+          current:document.querySelector("#elapsed").textContent,
+          selected:document.querySelector("#engine").value,
+          crash:document.querySelector("#play-wet").disabled,
+          errors:[]
+        }));
+        throw Error("600-second start: "+JSON.stringify(state)+" | "+err.message);
+      });
+    const minute=await page.$eval("#elapsed",el=>Number(el.textContent.split(":")[0]));
+    assert.equal(minute,9,"600s seek failed");
+    await page.click("#stop");
     await page.close();
   }finally{
     if(browser)await browser.close();
