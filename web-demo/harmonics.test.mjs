@@ -28,7 +28,7 @@ test("graph is fixed 20-2000Hz and passes identity outside L/H",()=>{
 });
 test("ring modulation draws two actual ideal sidebands",()=>{
   const options={low:20,high:2000,curvature:1,invert:1,mode:"fold-h",outside:"pass",
-    engine:2,pitchRatio:1,shiftHz:0,carrierHz:300,zeroMode:0};
+    engine:0,ringEnabled:true,pitchRatio:1,shiftHz:0,carrierHz:300,zeroMode:0};
   const point=graphSegments(options,mapFrequency).find(p=>p.f>495&&p.f<505);
   assert.equal(point.outputs.length,2);
   const mapped=mapFrequency(point.f,20,2000,1,1,"fold-h");
