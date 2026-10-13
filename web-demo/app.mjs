@@ -77,14 +77,14 @@ async function load(file){
     const ctx=await audioContext();
     const decoded=await ctx.decodeAudioData(await file.arrayBuffer());
     const channels=Math.min(2,decoded.numberOfChannels);
-    const n=Math.min(decoded.length,Math.floor(decoded.sampleRate*10));
+    const n=Math.min(decoded.length,Math.floor(decoded.sampleRate*120));
     if(n<4096)throw Error("音声が短すぎます。");
     state.decoded=decoded;
     state.dry=Array.from({length:channels},(_,i)=>decoded.getChannelData(i).slice(0,n));
     state.name=file.name.replace(/\.[^.]+$/,"");
     $("#file-meta").textContent=file.name+" / "+decoded.duration.toFixed(2)+"s / "+decoded.sampleRate+"Hz / "+channels+"ch";
     buttons.render.disabled=false;buttons.original.disabled=false;
-    message(decoded.duration>10?"読み込み完了。先頭10秒のみを処理します。":"読み込み完了。変換を開始できます。");
+    message(decoded.duration>120?"読み込み完了。先頭120秒のみを変換します。":"読み込み完了。音声全体を変換できます。");
     drawAudio(state.dry[0]);
   }catch(e){message("読み込み失敗: "+e.message,"error");}
 }
@@ -120,13 +120,13 @@ buttons.render.addEventListener("click",()=>{
   const settings={
     low:20,high:Math.min(16000,rate*.45),
     curvature:Number($("#curvature").value),invert:Number($("#invert").value),
-    mode:$("#mode").value,fftSize:quality.fftSize,hop:quality.hop,
+    mode:$("#mode").value,qualityIndex:({eco:0,standard:1,high:2}[$("#quality").value]),fftSize:quality.fftSize,hop:quality.hop,
     peaks:quality.peaks,floor:quality.floor
   };
   if(state.dry[0].length<settings.fftSize){message("音声が短いため低いQualityを選択してください。","error");return;}
   state.processed=null;state.mix=null;
   buttons.render.disabled=true;buttons.converted.disabled=true;buttons.download.disabled=true;
-  $("#progress").value=0;message("変換中。ブラウザ内だけで処理しています…");
+  $("#progress").value=0;message("共通Rust/WASMエンジンで変換中です。長い音声は時間がかかります…");
   state.worker=new Worker(new URL("./processor.worker.mjs",import.meta.url),{type:"module"});
   state.worker.onmessage=e=>{
     const data=e.data;
@@ -137,7 +137,7 @@ buttons.render.addEventListener("click",()=>{
       state.worker.terminate();state.worker=null;
       buttons.render.disabled=false;buttons.converted.disabled=false;buttons.download.disabled=false;
       $("#progress").value=100;drawAudio(state.mix[0]);
-      message("変換完了。"+data.diagnostics.peaks+"個のピークを処理しました。ノイズや残響には欠落が起こり得ます。");
+      message("共通Rust/WASMエンジンで変換完了（所要"+(data.diagnostics.elapsedMs/1000).toFixed(1)+"秒）。ノイズや残響には欠落が起こり得ます。");
     }else if(data.type==="error"){
       state.worker.terminate();state.worker=null;buttons.render.disabled=false;
       message("処理失敗: "+data.message,"error");
