@@ -1,0 +1,25 @@
+name: KiNoTch repository command (read-only baseline)
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  status:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.issue.user.login == 'kinoko34077' &&
+      github.event.comment.user.login == 'kinoko34077' &&
+      github.event.sender.login == 'kinoko34077' &&
+      github.event.comment.body == '/kinotch status'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Read repository metadata without execution of untrusted input
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY" --jq '{repository: .full_name, default_branch: .default_branch, private: .private}'
