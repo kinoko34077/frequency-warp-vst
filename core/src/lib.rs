@@ -447,7 +447,7 @@ mod tests {
         let low_side=fold_frequency(Settings{mode:Progression::FoldLow,..s}).unwrap();
         assert!((low_side-325.0).abs()<1e-9);
         assert!(fold_frequency(Settings{mode:Progression::Blend,..s}).is_none());
-        assert!((warp_fold_frequency(100.0,1000.0,1.0,.25,0)-775.0).abs()<1e-9);
+        assert!((warp_fold_frequency(100.0,1000.0,1.0,0.25,0)-775.0).abs()<1e-9);
     }
     #[test]
     fn c_abi_works() {
