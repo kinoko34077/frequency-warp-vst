@@ -704,7 +704,10 @@ mod tests{
             }
             (re*re+im*im).sqrt()
         };
-        let warped=magnitude(2520.0);
+        // Full inversion is now anchored around the chosen P=350Hz:
+        // g(500)=2520, g(P)=2670, P+(g(500)-g(P))=200Hz.
+        // The previous test's 2520Hz expected the old unanchored map.
+        let warped=magnitude(200.0);
         let original=magnitude(500.0);
         assert!(warped>original*4.0,"peak shift missing: warped={warped}, original={original}");
         assert!(warped>150.0,"unexpectedly low shifted energy {warped}");
