@@ -122,17 +122,27 @@
         <div class="harmonic-mini" aria-live="polite"><div class="mini-heading"><strong>仮想基音</strong><span id="mini-fundamental">H = 87.5 Hz</span></div><div id="mini-harmonics" class="mini-harmonics">第1〜3倍音を表示</div><button id="mini-expand" type="button" class="text-button">倍音を詳しく ↗</button></div>
       </div>
       <div id="view-math" role="tabpanel" aria-labelledby="tab-math" hidden>
-        <div class="section-header"><div><p class="eyebrow">HARMONIC LAB / ISSUE #16</p><h2>仮想基音と搬送波</h2></div></div>
-        <p class="math-note">理想的な整数倍音列の計算です。録音から基音を自動検出した値ではありません。</p>
-        <p class="math-note" id="math-axis-note">仮想基音の追従値は変換条件から計算します</p>
-        <p class="math-note" id="coordinate-details">基準と傾きの数値を確認できます。</p>
+        <div class="section-header"><h2>仮想基音と倍音</h2></div>
+        <p class="math-note">手入力した基音による理論値です。自動検出ではありません。</p>
+        <div id="math-axis-note" class="math-caption" aria-live="polite"></div>
+        <details class="math-debug"><summary>変換の詳しい値</summary><dl id="coordinate-details" class="variable-grid"></dl></details>
         <div class="math-controls">
           <div class="math-field"><label for="fundamental">元基音 F <small>Hz</small></label><input id="fundamental" type="number" min="20" max="2000" step="1" value="350"><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"></div></div>
           <div class="math-field"><label for="denominator">分母 m</label><input id="denominator" type="number" min="1" max="64" step="1" value="4"><div class="math-input"><input id="denominator-range" type="range" min="1" max="64" step="1" value="4"></div></div>
           <div class="math-field"><label for="numerator">分子 n <small>符号付き</small></label><input id="numerator" type="number" min="-128" max="128" step="1" value="-3"><div class="math-input"><input id="numerator-range" type="range" min="-128" max="128" step="1" value="-3"></div></div>
           <div class="math-field"><label for="harmonic-index">折返す倍音 q</label><input id="harmonic-index" type="number" min="1" max="32" step="1" value="1"><div class="math-input"><input id="harmonic-index-range" type="range" min="1" max="32" step="1" value="1"></div></div>
           <div class="math-field"><label for="pitch-ratio">前段ピッチ比 r</label><input id="pitch-ratio" type="number" min=".25" max="4" step=".05" value="1"><div class="math-input"><input id="pitch-ratio-range" type="range" min=".25" max="4" step=".05" value="1"></div></div>
-        <div id="math-results" class="math-results" aria-live="polite"></div>
+        <section class="formula-section">
+          <h3>数式</h3>
+          <div id="math-results" class="formula-grid" aria-live="polite">
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msup><mi>F</mi><mo>′</mo></msup><mo>=</mo><mi>r</mi><mi>F</mi></mrow></math>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>H</mi><mo>=</mo><mfrac><msup><mi>F</mi><mo>′</mo></msup><mi>m</mi></mfrac></mrow></math>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>Δ</mi><mo>=</mo><mfrac><mi>n</mi><mi>m</mi></mfrac><msup><mi>F</mi><mo>′</mo></msup></mrow></math>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><msubsup><mi>f</mi><mi>k</mi><mo>′</mo></msubsup><mo>=</mo><mo>(</mo><mi>m</mi><mi>k</mi><mo>+</mo><mi>n</mi><mo>)</mo><mi>H</mi></mrow></math>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow><mi>S</mi><mo>=</mo><mo>(</mo><mi>q</mi><mo>+</mo><mfrac><mn>1</mn><mi>m</mi></mfrac><mo>)</mo><msup><mi>F</mi><mo>′</mo></msup></mrow></math>
+          </div>
+          <h3>記号と値</h3><dl id="math-variables" class="variable-grid"></dl>
+        </section>
         <details class="harmonic-table"><summary id="harmonic-table-title">設定した倍音の数値表を見る</summary>
           <div class="table-scroll"><table><thead><tr><th>k</th><th>kF</th><th>kF+Δ</th><th>|kF−S|</th><th>mk+n</th></tr></thead><tbody id="harmonics-body"></tbody></table></div>
         </details>
