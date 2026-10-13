@@ -43,7 +43,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     }
     assert.ok(okay,"page not served");
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
-      document.querySelector("#math-results")?.textContent.includes("仮想基音"),{timeout:16000})
+      document.querySelector("#math-results")?.textContent.includes("仮想格子"),{timeout:16000})
       .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
         math:document.querySelector("#math-results")?.textContent,curve:[
           document.querySelector("#curve").width,document.querySelector("#curve").height],
@@ -51,14 +51,25 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       })))+" | "+err.message);});
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
-    assert.match(await page.$eval("#math-results",el=>el.textContent),/H = F \/ m = 87.5 Hz/);
+    assert.match(await page.$eval("#math-results",el=>el.textContent),/H=F′\/m=87.5 Hz/);
+    // Independent sine test can run before an audio file has been loaded.
+    assert.equal(await page.$eval("#sine-hz",el=>el.textContent),"440.00 Hz");
+    await page.click("#sine-enabled");
+    assert.equal(await page.$eval("#sine-enabled",el=>el.checked),true);
+    await page.$eval("#sine-pitch",el=>{el.value="69.5";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.match(await page.$eval("#sine-hz",el=>el.textContent),/452\.89 Hz/);
+    assert.match(await page.$eval("#sine-cent",el=>el.textContent),/-50 cent|\+50 cent/);
+    await page.click("#sine-enabled");
+    await page.$eval("#axis-shift",el=>{el.value=".25";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.match(await page.$eval("#axis-explainer",el=>el.textContent),/Hz/);
+    assert.match(await page.$eval("#mini-fundamental",el=>el.textContent),/→/);
     await page.click("#tab-math");
     assert.equal(await page.$eval("#view-math",el=>el.hidden),false);
     await page.$eval("#numerator-range",el=>{
       el.value="-3";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     assert.equal(await page.$eval("#numerator",el=>el.value),"-3");
-    assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\)F = -262.5 Hz/);
+    assert.match(await page.$eval("#math-results",el=>el.textContent),/Δ = \(n\/m\)F′ = -262.5 Hz/);
     await page.$eval("#carrier-range",el=>{el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),20000);
     await page.$eval("#carrier-range",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
@@ -113,11 +124,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       {timeout:15000});
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
     await page.click("#settings-open");
-    await page.select("#engine","2");
-    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    // Ring and rational layout are *effects*, not synthesis engines.
+    assert.deepEqual(await page.$eval("#engine option:not(:disabled)",nodes=>nodes.map(n=>n.value)),["0","1"]);
+    await page.click("#ring-enabled");
     assert.match(await page.$eval("#engine-description",el=>el.textContent),/Ring Mod/);
-    await page.select("#engine","3");
-    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    await page.click("#rational-enabled");
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{timeout:25000});
     await page.select("#engine","1");
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
     await page.select("#engine","0");
