@@ -43,13 +43,14 @@ export function resolvedCarrierHz(foldPoint){
 }
 export function renderHarmonicPanel(foldPoint){
   const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
-  const z=deriveHarmonics(F,m,n,q,r);
+  const count=Number($("#harmonic-count").value)||7;
+  const z=deriveHarmonics(F,m,n,q,r,count);
   const c=resolvedCarrierHz(foldPoint);
   $("#math-results").textContent=[
     "仮想基音: H = F / m = "+fmt(z.H)+" Hz",
     "シフト: Δ = (n/m)F = "+fmt(z.delta)+" Hz",
     "倍音列: f′k = (mk+n)H = kF+Δ",
-    "前段 Pitch→Hz Shift: f′=r·f+Δ",
+    "Warp後 Pitch→Hz Shift: f′=r·g(f)+Δ（帯域内）",
     "0Hz折返し: f′k = |kF − S|",
     "第q倍音がHへ: S=(q+1/m)F = "+fmt(z.foldShift)+" Hz",
     "Ring Mod: cos(2πft)cos(2πct) = ½cos(2π(f+c)t)+½cos(2π(f−c)t)",
@@ -67,6 +68,13 @@ export function renderHarmonicPanel(foldPoint){
     frag.appendChild(tr);
   }
   $("#harmonics-body").replaceChildren(frag);
+  $("#mini-fundamental").textContent="H = "+fmt(z.H)+" Hz / Δ "+fmt(z.delta)+" Hz";
+  $("#mini-harmonics").replaceChildren(...z.rows.slice(0,3).map(row=>{
+    const div=document.createElement("div");
+    div.textContent="第"+row.k+"倍音 "+fmt(row.input)+" → "+fmt(row.translated)+" Hz";
+    return div;
+  }));
+  $("#harmonic-table-title").textContent="第1〜"+count+"倍音の数値表を見る";
   const checkbox=$("#carrier-link"),readout=$("#carrier-linked-value");
   const valid=$("#mode").value!=="blend";
   for(const node of [$("#carrier"),$("#carrier-range")])node.disabled=checkbox.checked&&valid;
@@ -107,5 +115,6 @@ export function attachHarmonicPanel(onChange,foldPoint){
     syncPair(id);
   }
   $("#carrier-link").addEventListener("change",()=>respond("carrier-link"));
+  $("#harmonic-count").addEventListener("change",()=>renderHarmonicPanel(foldPoint));
   renderHarmonicPanel(foldPoint);
 }
