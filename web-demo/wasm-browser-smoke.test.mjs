@@ -42,6 +42,22 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(r=>setTimeout(r,250));
     }
     assert.ok(okay,"page not served");
+    // iOS-style picker callback may occur when playback AudioContext cannot
+    // resume. Loading must decode offline, without ever awaiting resume().
+    const importPage=await browser.newPage();
+    await importPage.goto("http://127.0.0.1:8765/index.html");
+    await importPage.evaluate(()=>{
+      AudioContext.prototype.resume=()=>{throw Error("Playback context must not resume during import");};
+    });
+    await (await importPage.$("#audio-file")).uploadFile(wavPath);
+    await importPage.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("12.0秒") &&
+       !document.querySelector("#play-wet").disabled,{timeout:20000});
+    assert.match(await importPage.$eval("#status",el=>el.textContent),/準備が完了/);
+    // Same file can be selected again because the file-picker input clears.
+    await (await importPage.$("#audio-file")).uploadFile(wavPath);
+    await importPage.waitForFunction(()=>document.querySelector("#status").textContent.includes("準備が完了"),{timeout:20000});
+    await importPage.close();
+
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
       document.querySelectorAll("#math-results math").length>=5 && document.querySelector("#mini-fundamental")?.textContent.includes("→"),{timeout:16000})
       .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
