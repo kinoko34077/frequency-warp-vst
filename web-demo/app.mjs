@@ -11,6 +11,7 @@ const state={
   qualityIndex:0,settingsRevision:0,name:"audio",processing:false,
   effective:{low:20,high:16000},raf:0,lastStats:null
 };
+window.__warpDebug=()=>({context:state.ctx?.state||"none",playing:!!state.player,messages:state.player?.startupMessages||[],workletLoaded:state.workletLoaded,wasmCompiled:!!state.module});
 const hzFromScale=value=>20*Math.exp(Math.log(1000)*Number(value)/1000);
 const scaleFromHz=hz=>Math.round(1000*Math.log(Math.max(20,hz)/20)/Math.log(1000));
 const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":Math.round(hz)+" Hz";
@@ -243,14 +244,16 @@ async function play(mode="wet",offset=null){
     const player={
       worklet,dry,wet,master,buffer:makeBuffer(),source:null,
       mode,quality:current.qualityIndex,at:ctx.currentTime,
-      offset:0,appliedRevision:0
+      offset:0,appliedRevision:0,startupMessages:[]
     };
     state.player=player;
     worklet.port.onmessage=playerMessage(worklet,player);
+    worklet.addEventListener("processorerror",()=>{message("AudioWorklet processorerror","error");player.startupMessages.push("processorerror");});
     const ready=new Promise((resolve,reject)=>{
       const timeout=setTimeout(()=>reject(Error("AudioWorkletの起動が時間切れです。")),10000);
       const handler=worklet.port.onmessage;
       worklet.port.onmessage=event=>{
+        player.startupMessages.push(event.data.type);
         if(event.data.type==="ready"){clearTimeout(timeout);worklet.port.onmessage=handler;resolve(event.data);}
         else if(event.data.type==="error"){clearTimeout(timeout);reject(Error(event.data.message));}
       };
