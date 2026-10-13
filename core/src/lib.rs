@@ -1,0 +1,364 @@
+//! Portable R2.1 offline research engine.
+//! Exactly one processing implementation feeds native staticlib/C ABI and wasm.
+//! Not a realtime-safe VST processor: allocates, requires complete input buffers.
+//! No product behavior for out-of-band energy, DC, Nyquist, or untracked residuals.
+
+use std::f64::consts::PI;
+
+const TAU: f64 = PI * 2.0;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Progression { Fold, Blend }
+
+#[derive(Clone, Copy, Debug)]
+pub struct Settings {
+    pub low: f64,
+    pub high: f64,
+    pub curvature: f64,
+    pub invert: f64,
+    pub mode: Progression,
+    pub quality: u32,
+}
+
+#[derive(Clone, Copy)]
+struct Complex { r: f64, i: f64 }
+impl Complex {
+    const ZERO: Self = Self {r: 0.0, i: 0.0};
+    fn magnitude(self) -> f64 { self.r.hypot(self.i) }
+    fn angle(self) -> f64 { self.i.atan2(self.r) }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Quality { pub n: usize, pub hop: usize, pub max_peaks: usize, pub floor: f64 }
+pub fn quality(index: u32) -> Option<Quality> {
+    match index {
+        0 => Some(Quality {n: 1024, hop: 256, max_peaks: 6, floor: 0.09}),
+        1 => Some(Quality {n: 2048, hop: 256, max_peaks: 10, floor: 0.045}),
+        2 => Some(Quality {n: 4096, hop: 512, max_peaks: 18, floor: 0.025}),
+        _ => None
+    }
+}
+
+fn coordinate(f: f64, low: f64, p: f64) -> f64 {
+    let log = (f / low).ln();
+    if p == 0.0 { log } else { (p * log).exp_m1() / p }
+}
+fn inverse_coordinate(u: f64, low: f64, p: f64) -> f64 {
+    low * (if p == 0.0 {u} else {(p * u).ln_1p() / p}).exp()
+}
+
+/// Research mapping is *only* defined for positive frequencies in [L,H].
+pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
+    if !s.low.is_finite() || !s.high.is_finite() || s.low <= 0.0 || s.high <= s.low
+        || !(0.0..=1.0).contains(&s.curvature) || !(0.0..=1.0).contains(&s.invert)
+        || !f.is_finite() || f < s.low || f > s.high {
+        return Err("invalid frequency or mapping domain");
+    }
+    if s.invert == 0.0 { return Ok(f); }
+    let x = coordinate(f, s.low, s.curvature);
+    let d = coordinate(s.high, s.low, s.curvature);
+    let result = match s.mode {
+        Progression::Blend => (1.0 - s.invert) * f +
+            s.invert * inverse_coordinate(d - x, s.low, s.curvature),
+        Progression::Fold => {
+            let v = (x + s.invert * d).rem_euclid(2.0 * d);
+            inverse_coordinate(d - (v - d).abs(), s.low, s.curvature).clamp(s.low, s.high)
+        }
+    };
+    Ok(result)
+}
+
+/// In-place radix-2 DFT over complex samples.
+fn fft(samples: &mut [Complex], inverse: bool) {
+    let n = samples.len();
+    debug_assert!(n.is_power_of_two());
+    let mut j = 0;
+    for i in 1..n {
+        let mut bit = n >> 1;
+        while (j & bit) != 0 { j ^= bit; bit >>= 1; }
+        j ^= bit;
+        if i < j { samples.swap(i, j); }
+    }
+    let mut len = 2;
+    while len <= n {
+        let theta = if inverse {TAU / len as f64} else {-TAU / len as f64};
+        let rot = Complex{r:theta.cos(), i:theta.sin()};
+        for base in (0..n).step_by(len) {
+            let mut w = Complex{r:1.0,i:0.0};
+            for pos in 0..len / 2 {
+                let a = base + pos;
+                let b = a + len / 2;
+                let t = Complex{
+                    r: w.r * samples[b].r - w.i * samples[b].i,
+                    i: w.r * samples[b].i + w.i * samples[b].r,
+                };
+                let u = samples[a];
+                samples[a] = Complex{r:u.r + t.r,i:u.i + t.i};
+                samples[b] = Complex{r:u.r - t.r,i:u.i - t.i};
+                w = Complex{
+                    r: w.r * rot.r - w.i * rot.i,
+                    i: w.r * rot.i + w.i * rot.r
+                };
+            }
+        }
+        len *= 2;
+    }
+    if inverse {
+        for z in samples { z.r /= n as f64; z.i /= n as f64; }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Track {frequency:f64, difference:f64, phase_shift:f64}
+
+pub struct ResultAudio { pub channels: Vec<Vec<f32>>, pub frames: usize, pub peaks: usize }
+
+/// Offline whole-buffer processing, not realtime safe.
+/// Channels must have matching sample counts and source rate.
+pub fn process(source: &[Vec<f32>], sample_rate: f64, s: Settings) -> Result<ResultAudio, &'static str> {
+    if source.is_empty() || source.len() > 2 ||
+        !sample_rate.is_finite() || sample_rate <= 0.0 ||
+        !s.high.is_finite() || s.high >= sample_rate/2.0 ||
+        source[0].is_empty() || source.iter().any(|c| c.len()!=source[0].len() || c.iter().any(|x| !x.is_finite())) {
+        return Err("invalid audio buffer or sample rate");
+    }
+    let q = quality(s.quality).ok_or("unknown quality tier")?;
+    if source[0].len() < q.n || source[0].len() > (sample_rate * 180.0) as usize {
+        return Err("audio length outside research bounds");
+    }
+    map_frequency(s.low, s)?;
+    let length=source[0].len();
+    let channel_count=source.len();
+    let left=q.n/2;
+    let extra=(q.hop - length % q.hop) % q.hop;
+    let total=length + q.n + extra;
+    let mut signal=vec![vec![0.0f64;total];channel_count];
+    for c in 0..channel_count {
+        for i in 0..length {signal[c][i+left]=source[c][i] as f64;}
+    }
+    let mut output=vec![vec![0.0f64;total];channel_count];
+    let mut weights=vec![0.0f64;total];
+    let window:Vec<f64>=(0..q.n)
+        .map(|i| 0.5-0.5*(TAU * i as f64 / q.n as f64).cos()).collect();
+    let local:Vec<f64>=(0..q.n)
+        .map(|i| (i as f64 - q.n as f64/2.0)/sample_rate).collect();
+    let bin_width=sample_rate/q.n as f64;
+    let hop_seconds=q.hop as f64/sample_rate;
+    let half=q.n/2;
+    let mut previous:Option<Vec<Vec<Complex>>>=None;
+    let mut tracks:Vec<Track>=Vec::new();
+    let mut nframes=0usize;
+    let mut npeak=0usize;
+
+    for start in (0..=total-q.n).step_by(q.hop) {
+        let mut spectra=vec![vec![Complex::ZERO;q.n];channel_count];
+        for c in 0..channel_count {
+            for i in 0..q.n {
+                spectra[c][i].r=signal[c][start+i] * window[i];
+            }
+            fft(&mut spectra[c],false);
+        }
+        let mut magnitude=vec![0.0;half+1];
+        let mut highest: f64=0.0;
+        for k in 1..half {
+            let squared=(0..channel_count).map(|c| {
+                let z=spectra[c][k]; z.r*z.r + z.i*z.i
+            }).sum::<f64>();
+            magnitude[k]=squared.sqrt();
+            highest=highest.max(magnitude[k]);
+        }
+        let threshold=(highest*q.floor).max(1e-10);
+        let mut peaks:Vec<usize>=(2..half-1)
+            .filter(|&k| magnitude[k]>=threshold &&
+                magnitude[k]>=magnitude[k-1] && magnitude[k]>magnitude[k+1]).collect();
+        peaks.sort_by(|&a,&b| magnitude[b].total_cmp(&magnitude[a]));
+        peaks.truncate(q.max_peaks);
+        peaks.sort_unstable();
+
+        let mut frame_output=vec![vec![0.0f64;q.n];channel_count];
+        let mut new_tracks=Vec::new();
+        let mut used=vec![false;tracks.len()];
+        for (j,&k) in peaks.iter().enumerate() {
+            let ch= if spectra[0][k].magnitude()>1e-10 {0} else {channel_count-1};
+            let phase=spectra[ch][k].angle();
+            let frequency=if let Some(ref prev)=previous {
+                if prev[ch][k].magnitude()>=1e-8 {
+                    let delta=(phase-prev[ch][k].angle()-TAU*k as f64*q.hop as f64/q.n as f64
+                        + PI).rem_euclid(TAU)-PI;
+                    k as f64 * bin_width + delta/(TAU*hop_seconds)
+                } else {
+                    interpolated_frequency(k,&magnitude,bin_width)
+                }
+            } else {
+                interpolated_frequency(k,&magnitude,bin_width)
+            };
+            if !frequency.is_finite() || frequency < s.low || frequency > s.high {continue;}
+            let target=map_frequency(frequency,s)?;
+            if target <= 0.0 || target >= sample_rate/2.0 {continue;}
+            let difference=target-frequency;
+            let mut best=(f64::INFINITY, None);
+            for (index,old) in tracks.iter().enumerate() {
+                let distance=(frequency-old.frequency).abs();
+                if !used[index] && distance<best.0 {best=(distance,Some(index));}
+            }
+            let mut phase_shift=0.0;
+            let mut slope=0.0;
+            if let Some(index)=best.1 {
+                if best.0<(3.0*bin_width).max(0.05*frequency) {
+                    used[index]=true;
+                    let old=tracks[index];
+                    phase_shift=old.phase_shift + PI*(old.difference+difference)*hop_seconds;
+                    slope=(difference-old.difference)/hop_seconds;
+                }
+            }
+            new_tracks.push(Track{frequency,difference,phase_shift});
+            let left_bin=(k.saturating_sub(3)).max(
+                if j==0 {1} else {(peaks[j-1]+k)/2+1});
+            let right_bin=(k+4).min(
+                if j+1==peaks.len() {half} else {(peaks[j+1]+k)/2+1});
+            if left_bin>=right_bin {continue;}
+            let carriers:Vec<(f64,f64)>=local.iter().map(|&t| {
+                let angle=TAU*difference*t+PI*slope*t*t+phase_shift;
+                (angle.cos(),angle.sin())
+            }).collect();
+            for c in 0..channel_count {
+                let mut partial=vec![Complex::ZERO;q.n];
+                for k in left_bin..right_bin {
+                    partial[k]=Complex{r:2.0*spectra[c][k].r,i:2.0*spectra[c][k].i};
+                }
+                fft(&mut partial,true);
+                for i in 0..q.n {
+                    frame_output[c][i]+=partial[i].r*carriers[i].0-partial[i].i*carriers[i].1;
+                }
+            }
+        }
+        for i in 0..q.n {
+            let place=start+i; let w=window[i];
+            weights[place]+=w*w;
+            for c in 0..channel_count {output[c][place]+=frame_output[c][i]*w;}
+        }
+        npeak+=new_tracks.len();
+        tracks=new_tracks;
+        previous=Some(spectra);
+        nframes+=1;
+    }
+    let result=(0..channel_count).map(|c| {
+        (0..length).map(|i| {
+            let j=i+left;
+            if weights[j]>1e-9 {(output[c][j]/weights[j]) as f32} else {0.0}
+        }).collect::<Vec<f32>>()
+    }).collect();
+    Ok(ResultAudio{channels:result,frames:nframes,peaks:npeak})
+}
+fn interpolated_frequency(k:usize,magnitude:&[f64],bin_width:f64)->f64 {
+    let l=magnitude[k-1].max(1e-12).ln();
+    let m=magnitude[k].max(1e-12).ln();
+    let r=magnitude[k+1].max(1e-12).ln();
+    let d=l-2.0*m+r;
+    let fraction=if d.abs()>1e-10 {(0.5*(l-r)/d).clamp(-0.5,0.5)} else {0.0};
+    (k as f64+fraction)*bin_width
+}
+
+/// This native C ABI is also exported by wasm32, keeping one actual algorithm.
+/// Planar contiguous channels: [all left samples][all right samples].
+#[no_mangle]
+pub extern "C" fn warp_map_frequency(f:f64,low:f64,high:f64,p:f64,amount:f64,mode:u32)->f64 {
+    map_frequency(f,Settings{low,high,curvature:p,invert:amount,
+        mode:if mode==1 {Progression::Blend} else {Progression::Fold},quality:1})
+        .unwrap_or(f64::NAN)
+}
+#[no_mangle]
+pub extern "C" fn warp_alloc_f32(count:u32)->*mut f32 {
+    if count==0 || count>40_000_000 {return std::ptr::null_mut();}
+    let mut mem=Vec::<f32>::with_capacity(count as usize);
+    let ptr=mem.as_mut_ptr();
+    std::mem::forget(mem);
+    ptr
+}
+/// # Safety
+/// The allocation pointer/count must originate from warp_alloc_f32 exactly once.
+#[no_mangle]
+pub unsafe extern "C" fn warp_free_f32(ptr:*mut f32,count:u32) {
+    if !ptr.is_null() && count>0 {
+        let _=Vec::<f32>::from_raw_parts(ptr,0,count as usize);
+    }
+}
+/// Return 0 on success; negative on invalid buffers/parameters or research bounds.
+/// # Safety
+/// Input and output must be non-overlapping valid count*frames f32 arrays.
+#[no_mangle]
+pub unsafe extern "C" fn warp_process_f32(
+    input:*const f32, output:*mut f32, frames:u32, channels:u32,
+    sample_rate:f64, low:f64, high:f64, curvature:f64,
+    invert:f64, mode:u32, quality_index:u32,
+)->i32 {
+    if input.is_null() || output.is_null() || frames==0 || !(1..=2).contains(&channels)
+       || (frames as usize).saturating_mul(channels as usize)>40_000_000 { return -1; }
+    let len=frames as usize;
+    let input=std::slice::from_raw_parts(input,len*channels as usize);
+    let channels_in=(0..channels as usize).map(|c| {
+        input[c*len..(c+1)*len].to_vec()
+    }).collect::<Vec<_>>();
+    let settings=Settings{low,high,curvature,invert,
+        mode:if mode==1 {Progression::Blend} else {Progression::Fold},
+        quality:quality_index};
+    match process(&channels_in,sample_rate,settings) {
+        Err(_)=>-2,
+        Ok(rendered)=>{
+            let dest=std::slice::from_raw_parts_mut(output,len*channels as usize);
+            for (c,part) in rendered.channels.iter().enumerate() {
+                dest[c*len..(c+1)*len].copy_from_slice(part);
+            }
+            0
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn config()->Settings {
+        Settings{low:20.0,high:3000.0,curvature:1.0,invert:1.0,
+            mode:Progression::Fold,quality:0}
+    }
+    fn tone(freq:f64,phase:f64,gain:f64,n:usize)->Vec<f32>{
+        (0..n).map(|i| (gain*(TAU*freq*i as f64/8192.0+phase).cos()) as f32).collect()
+    }
+    #[test]
+    fn exact_curve() {
+        let s=config();
+        assert!((map_frequency(500.0,s).unwrap()-2520.0).abs()<1e-9);
+        for p in [0.0,0.00001,0.5,1.0] {
+            let settings=Settings{curvature:p,..s};
+            let g=map_frequency(700.0,settings).unwrap();
+            assert!((map_frequency(g,settings).unwrap()-700.0).abs()<1e-7);
+        }
+    }
+    #[test]
+    fn tone_and_stereo_survive() {
+        let channels=vec![tone(500.0,0.0,.7,4096),tone(500.0,.5,.52,4096)];
+        let result=process(&channels,8192.0,config()).unwrap();
+        assert_eq!(result.channels.len(),2);
+        let channel=&result.channels[0];
+        let rms=(channel.iter().map(|&x| (x as f64)*(x as f64)).sum::<f64>()/channel.len() as f64).sqrt();
+        assert!(rms>.30,"output rms {rms}");
+        let mut spectrum=channel.iter().map(|&x| Complex{r:x as f64,i:0.0}).collect::<Vec<_>>();
+        fft(&mut spectrum,false);
+        let peak=(1..2048).max_by(|&a,&b| spectrum[a].magnitude().total_cmp(&spectrum[b].magnitude())).unwrap();
+        assert!((peak as i32-1260).abs()<3,"got {peak} instead of 1260 (2520 Hz)");
+        let mut right=result.channels[1].iter().map(|&x|Complex{r:x as f64,i:0.0}).collect::<Vec<_>>();
+        fft(&mut right,false);
+        let a=spectrum[peak].angle();
+        let b=right[peak].angle();
+        let phase=(b-a+PI).rem_euclid(TAU)-PI;
+        assert!((phase-.5).abs()<.12,"stereo phase mismatch: {phase}");
+    }
+    #[test]
+    fn c_abi_works() {
+        let input=tone(500.0,0.0,1.0,4096);
+        let mut output=vec![0.0;input.len()];
+        let status=unsafe{warp_process_f32(input.as_ptr(),output.as_mut_ptr(),
+            input.len() as u32,1,8192.0,20.0,3000.0,1.0,1.0,0,0)};
+        assert_eq!(status,0);
+        assert!(output.iter().map(|x|x.abs()).fold(0.0f32,f32::max)>.5);
+    }
+}
