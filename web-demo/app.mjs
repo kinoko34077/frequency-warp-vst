@@ -79,6 +79,7 @@ function labels(id=""){
   const u=Number($("#axis-shift").value),p=Number($("#curvature").value);
   const ref=hzFromScale($("#axis-pivot").value);
   $("#axis-shift-value").textContent=(u>=0?"+":"")+u.toFixed(3);
+  $("#axis-shift-number").value=u.toFixed(2);
   $("#axis-mode-hint").textContent=Number($("#invert").value)>0?
     "反転がONです。通常のピッチシフトは反転量0%で確認できます。":
     p===0?"通常ピッチ移動：すべての成分を同じ倍率で移動":
@@ -115,7 +116,11 @@ function mathCallbacks(){
 function updateListeningGuide(){
   if(!state.mathCore)return;
   const p=settings(),{warp,translate}=mathCallbacks();
-  const pivot=p.axisPivot,shifted=translate(pivot,pivot,p.curvature,p.axisShift,p.axisSlope);
+  const pivot=p.axisPivot;
+  const pivotMap=mapAtFrequency(pivot,p,warp,translate);
+  const pivotWarped=pivot>=p.low&&pivot<=p.high?
+    warp(pivot,p.low,p.high,p.curvature,p.invert,p.mode):pivot;
+  const shifted=pivotMap.outputs[0]??NaN;
   const effect=p.curvature===0?"倍率移動":p.curvature===1?"Hz移動":"中間軸の変形";
   const ratio=shifted/pivot;
   const semitones=12*Math.log2(Math.max(1e-9,ratio));
@@ -127,9 +132,9 @@ function updateListeningGuide(){
       :f+" Hz → "+m.reason;
   });
   $("#listening-guide").textContent=
-    effect+" · 起点 "+about(pivot)+" Hz → "+about(shifted)+" Hz"+
-    "（"+(ratio>=1?"×":"÷")+about(ratio>=1?ratio:1/ratio)+
-    "、"+(semitones>=0?"+":"")+semitones.toFixed(1)+"半音）"+
+    effect+" · 起点 "+about(pivot)+" Hz → "+(Number.isFinite(shifted)?about(shifted)+" Hz":pivotMap.reason)+
+    "（"+(Number.isFinite(ratio)?(ratio>=1?"×":"÷")+about(ratio>=1?ratio:1/ratio):"範囲外")+
+    "、"+(Number.isFinite(semitones)?(semitones>=0?"+":"")+semitones.toFixed(1)+"半音":"不算出")+"）"+
     " / 傾き "+p.axisSlope.toFixed(2)+"、反転 "+Math.round(p.invert*100)+"%"+
     "\n"+examples.join("　|　");
   $("#coordinate-details").textContent=
@@ -137,7 +142,7 @@ function updateListeningGuide(){
     " ／ 線形側の移動量 Δ="+(p.axisShift*p.axisPivot).toFixed(2)+"Hz"+
     " ／ 座標指数 p="+p.curvature.toFixed(3)+
     " ／ 起点 "+about(pivot)+"Hz、傾き "+p.axisSlope.toFixed(2)+
-    " ／ 反転前後の起点移動は現在の波形グラフを参照";
+    " ／ 反転 g(起点)="+about(pivotWarped)+"Hz（線形差 "+about(pivotWarped-pivot)+"Hz）";
 }
 
 function drawCurve(){
@@ -423,6 +428,18 @@ $("#wet").addEventListener("input",()=>{labels();tuneWet();});
 $("#slope-one").addEventListener("click",()=>{
   $("#axis-slope").value="1";
   updateParams("axis-slope");updateEngineInfo();
+});
+$("#axis-shift-number").addEventListener("input",()=>{
+  const value=Number($("#axis-shift-number").value);
+  if(!Number.isFinite(value)||$("#axis-shift-number").value==="")return;
+  $("#axis-shift").value=String(clamp(value,-2,2));
+  updateParams("axis-shift");updateEngineInfo();
+});
+$("#axis-shift-number").addEventListener("change",()=>{
+  const value=Number($("#axis-shift-number").value);
+  const snap=Number.isFinite(value)?Math.round(clamp(value,-2,2)*20)/20:0;
+  $("#axis-shift").value=String(snap);
+  updateParams("axis-shift");updateEngineInfo();
 });
 $("#axis-zero").addEventListener("click",()=>{
   $("#axis-shift").value="0";
