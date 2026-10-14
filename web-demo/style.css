@@ -431,10 +431,6 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .shared-dual-track .shared-dual-inner{position:absolute;inset:0 12px;touch-action:none}
 .shared-dual-track .shared-dual-inner::before{content:"";position:absolute;left:0;right:0;
   top:calc(50% - 2px);height:4px;background:#35545a;border-radius:4px}
-.shared-dual-track .shared-dual-inner::after{content:"";position:absolute;
-  left:min(var(--dual-first,0%),var(--dual-second,100%));
-  width:abs(calc(var(--dual-first,0%) - var(--dual-second,100%)));
-  top:calc(50% - 2px);height:4px;background:#426b64;border-radius:4px;pointer-events:none}
 .shared-dual-track .shared-dual-thumb{position:absolute;display:block;
   width:22px!important;height:22px!important;min-width:22px;min-height:22px;
   padding:0!important;margin:0!important;border-radius:50%;border:2px solid #d3fff0;
