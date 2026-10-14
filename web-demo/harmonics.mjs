@@ -29,7 +29,8 @@ function settingsZeroMode(mode,f){
  * plotting a curve where DSP cannot actually output a spectral component. */
 export function mapAtFrequency(f,
   {low,high,curvature,invert,mode,outside,pitchRatio=1,shiftHz=0,
-   carrierHz=0,zeroMode=0,zeroReflectGain=1,axisShift=0,axisReference=350,axisPivot=axisReference,
+   carrierHz=0,zeroMode=0,zeroReflectGain=1,zeroReflectDecay=0,reflectionAmplitude=null,
+   axisShift=0,axisReference=350,axisPivot=axisReference,
    axisSlope=1,ringEnabled=false,rationalEnabled=false,sampleRate=48000,qualityIndex=0},
   warp,translate=(f)=>f) {
   const inside=f>=low&&f<=high;
@@ -54,7 +55,9 @@ export function mapAtFrequency(f,
     const fftWindow=[1024,2048,4096][qualityIndex]||1024;
     if(zeroMode===2 && -transformed>=sampleRate/fftWindow)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"0Hz未満を減衰除去"};
     if(zeroMode===2)reflectionGain=Math.max(0,1+transformed/(sampleRate/fftWindow));
-    else reflectionGain=Math.max(0,Math.min(1,zeroReflectGain));
+    else reflectionGain=typeof reflectionAmplitude==="function"?
+      reflectionAmplitude(-transformed):
+      zeroReflectGain*Math.pow(1-zeroReflectDecay,-transformed/axisReference);
     if(reflectionGain===0)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"負周波数の反射振幅0%（除去）"};
     transformed=-transformed;
   }

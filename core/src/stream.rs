@@ -34,7 +34,8 @@ pub struct Stream {
     a_reverb_delays:Vec<Vec<Vec<f32>>>,
     a_reverb_pos:[usize;3],
     zero_mode:u32, // legacy: 0=reflect,1=kill,2=near-zero fade; 3=variable reflection
-    zero_reflect_gain:f64, // 0..1 reflected negative-target amplitude, applied when mode=3
+    zero_reflect_gain:f64, // 0..1 uniform synthesis amount for negative-target reflections
+    zero_reflect_decay:f64, // 0..1 distance-dependent attenuation; normalized at axis_reference Hz
     received:u64,
     input:Vec<Vec<f64>>,
     output:Vec<Vec<f64>>,
@@ -82,7 +83,7 @@ impl Stream {
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
-            a_reverb_pos:[0;3],zero_mode,zero_reflect_gain:1.0,received:0,
+            a_reverb_pos:[0;3],zero_mode,zero_reflect_gain:1.0,zero_reflect_decay:0.0,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
             weights:vec![0.0;q.n*2],
@@ -187,6 +188,18 @@ impl Stream {
             return Err("invalid negative-target reflection gain");
         }
         self.zero_reflect_gain=gain;
+        self.zero_mode=3;
+        Ok(())
+    }
+    /// Frequency-dependent reflection falloff, independent of synthesis gain.
+    /// At D=0 there is no falloff; at D=.5 the reflected amplitude
+    /// halves for each axisReference-Hz of distance below zero. At D=1
+    /// all strictly negative targets are removed, no audio-thread alloc.
+    pub fn set_zero_reflect_decay(&mut self,decay:f64)->Result<(),&'static str>{
+        if !decay.is_finite()||!(0.0..=1.0).contains(&decay){
+            return Err("invalid reflected frequency falloff");
+        }
+        self.zero_reflect_decay=decay;
         self.zero_mode=3;
         Ok(())
     }
@@ -574,8 +587,10 @@ impl Stream {
                 0=>(-target,1.0), // Reflect
                 1=>return None, // Kill
                 3=>{
-                    if self.zero_reflect_gain<=0.0{return None;}
-                    (-target,self.zero_reflect_gain)
+                    let gain=zero_reflection_amplitude(-target,self.zero_reflect_gain,
+                        self.zero_reflect_decay,self.axis_reference);
+                    if gain<=0.0{return None;}
+                    (-target,gain)
                 },
                 _=>{
                     let negative=-target;
@@ -673,6 +688,26 @@ pub unsafe extern "C" fn warp_stream_set_ext(
         engine,pitch_ratio,shift_hz,carrier_hz,zero_mode){Ok(_)=>0,Err(_)=>-2}
 }
 
+// The same amplitude law is used by native synthesis and exported to the
+// browser mapping graph; visual opacity is not an independently guessed law.
+fn zero_reflection_amplitude(distance:f64,synthesis:f64,decay:f64,reference:f64)->f64{
+    if !distance.is_finite()||distance<0.0 || !synthesis.is_finite() ||
+       !(0.0..=1.0).contains(&synthesis) || !decay.is_finite() ||
+       !(0.0..=1.0).contains(&decay) || !reference.is_finite() ||
+       reference<=0.0 {return f64::NAN;}
+    if synthesis==0.0 {return 0.0;}
+    if decay==1.0 {return if distance==0.0{synthesis}else{0.0};}
+    synthesis*(1.0-decay).powf(distance/reference)
+}
+#[no_mangle]
+pub extern "C" fn warp_zero_reflection_amplitude(distance:f64,synthesis:f64,decay:f64,reference:f64)->f64{
+    zero_reflection_amplitude(distance,synthesis,decay,reference)
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_zero_reflect_decay(ptr:*mut Stream,decay:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_zero_reflect_decay(decay){Ok(())=>0,Err(_)=>-2}
+}
 #[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_zero_reflect_gain(ptr:*mut Stream,gain:f64)->i32{
     if ptr.is_null(){return -1;}
@@ -764,7 +799,7 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
     render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None)
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None,None)
 }
 
 /// Unified native/WASM offline export with controllable negative-target
@@ -782,7 +817,27 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_gain_ext(
     render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain))
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain),None)
+}
+
+/// Reflection synthesis amount and frequency-distance decay for WAV export.
+/// Existing ABI remains callable through zero_gain_ext and legacy quality_ext.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_zero_controls_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:f64,zero_reflect_decay:f64,
+)->i32{
+    if !zero_reflect_gain.is_finite()||!(0.0..=1.0).contains(&zero_reflect_gain)||
+       !zero_reflect_decay.is_finite()||!(0.0..=1.0).contains(&zero_reflect_decay){return -2;}
+    render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
+        outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
+        crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,
+        Some(zero_reflect_gain),Some(zero_reflect_decay))
 }
 
 unsafe fn render_zero_gain_internal(
@@ -791,7 +846,7 @@ unsafe fn render_zero_gain_internal(
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
-    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,zero_reflect_decay:Option<f64>,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -809,7 +864,9 @@ unsafe fn render_zero_gain_internal(
        // Internal optional gain: no gain keeps the exact legacy 0/1/2
        // policy; Some(0..1) activates variable-amplitude reflection.
        zero_reflect_gain.is_some_and(|gain|
-           st.set_zero_reflect_gain(gain).is_err()){return -2;}
+           st.set_zero_reflect_gain(gain).is_err())||
+       zero_reflect_decay.is_some_and(|decay|
+           st.set_zero_reflect_decay(decay).is_err()){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -960,6 +1017,27 @@ mod tests{
         st.configure_extended(Settings{mode:Progression::FoldLow,..a},1,2,1.0,0.0,-1.0,0).unwrap();
         assert!((fold_frequency(st.settings).unwrap()-325.0).abs()<1e-9);
         assert_eq!(st.carrier_hz,-1.0);
+    }
+    #[test]
+    fn synthesis_and_distance_reflection_are_independently_controlled(){
+        let mut st=Stream::new_extended(8192.0,1,settings(),1,1,1.0,0.0,0.0,0,4).unwrap();
+        st.set_transform(0.0,350.0,0,0).unwrap();
+        st.set_zero_reflect_gain(0.8).unwrap();
+        st.set_zero_reflect_decay(0.5).unwrap();
+        assert_eq!(st.resolve_zero(-350.0,8.0),Some((350.0,0.4)));
+        assert_eq!(st.resolve_zero(-700.0,8.0),Some((700.0,0.2)));
+        assert_eq!(st.resolve_zero(400.0,8.0),Some((400.0,1.0)));
+        assert!((zero_reflection_amplitude(175.0,0.8,0.5,350.0)-
+            0.8*(0.5f64).sqrt()).abs()<1e-12);
+        assert_eq!(zero_reflection_amplitude(700.0,0.8,0.0,350.0),0.8);
+        assert_eq!(zero_reflection_amplitude(700.0,0.8,1.0,350.0),0.0);
+        assert!(st.set_zero_reflect_decay(f64::NAN).is_err());
+        assert!(st.set_zero_reflect_decay(-0.1).is_err());
+        assert!(st.set_zero_reflect_decay(1.001).is_err());
+        assert_eq!(st.zero_reflect_decay,0.5);
+        let original=st.resolve_zero(-350.0,8.0);
+        assert_eq!(warp_zero_reflection_amplitude(350.0,0.8,0.5,350.0),
+            original.unwrap().1);
     }
     #[test]
     fn variable_negative_reflection_is_strictly_bounded_and_legacy_modes_unchanged(){

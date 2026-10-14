@@ -35,7 +35,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
         "warp_stream_process","warp_stream_latency","warp_stream_set_crusher",
-        "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_a_options","warp_stream_set_a_band","warp_stream_set_a_quality","warp_stream_set_zero_reflect_gain"
+        "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_a_options","warp_stream_set_a_band","warp_stream_set_a_quality","warp_stream_set_zero_reflect_gain","warp_stream_set_zero_reflect_decay"
       ];
       for (const name of required) {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
@@ -62,7 +62,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
          e.warp_stream_set_a_quality(stream,options.aQuality)!==0){
         e.warp_stream_free(stream);throw Error("Rust A options failed");
       }
-      if(e.warp_stream_set_zero_reflect_gain(stream,options.zeroReflectGain)!==0){
+      if(e.warp_stream_set_zero_reflect_gain(stream,options.zeroReflectGain)!==0 ||
+         e.warp_stream_set_zero_reflect_decay(stream,options.zeroReflectDecay)!==0){
         e.warp_stream_free(stream);throw Error("Rust zero-frequency reflection gain failed");
       }
       if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
@@ -125,7 +126,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       const band=a===0?e.warp_stream_set_a_band(this.stream,p.aBandBins):a;
       const quality=band===0?e.warp_stream_set_a_quality(this.stream,p.aQuality):band;
       const zero=quality===0?e.warp_stream_set_zero_reflect_gain(this.stream,p.zeroReflectGain):quality;
-      const fx=zero===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):zero;
+      const decay=zero===0?e.warp_stream_set_zero_reflect_decay(this.stream,p.zeroReflectDecay):zero;
+      const fx=decay===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):decay;
       if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
