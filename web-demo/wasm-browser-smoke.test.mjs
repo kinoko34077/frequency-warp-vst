@@ -104,7 +104,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(Number(await page.$eval("#high",n=>n.value))<900);
     // Restore test baseline before the rest of the DSP regression suite.
     for(const [id,value] of [["zero-reflect","100"],["zero-decay","0"],
-      ["invert","0"],["curvature","1"],["low","0"],["high","968"]]){
+      ["invert","0"],["curvature","1"],["low","200"],["high","974"]]){
       await page.$eval("#"+id,(el,v)=>{
         el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));
       },value);
@@ -116,7 +116,28 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#ring-enabled",el=>el.closest(".effects-panel")!==null),true);
     assert.equal(await page.$eval("#crusher-enabled",el=>el.closest(".effects-panel")!==null),true);
     assert.equal(await page.$eval("#carrier",el=>el.closest(".effects-panel")!==null),true);
-    assert.equal(await page.$eval("#low",el=>el.value),"0");
+    assert.equal(await page.$eval("#low",el=>el.value),"200");
+    // L/H sliders remain continuous down to positive near-zero, and exact
+    // 0.001 Hz typed input reaches the Rust/WASM mapping without truncation.
+    assert.equal(await page.$eval("#low-value",el=>el.min),"0.001");
+    await page.$eval("#low",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#low-value",el=>Number(el.value)),.001);
+    await page.$eval("#low-value",el=>{
+      el.value="0.001";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#low-value",el=>Number(el.value)),.001);
+    await page.$eval("#low",el=>{
+      el.value="100";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const between=await page.$eval("#low-value",el=>Number(el.value));
+    assert.ok(between>0.001&&between<20,"slider must travel continuously below 20Hz: "+between);
+    await page.$eval("#low-value",el=>{
+      el.value="20";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#low",el=>Number(el.value))-200)<=1);
+
 
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
     for(const id of ["curvature","invert","wet"]){
