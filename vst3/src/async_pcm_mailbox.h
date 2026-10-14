@@ -125,7 +125,12 @@ public:
         const auto rc=workerProcess_(workerContext_,job.data.data(),result.data.data(),
               job.frames,job.events.data(),job.eventCount);
         result.good=rc==0;
-        if(rc!=0)workerFailures_.fetch_add(1,std::memory_order_relaxed);
+        if(result.good) {
+            for(uint32_t i=0;i<job.frames*job.channels;i++) {
+                if(!std::isfinite(result.data[i])){result.good=false;break;}
+            }
+        }
+        if(!result.good)workerFailures_.fetch_add(1,std::memory_order_relaxed);
         if(job.frames && !output_.push(result)){
             rejectedOutput_.fetch_add(1,std::memory_order_relaxed);
         }
