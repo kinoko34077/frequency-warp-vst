@@ -54,7 +54,7 @@ export function mapAtFrequency(f,
   const reflected=typeof allGain==="object"&&allGain!==null?
     allGain.distance>0:transformed<0;
   let reflectionGain=allGain===null?1:allGain.gain;
-  if(reflected){
+  if(transformed<0){
     if(zeroMode===1)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"0Hz未満を除去"};
     const fftWindow=[1024,2048,4096][qualityIndex]||1024;
     if(zeroMode===2 && -transformed>=sampleRate/fftWindow)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"0Hz未満を減衰除去"};
@@ -68,6 +68,10 @@ export function mapAtFrequency(f,
   }
   if(allGain!==null&&reflectionGain<=0)return {f,inside,outputs:[],
     reflected:true,reflectionGain:0,reason:"反射成分の合成率0%"};
+  // Positive-frequency L/H fold and monotonic inversion are also reflected.
+  // They keep their positive output location; ONLY negative targets flip.
+  if(allGain!==null&&reflected&&transformed>0&&reflectionGain<=0)
+    return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"反射を除去"};
   if(transformed===0)return {f,inside,outputs:[],reason:"0Hzへ到達"};
   // Ring Mod is applied only to transformed source components in [L,H].
   // Outside Pass is mixed unchanged after the ringed in-band wet signal.
