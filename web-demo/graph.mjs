@@ -78,16 +78,24 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   const rows=graphSegments(settings,warp,translate,MAX,inversePosition);
   for(let channel=0;channel<(settings.ringEnabled?2:1);channel++){
     ctx.lineWidth=1.05*ratio;ctx.strokeStyle=channel===0?"#66e9ba":"#f0b97b";
-    ctx.globalAlpha=Math.min(1,Math.max(0,settings.wet??1));
-    ctx.beginPath();let active=false,lastInside=false,lastY=0;
+    ctx.beginPath();
+    let active=false,lastInside=false,lastY=0,lastReflected=false;
     for(const point of rows){
       const f=point.outputs[channel];
       if(f===undefined){if(active)ctx.stroke();ctx.beginPath();active=false;continue;}
       const xx=x(point.f),yy=y(f);
-      if(!active || lastInside!==point.inside || Math.abs(yy-lastY)>height*.32){
-        if(active)ctx.stroke();ctx.beginPath();ctx.moveTo(xx,yy);
+      // Reflection behaves like translucent light: its apparent opacity
+      // scales with the REAL amplitude of the negative-target component
+      // applied by the shared Rust DSP. Never draw killed components.
+      const reflected=Boolean(point.reflected);
+      const gain=reflected?Math.max(0,Math.min(1,point.reflectionGain??1)):1;
+      if(!active || lastInside!==point.inside || reflected!==lastReflected ||
+         Math.abs(yy-lastY)>height*.32){
+        if(active)ctx.stroke();
+        ctx.beginPath();ctx.moveTo(xx,yy);
+        ctx.globalAlpha=Math.min(1,Math.max(0,settings.wet??1))*gain;
       }else ctx.lineTo(xx,yy);
-      active=true;lastInside=point.inside;lastY=yy;
+      active=true;lastInside=point.inside;lastY=yy;lastReflected=reflected;
     }
     if(active)ctx.stroke();
   }

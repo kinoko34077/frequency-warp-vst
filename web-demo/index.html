@@ -45,6 +45,11 @@
           <div class="control"><div class="control-heading"><label for="invert">反転</label><input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="invert-value の数値"></div>
             <input id="invert" type="range" min="0" max="1" step=".005" value="0"><div class="ends"><span>通常</span><strong id="invert-reference-hz" class="invert-hz-marker" aria-live="polite">補間率 0%</strong><span>反転</span></div>
           </div>
+          <div class="control"><div class="control-heading"><label for="zero-reflect">0Hz以下の折返し・減衰</label><input id="zero-reflect-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="負の周波数へ移動した音の折返し振幅 %"></div>
+            <input id="zero-reflect" type="range" min="0" max="100" step="1" value="100" aria-label="0Hz以下になった成分の反射率 0%除去 100%折返し">
+            <div class="ends"><span>除去 0%</span><strong id="zero-reflect-status" class="invert-hz-marker">折返し 100%</strong><span>折返し 100%</span></div>
+            <small class="slider-formula">負の周波数 f′&lt;0 の成分：位置 |f′|、振幅 × (設定率/100)。グラフの反射線も同率で透過表示。</small>
+          </div>
           <div class="control"><div class="control-heading"><label for="curvature">移動の尺度</label><input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="curvature-value の数値"></div>
             <input id="curvature" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div><small class="slider-formula" id="curvature-log-formula" aria-live="polite">p=0: S₀(f)=ln(f/L), p&gt;0: Sₚ(f)=((f/L)ᵖ−1)/p。移動量は p=0 で倍率、p=1 でHz</small>
           </div>
@@ -194,7 +199,7 @@
         <div><label for="outside">L/Hの外側</label><select id="outside"><option value="pass" selected>通過する</option><option value="kill">除去する</option></select></div>
       </div>
       <p class="setting-help">単純補間は周波数の加重平均。逆数的・幾何補間は f′=f^(1−a)×I(f)^a（Iは選択尺度での完全反転）、中間では周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点ができます。反転スライダー中央のHzは各方式の折れ点／反転固定点を示します。</p>
-      <label for="zero-mode">0Hz以下へ移動した成分</label><select id="zero-mode"><option value="0">Reflect / 折返し</option><option value="1">Kill / 除去</option><option value="2">Fade / 減衰（実験版）</option></select><p class="setting-help">折返し：負の周波数を正へ戻す。除去：消す。減衰：0Hz付近から弱くする実験設定です。</p>
+      <p class="setting-help">0Hz以下の処理は「変換する」側の1本のシークバーに移動しました。0%=除去、100%=全量折返し、中間は反射成分を減衰します。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>

@@ -77,7 +77,8 @@ function settings(){
     engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
     pitchRatio:harmonic.r,
     shiftHz:harmonic.n*harmonic.r*harmonic.F/harmonic.m,
-    carrierHz:harmonic.c,zeroMode:harmonic.zeroMode,
+    carrierHz:harmonic.c,zeroMode:0,
+    zeroReflectGain:scalar("zero-reflect",()=>Number($("#zero-reflect").value)/100),
     axisShift:scalar("axis-shift",()=>Number($("#axis-shift").value)),
     axisReference:harmonic.r*harmonic.F,
     axisPivot:scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value)),
@@ -114,6 +115,9 @@ function labels(id=""){
   showNumber("axis-pivot-value",p.axisPivot);
   showNumber("axis-slope-value",p.axisSlope);
   showNumber("invert-value",100*p.invert);
+  showNumber("zero-reflect-value",100*p.zeroReflectGain);
+  $("#zero-reflect-status").textContent=p.zeroReflectGain===0?"除去 0%":p.zeroReflectGain===1?"折返し 100%":
+    "反射振幅 "+displayNumber(100*p.zeroReflectGain)+"%";
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
@@ -541,6 +545,7 @@ const inline={
   "high-value":["high",v=>scaleFromHz(v),"high",20,20000],
   "axis-pivot-value":["axis-pivot",v=>scaleFromPivot(v),"axis-pivot",0,20000],
   "invert-value":["invert",v=>v/100,"invert",0,100],
+  "zero-reflect-value":["zero-reflect",v=>v,"zero-reflect",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
   "axis-slope-value":["axis-slope",v=>v,"axis-slope",0.1,4],
@@ -555,7 +560,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
   };
-  const toDsp=value=>range==="invert"||range==="wet"||range==="a-reverb"?
+  const toDsp=value=>range==="invert"||range==="zero-reflect"||range==="wet"||range==="a-reverb"?
     value/100:normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
@@ -572,7 +577,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   field.addEventListener("focus",()=>{
     if(state.precise[range]!==undefined){
       const number=state.precise[range];
-      const typed=range==="invert"||range==="wet"||range==="a-reverb"?
+      const typed=range==="invert"||range==="zero-reflect"||range==="wet"||range==="a-reverb"?
         number*100:number;
       field.value=String(round3(typed));
     }
@@ -584,7 +589,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     apply();
     // The interface rounds to 2 decimals, but the DSP value remains 3-decimal exact.
     const native=state.precise[range];
-    const human=range==="invert"||range==="wet"||range==="a-reverb"?native*100:native;
+    const human=range==="invert"||range==="zero-reflect"||range==="wet"||range==="a-reverb"?native*100:native;
     if(Number.isFinite(human))showNumber(id,human);
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
@@ -605,11 +610,11 @@ $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;dr
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
 });
-for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
+for(const name of ["low","high","curvature","invert","zero-reflect","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{delete state.precise[name];updateParams(name);updateEngineInfo();});
 }
 // Native mobile selectors dispatch CHANGE; do not wait for a slider gesture.
-for(const name of ["mode","outside","zero-mode","quality","overlap","engine"]){
+for(const name of ["mode","outside","quality","overlap","engine"]){
   $("#"+name).addEventListener("change",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");updateEngineInfo();});
@@ -815,7 +820,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
     engine:"1",mode:"blend",outside:"pass",quality:"eco",
-    overlap:"4","zero-mode":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;

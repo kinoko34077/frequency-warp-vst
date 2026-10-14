@@ -110,3 +110,23 @@ test("Ring Mod graph only shows sidebands inside source L/H",()=>{
   assert.deepEqual(mapAtFrequency(1600,params,x=>x).outputs,[1600]);
   assert.deepEqual(mapAtFrequency(400,params,x=>x).outputs,[656,144]);
 });
+
+test("negative-frequency reflection gain controls a genuinely translucent branch, not positive frequencies",()=>{
+  const base={low:100,high:1000,curvature:1,invert:0,mode:"blend",
+    outside:"pass",axisReference:350,axisPivot:350,axisSlope:1,
+    axisShift:-2,zeroMode:0,sampleRate:8192,qualityIndex:0};
+  const translate=(f,pivot,p,shift,slope,anchor)=>pivot+slope*(f-anchor)+shift*350;
+  const point=(f,gain)=>mapAtFrequency(f,{...base,zeroReflectGain:gain},x=>x,translate);
+  assert.deepEqual(point(400,1).outputs,[300]);
+  assert.equal(point(400,1).reflected,true);
+  assert.equal(point(400,1).reflectionGain,1);
+  assert.deepEqual(point(400,.5).outputs,[300]);
+  assert.equal(point(400,.5).reflectionGain,.5);
+  assert.equal(point(400,.25).reflectionGain,.25);
+  assert.deepEqual(point(400,0).outputs,[],"0% must fully kill negative target");
+  assert.equal(point(400,0).reflectionGain,0);
+  assert.equal(point(800,.5).reflectionGain,1,"positive map amplitude unchanged");
+  assert.deepEqual(point(1600,.5).outputs,[1600],"out-of-band Pass unaffected");
+  const legacyKill=mapAtFrequency(400,{...base,zeroMode:1},x=>x,translate);
+  assert.deepEqual(legacyKill.outputs,[],"historical Kill explanation survives");
+});

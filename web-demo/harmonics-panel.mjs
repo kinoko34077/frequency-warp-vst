@@ -26,7 +26,7 @@ export function harmonicParameters(){
   const manualCarrier=clamp(read("carrier")||0,0,20000);
   const foldMode=["fold-l","fold-h"].includes($("#mode").value);
   return {F,m,n,q,r,c:linkedCarrierRequested()&&foldMode?-1:manualCarrier,
-    manualCarrier,linked:linkedCarrierRequested()&&foldMode,zeroMode:Number($("#zero-mode").value)};
+    manualCarrier,linked:linkedCarrierRequested()&&foldMode};
 }
 function syncPair(id){
   const number=$("#"+id),range=$("#"+id+"-range");
