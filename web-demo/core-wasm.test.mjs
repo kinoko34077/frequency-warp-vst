@@ -364,6 +364,50 @@ test("zero pivot physical slope makes an octave in both FFT and peak audio paths
  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
 
+test("signed physical slope and zero-slope collapse work across WASM mapping, reflection and real audio",async()=>{
+ const e=await load();
+ for(const p of [0,0.5,1]){
+   for(const slope of [-2,-1,0,1,2]){
+     const expected=500+slope*300;
+     const f=e.warp_translate_frequency_anchored(800,500,500,slope,350,p,0);
+     assert.ok(Math.abs(f-expected)<1e-7,
+       "signed slope at p="+p+" slope="+slope+" mapped="+f+" expected="+expected);
+   }
+ }
+ assert.ok(Number.isNaN(e.warp_translate_frequency_anchored(800,500,500,-4.1,350,1,0)));
+ const d=e.warp_all_reflection_distance(800,200,100,1000,1,0,3,0,1,0,
+   500,500,-1,350,0);
+ assert.ok(Math.abs(d-300)<1e-6,"negative slope was not classified as reflection: "+d);
+ const gain=e.warp_all_reflection_gain(800,200,100,1000,1,0,3,0,1,0,
+   500,500,-1,350,0,.5,0);
+ assert.ok(Math.abs(gain-.5)<1e-6,"negative slope ignored synthesis amount: "+gain);
+ const frames=16384,rate=8192,src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+ try{
+   const samples=new Float32Array(e.memory.buffer,src,frames);
+   for(let i=0;i<frames;i++)samples[i]=.45*Math.cos(2*Math.PI*500*i/rate);
+   for(const engine of [0,1]){
+     const rc=e.warp_stream_render_f32_geometry_ext(src,dst,frames,1,rate,
+       20,3000,1,0,3,0,0,engine,1,0,0,0,4,0,1,0,350,600,-1);
+     assert.equal(rc,0,"signed slope should be accepted by native/WASM render engine "+engine);
+     const pcm=new Float32Array(e.memory.buffer,dst,frames);
+     const projection=hz=>{
+       let re=0,im=0;
+       for(let i=4000;i<12000;i++){
+         const angle=2*Math.PI*hz*i/rate;
+         re+=pcm[i]*Math.cos(angle);
+         im+=pcm[i]*Math.sin(angle);
+       }
+       return Math.hypot(re,im);
+     };
+     const shifted=Math.max(...[696,700,704].map(projection));
+     const original=projection(500);
+     assert.ok(shifted>5&&shifted>original*2,
+       "negative slope must produce a real shifted tone for engine "+engine+
+       " target="+shifted+" original="+original);
+   }
+ }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
+});
+
 test("A minimum partial frequency and synthesis reverb change real PCM without affecting B",async()=>{
   const e=await load();
   assert.equal(typeof e.warp_stream_render_f32_a_ext,"function");
