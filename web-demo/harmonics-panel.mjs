@@ -37,6 +37,17 @@ function syncPair(id){
     range.value=String(id==="carrier"?Math.round(sliderFromCarrierHz(bounded)):bounded);
   }
 }
+/** Set F from the pivot while H=r*F/m stays the sole linked invariant.
+ * Silent DOM update: app.mjs owns the single render/parameter notification. */
+export function setFundamentalFromPivot(pivot){
+  const {m,r}=harmonicParameters();
+  if(!Number.isFinite(pivot))return null;
+  const F=clamp(round3(pivot*m/r),20,2000);
+  preciseFields.set("fundamental",F);
+  $("#fundamental").value=String(F);
+  syncPair("fundamental");
+  return {F,H:r*F/m,clamped:Math.abs(r*F/m-pivot)>.001};
+}
 export function resolvedCarrierHz(foldPoint){
   const p=harmonicParameters();
   if(p.linked){
@@ -118,7 +129,7 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   return z;
 }
 export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSettings){
-  const respond=id=>{renderHarmonicPanel(foldPoint,axisMarker,resolveSettings);onChange(id);};
+  const respond=id=>{onChange(id);}; // single owner render/parameters; avoids double refresh and feedback loops
   for(const id of IDS){
     const number=$("#"+id),range=$("#"+id+"-range");
     // Preserve direct typing for exact values while making typical changes
