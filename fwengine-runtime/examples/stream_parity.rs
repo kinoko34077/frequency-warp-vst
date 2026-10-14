@@ -144,6 +144,20 @@ fn main()->Result<(),Box<dyn Error>>{
     let low_output=low_rate.process(&low_input,F,&low_events)?;
     assert!(!low_rate.faulted()&&low_output.iter().all(|v|v.is_finite()),
         "host default above low-rate Nyquist must retain valid 8k DSP");
+    // Zero-frame host flush: one event changes module settings without
+    // advancing the PCM clock, then the same canonical native setter must
+    // produce matching future samples.
+    let zero=wasm.process(&[],0,&[
+        ParamEvent{id:13,offset:0,value:0.2}])?;
+    assert!(zero.is_empty()&&!wasm.faulted(),"zero-frame decay automation");
+    native.set_zero_reflect_decay(0.2)?;
+    let after_zero=frame_input((BLOCKS+2)*F,F);
+    let wet_after_zero=wasm.process(&after_zero,F,&[])?;
+    let mut native_after_zero=vec![0f32;2*F];
+    native.process(&after_zero,&mut native_after_zero,F)?;
+    assert!(wet_after_zero.iter().zip(native_after_zero.iter())
+        .all(|(a,b)|(a-b).abs()<0.008),
+        "zero-frame module parameter flush changed spectral stream timing");
     // Reject invalid new geometry values without compromising DSP.
     assert!(wasm.process(&frame_input(16896,F),F,&[
         ParamEvent{id:8,offset:0,value:4.1}]).is_err());
