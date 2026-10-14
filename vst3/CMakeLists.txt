@@ -23,3 +23,8 @@ add_test(NAME fw_shell_delay_test COMMAND fw_shell_delay_test)
 add_executable(fw_shell_automation_test tests/automation_registry_test.cpp)
 target_compile_features(fw_shell_automation_test PRIVATE cxx_std_17)
 add_test(NAME fw_shell_automation_test COMMAND fw_shell_automation_test)
+
+# Standalone lock-free prepared-engine handoff; no Rust or WASM runs in RT.
+add_executable(fw_rt_engine_handoff_test tests/rt_engine_handoff_test.cpp)
+target_compile_features(fw_rt_engine_handoff_test PRIVATE cxx_std_17)
+add_test(NAME fw_rt_engine_handoff_test COMMAND fw_rt_engine_handoff_test)
