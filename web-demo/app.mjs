@@ -68,7 +68,7 @@ function settings(){
   const {low,high}=bounds();
   const qualityIndex=({eco:0,standard:1,high:2}[$("#quality").value]);
   const runtimeSampleRate=state.ctx?.sampleRate||state.decoded?.sampleRate||48000;
-  const crusherRateHz=scalar("crusher-hold",()=>frequencyFromSlider($("#crusher-hold").value,runtimeSampleRate));
+  const crusherRateHz=clamp(scalar("crusher-hold",()=>frequencyFromSlider($("#crusher-hold").value,runtimeSampleRate)),0,runtimeSampleRate);
   const harmonic=harmonicParameters();
   const value={
     low,high,curvature:scalar("curvature",()=>Number($("#curvature").value)),
@@ -136,6 +136,7 @@ function labels(id=""){
   $("#a-quality-info").textContent="品質 "+p.aQuality+"/100 · 最大ピーク "+budget+"本/窓（基準 "+profile.count+"本）・候補閾値 "+floor+"%（窓内最大値比）。算術演算量の上限は基準の約 "+(budget/profile.count).toFixed(1)+"倍。実CPU時間は再生中のステータスへ表示。残差補完 "+p.aQuality+"%（実験）を適用。フォルマント・過渡の完全復元は未検証です。";
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
+  $("#crusher-hold-value").max=String(p.sampleRate);
   showNumber("crusher-hold-value",p.crusherRateHz);
   $("#crusher-rate-explainer").textContent=p.crusherHold===0?
     "指定 0 Hz → 標本更新停止（最初の量子化値を保持・ゼロHz/DC）":
@@ -214,13 +215,14 @@ function drawCurve(){
   const {warp,translate}=mathCallbacks();
   const alpha=Number($("#graph-log").value)/100;
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
-  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×(f−20)/("+graphMax+"−20)+α×ln(f/20)/ln("+graphMax+"/20)。x/y共通の表示尺度（音声DSPに影響しません）。";
+  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×f/"+graphMax+"+α×ln(1+f/20)/ln(1+"+graphMax+"/20)。x/y共通の0Hzを含む表示尺度（音声DSPに影響しません）。";
   const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
   $("#crusher-alias-legend").hidden=!isCrushed;
-  $("#crusher-alias-note").hidden=!isCrushed;
-  if(isCrushed)$("#crusher-alias-note").textContent=p.crusherHold===0?
+  $("#crusher-alias-note").hidden=p.crusherBits===0;
+  if(p.crusherBits>0)$("#crusher-alias-note").textContent=p.crusherHold===0?
     "更新 0 Hz：開始値を保持。出力はDCのみで元周波数の周期音は消えます。":
-    "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝標本保持の理論スペクトル像、線の透明度＝単音応答ゲイン（量子化倍音は別）。";
+    (p.crusherHold===1?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
+    "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝単一正弦波の標本保持から生じる理論スペクトル像、透明度＝理想応答ゲイン（振幅量子化でさらに変化）。");
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
 }
