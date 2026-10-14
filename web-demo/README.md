@@ -392,3 +392,13 @@ reciprocal inverse fixed point in Hz for this mode and percent-only
 for linear Blend, which has no unique breakpoint.
 Rust is the sole production mapping implementation via WASM. The separate
 JavaScript oracle is TEST ONLY; no duplicated audio/DSP.
+
+## Issue #54 U3 — 0Hz反射率
+
+主画面に「0Hz以下の折返し・減衰」シークバー（0〜100%）を追加。
+負周波数へ移動した部分音だけを正の周波数 |f'| に反射し、
+振幅を設定率 g/100 倍にする。0%は除去、100%は全量折返し、
+中間は減衰。正の周波数へ移動した成分は変化しない。
+周波数グラフは反射成分を同じ透明度で表示する。
+Rustの AudioWorklet と WAV 書出しで同じ演算を行う。
+既存の0/1/2モードのABIは保持する。
