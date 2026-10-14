@@ -50,3 +50,21 @@ binary message or plays an actual selected module. S3c/S5 must test these
 separately. The 34 DAW-exposed host parameters remain stable and observable;
 all spectral knobs only become audibly effective after the genuine S4 DSP
 module and binding schema are installed.
+
+## S3c-A native Windows file editor (Browse/Drop/Reload)
+
+The Controller now creates an actual `IPlugView` child HWND on Windows. It
+offers a standard Browse dialog, optional Windows `WM_DROPFILES` and explicit
+Reload. If a host does not route drag-drop to the child window, use Browse.
+Only .fwengine file bytes (8 MiB hard cap) are copied on the UI thread and
+sent via host-mediated `IMessage` to the Processor. The Processor queues
+the validated candidate to the non-RT Rust worker. No filename, DLL, zip
+extract or disk I/O is ever passed to `IAudioProcessor::process`.
+
+A successful send only means **queued for verification**. This iteration
+does NOT expose a worker-confirmed engine ID/version, error diagnostics, a
+verified previous-engine Back action, or module identity persistence. The
+editor never labels a new candidate as ACTIVE merely because sendMessage
+succeeded. These are S3c-B/S4 acceptance gaps. GUI attachment, file dialog,
+file drop, FL Studio automation clip and physical host playback still need
+manual Windows host testing, not inferred from Steinberg Validator alone.
