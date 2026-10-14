@@ -124,8 +124,8 @@
         <div class="curve-panel">
           <canvas id="curve" tabindex="0" role="button" aria-label="周波数表示を2kHzと20kHzで切り替える"></canvas>
         </div>
-        <div class="graph-scale"><label for="graph-log">表示軸</label><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div><p id="graph-log-formula" class="slider-formula" aria-live="polite">α=1: ln(f/20)/ln(M/20)。Mは表示上限</p>
-        <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音</span><span id="crusher-alias-legend" hidden>━ 間引き後の実線＝折返し音、薄線＝追加スペクトル像</span></div>
+        <div class="graph-scale"><label for="graph-log">表示軸</label><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div><p id="graph-log-formula" class="slider-formula" aria-live="polite">α=1: ln(1+f/20)/ln(1+M/20)。0Hzを含む表示軸、Mは表示上限</p>
+        <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音（ガイド・Mix100%では非出力）</span><span id="crusher-alias-legend" hidden>━ 間引き後の実線＝折返し音、薄線＝追加スペクトル像</span></div>
         <p id="crusher-alias-note" class="graph-note" hidden></p>
         <p class="graph-note">周波数経路は単一成分の解析モデル。量子化による追加倍音・位相衝突・混合音全体の実測スペクトルではありません。</p>
         <p class="graph-note">タップ：2kHz／20kHz</p>
