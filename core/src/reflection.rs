@@ -44,3 +44,21 @@ fn settings(low:f64,high:f64,p:f64,invert:f64,mode:u32)->Settings{
         1=>Progression::Blend,2=>Progression::FoldLow,
         3=>Progression::Reciprocal,_=>Progression::FoldHigh}}
 }
+
+#[no_mangle]
+pub extern "C" fn warp_all_reflection_distance(
+    f:f64,output:f64,low:f64,high:f64,p:f64,invert:f64,mode:u32,
+    rational:u32,pitch:f64,delta:f64,anchor:f64,pivot:f64,slope:f64,
+    reference:f64,shift:f64)->f64{
+    distance(f,output,settings(low,high,p,invert,mode),rational!=0,
+        pitch,delta,anchor,pivot,slope,reference,shift)
+}
+#[no_mangle]
+pub extern "C" fn warp_all_reflection_gain(
+    f:f64,output:f64,low:f64,high:f64,p:f64,invert:f64,mode:u32,
+    rational:u32,pitch:f64,delta:f64,anchor:f64,pivot:f64,slope:f64,
+    reference:f64,shift:f64,synthesis:f64,reflection:f64)->f64{
+    let d=warp_all_reflection_distance(f,output,low,high,p,invert,mode,
+        rational,pitch,delta,anchor,pivot,slope,reference,shift);
+    gain(d,synthesis,reflection,reference)
+}
