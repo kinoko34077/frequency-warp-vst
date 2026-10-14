@@ -889,3 +889,59 @@ test("Distinct synthesis and frequency-distance falloff: real stereo Rust/WASM n
     console.log("REFLECTION_FALLOFF_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
 });
+
+test("Crusher 0Hz frozen level and exact ZOH frequency images from actual shared Rust/WASM stereo PCM",async()=>{
+  const e=await load(),rate=8192,n=8192,count=n*2,freq=400;
+  const src=e.warp_alloc_f32(count),dst=e.warp_alloc_f32(count);
+  assert.ok(src&&dst);
+  const source=new Float32Array(e.memory.buffer,src,count);
+  for(let c=0;c<2;c++)for(let i=0;i<n;i++)
+    source[c*n+i]=(c===0?.34:.21)*Math.cos(2*Math.PI*freq*i/rate);
+  const toneAmp=(pcm,frequency,channel)=>{
+    let re=0,im=0;
+    for(let i=2048;i<8192;i++){
+      const phase=2*Math.PI*frequency*i/rate;
+      re+=pcm[channel*n+i]*Math.cos(phase);
+      im-=pcm[channel*n+i]*Math.sin(phase);
+    }
+    return Math.hypot(re,im)*2/(8192-2048);
+  };
+  try{
+    const render=(bits,hold)=>{
+      const args=[src,dst,n,2,rate,100,1800,1,0,1,0,1,1,1,0,0,0,4,
+        bits,hold,0,350,0,0,350,1,20,0,1,0,1,0];
+      assert.equal(e.warp_stream_render_f32_zero_controls_ext(...args),0);
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,count));
+    };
+    const dry=render(0,1);
+    const held=render(16,8);
+    const frozen=render(8,0);
+    const zoh=(hz)=>Math.abs(Math.sin(Math.PI*8*hz/rate)/
+      (8*Math.sin(Math.PI*hz/rate)));
+    const rows=[];
+    for(let c=0;c<2;c++){
+      const input=toneAmp(dry,400,c);
+      assert.ok(input>.15,"source reference");
+      for(const [frequency,signedFrequency] of [[400,400],[624,-624],[1424,1424]]){
+        const actual=toneAmp(held,frequency,c)/input;
+        const expected=zoh(signedFrequency);
+        rows.push({channel:c,frequency,actual,expected});
+        assert.ok(Math.abs(actual-expected)<.035,
+          "real shared Rust native/WASM held-sample spectrum differs: "+JSON.stringify(rows.at(-1)));
+      }
+      let min=Infinity,max=-Infinity;
+      for(let i=1500;i<n;i++){
+        const value=frozen[c*n+i];min=Math.min(min,value);max=Math.max(max,value);
+      }
+      assert.ok(max-min<.00001,"zero-Hz interval must hold constant, not error or resume "+JSON.stringify({min,max}));
+    }
+    const ptr=e.warp_stream_create_ext(rate,1,100,1800,1,0,1,0,1,1,1,0,0,0,4);
+    assert.ok(ptr);
+    try{
+      assert.equal(e.warp_stream_set_crusher(ptr,8,0),0);
+      assert.equal(e.warp_stream_set_crusher(ptr,8,600000),0);
+      assert.equal(e.warp_stream_set_crusher(ptr,8,1000000001),-2);
+    }finally{e.warp_stream_free(ptr);}
+    console.log("CRUSHER_ZOH_PCM_ACTUAL "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
+});
