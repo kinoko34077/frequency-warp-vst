@@ -92,9 +92,12 @@ function settings(){
   // mapping. Signed 0-Hz Reflect can reverse the displayed slope even when
   // Invert=0; the auto engine must agree with that change.
   if($("#engine-auto").checked && state.mathCore){
-    const {warp,translate}=mathCallbacksFor(value);
-    value.engine=engineForInbandCurve(value,f=>
-      mapAtFrequency(f,value,warp,translate).outputs[0]);
+    // Ring sidebands are additional effects, not the base warp direction.
+    // The green underlying transformed curve is the automatic A/B criterion.
+    const coreCurve={...value,ringEnabled:false};
+    const {warp,translate}=mathCallbacksFor(coreCurve);
+    value.engine=engineForInbandCurve(coreCurve,f=>
+      mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
   }
   return value;
 }
