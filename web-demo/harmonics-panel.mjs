@@ -24,7 +24,7 @@ export function harmonicParameters(){
   const q=clamp(Math.round(Number($("#harmonic-index").value)||1),1,32);
   const r=clamp(read("pitch-ratio")||1,.25,4);
   const manualCarrier=clamp(read("carrier")||0,0,20000);
-  const foldMode=$("#mode").value!=="blend";
+  const foldMode=["fold-l","fold-h"].includes($("#mode").value);
   return {F,m,n,q,r,c:linkedCarrierRequested()&&foldMode?-1:manualCarrier,
     manualCarrier,linked:linkedCarrierRequested()&&foldMode,zeroMode:Number($("#zero-mode").value)};
 }
@@ -103,12 +103,12 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   }));
   $("#harmonic-table-title").textContent="第1〜"+count+"倍音の数値表を見る";
   const checkbox=$("#carrier-link"),readout=$("#carrier-linked-value");
-  const valid=$("#mode").value!=="blend";
+  const valid=["fold-l","fold-h"].includes($("#mode").value);
   for(const node of [$("#carrier"),$("#carrier-range")])node.disabled=checkbox.checked&&valid;
   if(!checkbox.checked){
     readout.textContent="オフ：手動 "+fmt(manualCarrier)+" Hz";
   }else if(!valid){
-    readout.textContent="単純補間には折返し点がありません。手動 "+fmt(manualCarrier)+" Hzを使用";
+    readout.textContent="この補間には移動する折返し点がありません。手動 "+fmt(manualCarrier)+" Hzを使用";
   }else{
     const fold=foldPoint?.();
     readout.textContent=Number.isFinite(fold)?
