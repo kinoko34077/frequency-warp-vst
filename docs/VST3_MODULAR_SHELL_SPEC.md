@@ -117,7 +117,7 @@ Input/output samples are separate non-overlapping planar `f32` arrays containing
 プラグインID（Processor/Controller Class IDs）は**初回公開時に一度生成し以後変更しない**。ホストへ公開するParamIDも変えない。VST3ではモジュール交換のたびにホストから見えるパラメータ数やIDを自由に変更できない。
 
 v1は**固定128スロット**：
-- `0..63`: シェル基幹＋周波数変換の安定ID。実装時に正式ID表を固定し、旧定義と互換なしの意味変更は禁止（Wet、Bypass、L/H、Invert、Curvature、Shift、Pivot、Slope、反射・Ring・Crusher・品質等）。
+- `0..63`: シェル基幹＋周波数変換の安定ID。**正式な個別ParamID表は [vst3/PARAMETER_AUTOMATION.md](../vst3/PARAMETER_AUTOMATION.md) と [vst3/src/parameter_registry.h](../vst3/src/parameter_registry.h) に固定**（0..33割当済み、34..63予約）。旧定義と互換なしの意味変更は禁止（Wet、Bypass、L/H、Invert、Curvature、Shift、Pivot、Slope、反射・Ring・Crusher・品質等）。
 - `64..127`: 汎用エンジン用64パラメータ枠。使用数／ラベル／単位／範囲／既定値はmanifestから検証して、空き枠に明示binding。**同じホストslotに別の意味を自動で割り当てない**。旧DAWオートメーションが新しい別の演算へ勝手に作用することを避ける。エンジン切替で無関係になったslotはinactive / neutralとし、プロジェクトに保存したslot→semantic-id対応を保持。
 - プラグイン固有の高密度パラメータを追加する必要がある場合は、まず上記slotの上限と運用を再検討。新たなHost ParamIDを大量に自動生成して再スキャンさせる方式はv1では使わない。
 - 実際のスロット名前の再読込はホストの許す `restartComponent(kParamTitlesChanged)` 等をUI側から実行。変更できるのはタイトル等であり、IDと数そのものではない。
