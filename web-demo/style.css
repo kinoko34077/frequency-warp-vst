@@ -467,6 +467,7 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .conditional-note:empty,.conditional-note[hidden],[hidden]{display:none!important}
 .context-help{position:relative;display:inline-flex;flex:none;align-items:center;z-index:5}
 .context-help[open]{z-index:100}
+.context-help:not([open])>.help-body{display:none!important;visibility:hidden!important}
 .context-help summary{display:flex;align-items:center;justify-content:center;list-style:none;
  width:31px;height:31px;line-height:1;border-radius:50%;cursor:help;
  border:1px solid #37615a;color:#afdccd;background:#10302e;font-size:15px;font-weight:700;user-select:none}
