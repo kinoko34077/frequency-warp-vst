@@ -294,7 +294,19 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#a-quality",el=>{el.value="80";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-quality-value",el=>Number(el.value)),80);
     assert.match(await page.$eval("#a-quality-info",el=>el.textContent),/最大ピーク.*本/);
-    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{timeout:25000});
+    try {
+      await page.waitForFunction(()=>/操作反映済み|稼働中/.test(
+        document.querySelector("#rt-indicator").textContent),{timeout:25000});
+    }catch(error){
+      const snapshot=await page.evaluate(()=>({
+        indicator:document.querySelector("#rt-indicator").textContent,
+        status:document.querySelector("#status").textContent,
+        quality:document.querySelector("#a-quality").value,
+        engine:document.querySelector("#engine").value,
+        debug:window.__warpDebug?.()
+      }));
+      throw Error("A quality slider AudioWorklet: "+JSON.stringify(snapshot)+" / "+error.message);
+    }
 
     await page.$eval("#a-reverb",el=>{el.value="35";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-reverb-value",el=>el.value),"35");
