@@ -1004,6 +1004,8 @@ test("B actual shared Rust/WASM long-play identity continuity and nonlinear enve
             envelopeRatio:q(.1)/q(.9)};
           rows.push(row);
           assert.ok(Number.isFinite(row.envelopeRatio));
+          assert.ok(row.envelopeRatio>.92,
+            "B must not create artificial source-bin beating under nonlinear warp: "+JSON.stringify(row));
         }finally{e.warp_stream_free(run);}
       }
     }
