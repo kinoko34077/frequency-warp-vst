@@ -24,12 +24,21 @@
 #include <cwchar>
 
 namespace fw {
+struct EngineStatusSnapshot {
+    bool known=false;
+    uint64_t completedId=0,accepted=0,handled=0;
+    bool succeeded=false;
+    uint32_t state=0;
+};
 inline Steinberg::ViewRect kEngineEditorRect{0,0,560,210};
 class Win32EngineEditor final:public Steinberg::Vst::EditorView {
 public:
-    using SendBytes=std::function<bool(const std::vector<uint8_t>&)>;
-    Win32EngineEditor(Steinberg::Vst::EditController* controller,SendBytes sender)
-        :EditorView(controller,&kEngineEditorRect),send_(std::move(sender)){}
+    using SendBytes=std::function<uint64_t(const std::vector<uint8_t>&)>;
+    using PollState=std::function<EngineStatusSnapshot()>;
+    Win32EngineEditor(Steinberg::Vst::EditController* controller,
+                      SendBytes sender,PollState poll)
+        :EditorView(controller,&kEngineEditorRect),send_(std::move(sender)),
+         poll_(std::move(poll)){}
     Steinberg::tresult PLUGIN_API isPlatformTypeSupported(
         Steinberg::FIDString type) override {
         return type&&std::strcmp(type,Steinberg::kPlatformTypeHWND)==0
@@ -63,6 +72,8 @@ public:
         };
         button(101,L"Browse...",16,140);
         button(102,L"Reload",166,110);
+        backButton_=button(103,L"Back (verified)",286,155);
+        EnableWindow(backButton_,FALSE);
         CreateWindowExW(0,L"STATIC",
             L"Drop a .fwengine file here, or use Browse (host drop support varies).",
             WS_CHILD|WS_VISIBLE|SS_LEFT,16,102,525,28,hwnd_,nullptr,
@@ -72,11 +83,13 @@ public:
             WS_CHILD|WS_VISIBLE|SS_LEFT,16,151,525,44,hwnd_,nullptr,
             GetModuleHandleW(nullptr),nullptr);
         DragAcceptFiles(hwnd_,TRUE);
+        SetTimer(hwnd_,1,250,nullptr);
         attachedToParent();
         return Steinberg::kResultOk;
     }
     Steinberg::tresult PLUGIN_API removed() override {
         if(!hwnd_)return Steinberg::kResultFalse;
+        KillTimer(hwnd_,1);
         DragAcceptFiles(hwnd_,FALSE);
         RemoveWindowSubclass(hwnd_,SubclassProc,
                              reinterpret_cast<UINT_PTR>(this));
@@ -100,7 +113,9 @@ private:
         if(msg==WM_COMMAND&&HIWORD(w)==BN_CLICKED){
             if(LOWORD(w)==101){view->browse();return 0;}
             if(LOWORD(w)==102){view->reload();return 0;}
+            if(LOWORD(w)==103){view->back();return 0;}
         }
+        if(msg==WM_TIMER && w==1){view->poll();return 0;}
         if(msg==WM_DROPFILES){
             const HDROP drop=reinterpret_cast<HDROP>(w);
             wchar_t path[32768]{};
@@ -126,12 +141,61 @@ private:
         dlg.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
         if(GetOpenFileNameW(&dlg))load(file);
     }
+    struct Verified {
+        std::vector<uint8_t> bytes;
+        std::wstring path;
+    };
     void reload(){
-        if(path_.empty()){setStatus(L"Nothing to reload. Select a .fwengine first.");return;}
-        load(path_.c_str());
+        if(current_.path.empty()){
+            setStatus(L"No confirmed file path to reload yet.");return;
+        }
+        load(current_.path.c_str());
+    }
+    void back() {
+        if(previous_.bytes.empty()){
+            setStatus(L"No previously verified engine available.");return;
+        }
+        submit(previous_.bytes,previous_.path);
+    }
+    void submit(const std::vector<uint8_t>& bytes,const std::wstring& path){
+        if(awaiting_){setStatus(L"Verification is still pending.");return;}
+        const uint64_t request=send_?send_(bytes):0;
+        if(request==0){
+            setStatus(L"Could not queue engine (host inactive/busy/disconnected).");
+            return;
+        }
+        candidate_.bytes=bytes;
+        candidate_.path=path;
+        awaited_=request;awaiting_=true;
+        setStatus(L"Queued for verification; NOT yet confirmed active.");
+    }
+    void poll() {
+        if(!poll_)return;
+        const auto state=poll_();
+        if(!state.known)return;
+        if(awaiting_ && state.completedId==awaited_){
+            awaiting_=false;
+            if(state.succeeded){
+                previous_=std::move(current_);
+                current_=std::move(candidate_);
+                if(backButton_)EnableWindow(backButton_,
+                    previous_.bytes.empty()?FALSE:TRUE);
+                setStatus(L"Worker accepted engine. Active (verified).");
+            }else{
+                candidate_=Verified{};
+                setStatus(L"Module rejected; last valid engine unchanged.");
+            }
+        }else if(!awaiting_){
+            // No identity is inferred from a Controller reopening an old view.
+            if(state.state==6)
+                setStatus(L"Engine faulted; latency-compensated Dry fallback.");
+            else if(state.state==3 && state.accepted>0 && current_.bytes.empty())
+                setStatus(L"Worker reports active engine (file identity unavailable).");
+        }
     }
     void load(const wchar_t* filename){
         if(!filename||!*filename)return;
+        if(awaiting_){setStatus(L"Verification is still pending.");return;}
         std::filesystem::path path{filename};
         if(_wcsicmp(path.extension().c_str(),L".fwengine")!=0){
             setStatus(L"Only .fwengine packages are accepted.");return;
@@ -147,17 +211,14 @@ private:
         if(!file.read(reinterpret_cast<char*>(bytes.data()),size)){
             setStatus(L"Failed to read complete engine file.");return;
         }
-        if(!send_||!send_(bytes)){
-            setStatus(L"Could not queue engine (host inactive/busy or disconnected).");
-            return;
-        }
-        // A sendMessage success is NOT module validation/activation.
-        path_=path.wstring();
-        setStatus(L"Queued for verification; not yet confirmed active.");
+        submit(bytes,path.wstring());
     }
     SendBytes send_;
-    HWND hwnd_=nullptr,status_=nullptr;
-    std::wstring path_;
+    PollState poll_;
+    HWND hwnd_=nullptr,status_=nullptr,backButton_=nullptr;
+    Verified current_{},previous_{},candidate_{};
+    uint64_t awaited_=0;
+    bool awaiting_=false;
 };
 } // namespace fw
 #endif // _WIN32
