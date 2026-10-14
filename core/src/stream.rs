@@ -590,11 +590,11 @@ pub unsafe extern "C" fn warp_stream_set_a_band(ptr:*mut Stream,bins:u32)->i32{
 }
 
 #[no_mangle]
-#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_a_quality(ptr:*mut Stream,percent:u32)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_a_quality(percent){Ok(())=>0,Err(_)=>-2}
 }
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slope:f64)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_geometry(pivot,slope){Ok(())=>0,Err(_)=>-2}
