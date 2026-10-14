@@ -89,9 +89,11 @@
             <label class="fx-toggle"><input id="crusher-enabled" type="checkbox"> ビットクラッシャー</label>
             <div class="fx-pair">
               <div><div class="control-heading"><label for="crusher-bits">ビット数</label><input id="crusher-bits-value" class="inline-value" type="number" min="2" max="16" step="1" value="8"></div><input id="crusher-bits" type="range" min="2" max="16" step="1" value="8"></div>
-              <div><div class="control-heading"><label for="crusher-hold">間引き</label><input id="crusher-hold-value" class="inline-value" type="number" min="1" max="32" step="1" value="4"></div><input id="crusher-hold" type="range" min="1" max="32" step="1" value="4"></div>
+              <div><div class="control-heading"><label for="crusher-hold">間引き後の実効周波数</label><input id="crusher-hold-value" class="inline-value" type="number" min="1" max="96000" step="1" value="12000" aria-label="サンプル保持後の目標周波数 Hz"></div><input id="crusher-hold" type="range" min="0" max="1000" step="1" value="600" aria-label="間引き後の周波数（左は低音質、右は高音質）"></div>
             </div>
           </div>
+          <p id="crusher-rate-explainer" class="setting-help">実効 12000 Hz（48kHz入力で4サンプル保持）</p>
+          <figure class="crusher-wave-view"><figcaption>間引き＋量子化の処理例 · 灰＝原波形、橙＝処理後（合成モデル）</figcaption><canvas id="crusher-preview" role="img" aria-label="ビットクラッシャーのサンプル保持と振幅の階段形状"></canvas></figure>
           <details class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
         </div>
       </section>
@@ -115,7 +117,8 @@
           <canvas id="curve" tabindex="0" role="button" aria-label="周波数表示を2kHzと20kHzで切り替える"></canvas>
         </div>
         <div class="graph-scale"><label for="graph-log">表示軸</label><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div>
-        <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音</span></div>
+        <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音</span><span id="crusher-alias-legend" hidden>┈ 間引きによる折返し候補（理論位置）</span></div>
+        <p id="crusher-alias-note" class="graph-note" hidden></p>
         <p class="graph-note">タップ：2kHz／20kHz</p>
         <div id="listening-guide" class="listening-guide" role="status" aria-live="polite"></div>
         <div id="signal-diagnostic" class="signal-diagnostic" role="status">実際の入力／変換音量：再生後に測定</div>

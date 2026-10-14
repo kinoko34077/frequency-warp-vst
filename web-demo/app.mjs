@@ -1,4 +1,5 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
+import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
@@ -66,6 +67,8 @@ function bounds(changed=""){
 function settings(){
   const {low,high}=bounds();
   const qualityIndex=({eco:0,standard:1,high:2}[$("#quality").value]);
+  const runtimeSampleRate=state.ctx?.sampleRate||state.decoded?.sampleRate||48000;
+  const crusherRateHz=scalar("crusher-hold",()=>frequencyFromSlider($("#crusher-hold").value,runtimeSampleRate));
   const harmonic=harmonicParameters();
   const value={
     low,high,curvature:scalar("curvature",()=>Number($("#curvature").value)),
@@ -79,12 +82,13 @@ function settings(){
     axisReference:harmonic.r*harmonic.F,
     axisPivot:scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value)),
     axisSlope:scalar("axis-slope",()=>Number($("#axis-slope").value)),
-    sampleRate:state.ctx?.sampleRate||state.decoded?.sampleRate||48000,
+    sampleRate:runtimeSampleRate,
     wet:scalar("wet",()=>Number($("#wet").value)),
     ringEnabled:$("#ring-enabled").checked,
     rationalEnabled:$("#rational-enabled").checked,
     crusherBits:$("#crusher-enabled").checked?scalar("crusher-bits",()=>Number($("#crusher-bits").value)):0,
-    crusherHold:scalar("crusher-hold",()=>Number($("#crusher-hold").value)),
+    crusherRateHz,
+    crusherHold:holdFromFrequency(crusherRateHz,runtimeSampleRate),
     aMinHz:scalar("a-min",()=>hzFromScale($("#a-min").value)),
     aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100),
     aBandBins:Number($("#a-band").value),
@@ -121,7 +125,9 @@ function labels(id=""){
   $("#a-quality-info").textContent="品質 "+p.aQuality+"/100 · 最大ピーク "+budget+"本/窓（基準 "+profile.count+"本）・候補閾値 "+floor+"%（窓内最大値比）。算術演算量の上限は基準の約 "+(budget/profile.count).toFixed(1)+"倍。実CPU時間は再生中のステータスへ表示。残差補完 "+p.aQuality+"%（実験）を適用。フォルマント・過渡の完全復元は未検証です。";
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
-  showNumber("crusher-hold-value",p.crusherHold);
+  showNumber("crusher-hold-value",p.crusherRateHz);
+  $("#crusher-rate-explainer").textContent="指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
+  drawCrusherPreview($("#crusher-preview"),{bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate});
   const u=p.axisShift,ref=p.axisReference;
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
   $("#axis-explainer").textContent=p.curvature===0?
@@ -184,6 +190,10 @@ function drawCurve(){
   const shown={...p,carrierHz:resolvedCarrierHz(foldPoint)};
   const {warp,translate}=mathCallbacks();
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,Number($("#graph-log").value)/100);
+  const isCrushed=p.crusherBits>0&&p.crusherHold>1;
+  $("#crusher-alias-legend").hidden=!isCrushed;
+  $("#crusher-alias-note").hidden=!isCrushed;
+  if(isCrushed)$("#crusher-alias-note").textContent="実効サンプル周波数 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz · 破線は標本化の折返し位置の理論図（実際の音量スペクトルではありません）";
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
 }
@@ -525,7 +535,7 @@ const inline={
   "axis-slope-value":["axis-slope",v=>v,"axis-slope",0.1,4],
   "wet-value":["wet",v=>v/100,"wet",0,100],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
-  "crusher-hold-value":["crusher-hold",v=>v,"crusher-hold",1,32]
+  "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",1,96000]
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   const field=$("#"+id);
@@ -614,7 +624,7 @@ for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
   $("#"+id).addEventListener("input",()=>{
     delete state.precise[id];
     $("#crusher-bits-value").value=$("#crusher-bits").value;
-    $("#crusher-hold-value").value=$("#crusher-hold").value;
+    $("#crusher-hold-value").value=String(Math.round(frequencyFromSlider($("#crusher-hold").value,state.ctx?.sampleRate||state.decoded?.sampleRate||48000)));
     updateParams(id);updateEngineInfo();
   });
 }
@@ -803,9 +813,9 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#a-min").value="0";$("#a-reverb").value="0";
   $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
-  $("#crusher-bits").value="8";$("#crusher-hold").value="4";
+  $("#crusher-bits").value="8";$("#crusher-hold").value="600";
   $("#crusher-bits-value").value="8";
-  $("#crusher-hold-value").value="4";
+  $("#crusher-hold-value").value="12000";
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   message("エフェクト設定を初期値へ戻しました。再生位置は保持されます。");
 });
