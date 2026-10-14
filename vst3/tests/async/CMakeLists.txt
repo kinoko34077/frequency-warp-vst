@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.25)
+project(FrequencyWarpAsyncPcmTest LANGUAGES CXX)
+enable_testing()
+add_executable(fw_async_pcm_test async_pcm_test.cpp)
+target_compile_features(fw_async_pcm_test PRIVATE cxx_std_17)
+add_test(NAME fw_async_pcm_test COMMAND fw_async_pcm_test)
