@@ -5,6 +5,8 @@
 #include "native_engine_abi.h"
 #include "native_worker_service.h"
 #include "stream_host_events.h"
+#include "engine_project_state.h"
+#include <climits>
 #include "win32_engine_editor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
@@ -32,29 +34,66 @@ using namespace Steinberg::Vst;
 // These two class IDs are fixed at first native creation. Never generate at runtime.
 static const FUID kProcessorCID(0xD51B3C20,0x5C574E31,0xB40D7B64,0xA2E8F719);
 static const FUID kControllerCID(0xF8C2D41E,0x84B9475B,0xB5DC4E2F,0xB948A0D3);
-static constexpr int32 kMagic=0x46575332, kSchema=1; // FWS2 state v1
 using Values=std::array<double,kParamCount>;
-static Values defaults() {
-    return defaultHostValues();
-}
-static bool readState(IBStream* stream,Values& result) {
-    if(!stream)return false;
-    IBStreamer s(stream,kLittleEndian);
-    int32 magic=0,version=0,count=0;
-    if(!s.readInt32(magic)||!s.readInt32(version)||!s.readInt32(count)||
-        magic!=kMagic||version!=kSchema||count!=static_cast<int32>(kParamCount))return false;
-    Values values{};
-    for(double& value:values)if(!s.readDouble(value)||!std::isfinite(value)||
-        value<0.||value>1.)return false;
-    result=values;return true; // atomic state validation before commit
-}
-static bool writeState(IBStream* stream,const Values& values) {
-    if(!stream)return false;
-    IBStreamer s(stream,kLittleEndian);
-    if(!s.writeInt32(kMagic)||!s.writeInt32(kSchema)||
-        !s.writeInt32(static_cast<int32>(kParamCount)))return false;
-    for(double value:values)if(!s.writeDouble(value))return false;
+static Values defaults() {return defaultHostValues();}
+// These host IBStream operations run on non-audio lifecycle/getState threads.
+// Streams may return partial read/write counts; no seek or filesystem needed.
+// Reject an unbounded claimed archive before allocating anything beyond 1KiB.
+static bool readExact(IBStream* stream,void* dest,size_t count) {
+    auto* ptr=static_cast<uint8_t*>(dest);
+    while(count){
+        const auto chunk=static_cast<int32>(std::min<size_t>(count,65536));
+        int32 received=0;
+        if(stream->read(ptr,chunk,&received)!=kResultOk||
+           received<=0||received>chunk)return false;
+        ptr+=received;count-=static_cast<size_t>(received);
+    }
     return true;
+}
+static bool writeExact(IBStream* stream,const void* data,size_t count) {
+    const auto* ptr=static_cast<const uint8_t*>(data);
+    while(count) {
+        const auto chunk=static_cast<int32>(std::min<size_t>(count,65536));
+        int32 written=0;
+        if(stream->write(const_cast<uint8_t*>(ptr),chunk,&written)!=kResultOk||
+           written<=0||written>chunk)return false;
+        ptr+=written;count-=static_cast<size_t>(written);
+    }
+    return true;
+}
+static bool readStateImage(IBStream* stream,EngineProjectState& result) {
+    if(!stream)return false;
+    try {
+        std::vector<uint8_t> image(EngineProjectState::kLegacySize);
+        if(!readExact(stream,image.data(),image.size()))return false;
+        const auto schema=state_detail::get32(image.data(),4);
+        if(schema!=EngineProjectState::kV1&&schema!=EngineProjectState::kV2)
+            return false;
+        if(schema==EngineProjectState::kV2){
+            uint8_t four[4]{};
+            if(!readExact(stream,four,4))return false;
+            const auto length=state_detail::get32(four,0);
+            if(length>EngineProjectState::kMaxPackage)return false;
+            image.insert(image.end(),four,four+4);
+            const auto tail=image.size();
+            image.resize(EngineProjectState::kMinV2Size+length);
+            if(!readExact(stream,image.data()+tail,4+length))return false;
+        }
+        return decodeEngineProjectState(image.data(),image.size(),result);
+    }catch(...){return false;}
+}
+static bool readState(IBStream* stream,Values& values){
+    EngineProjectState decoded{};
+    if(!readStateImage(stream,decoded))return false;
+    values=decoded.values;
+    return true;
+}
+static bool writeStateImage(IBStream* stream,const EngineProjectState& image){
+    if(!stream)return false;
+    try {
+        const auto encoded=encodeEngineProjectState(image);
+        return writeExact(stream,encoded.data(),encoded.size());
+    }catch(...){return false;}
 }
 class Processor final:public AudioEffect {
 public:
