@@ -402,3 +402,22 @@ JavaScript oracle is TEST ONLY; no duplicated audio/DSP.
 周波数グラフは反射成分を同じ透明度で表示する。
 Rustの AudioWorklet と WAV 書出しで同じ演算を行う。
 既存の0/1/2モードのABIは保持する。
+
+## Issue #59 S1 — 0Hz reflected signal has TWO independent controls
+
+This corrects the single-slider interpretation in #54 (already released).
+The main panel stacks:
+- **合成率** C: 0..100% uniform reflected negative-target synthesis amplitude.
+- **減衰率** D: 0..100% frequency-distance falloff from the 0Hz folding boundary.
+
+At signed mapped frequency f'<0, the shared Rust DSP reflects frequency to
+|f'| and multiplies amplitude by
+`C*(1-D)^(|f'|/R)`, where C,D are in [0,1] and R is the currently
+configured positive axisReference frequency in Hz. D=0 means no distance
+attenuation; D=.5 halves amplitude every R Hz (−6.0206 dB/R); D=1
+kills all strictly negative components. Nonnegative mapped frequencies
+and outside L/H Pass are unchanged. The graph queries the SAME compiled
+Rust/WASM gain oracle for each sample rather than using a separate visual
+law; opacity reflects the effective amplitude, not a measured audio FFT.
+Both controls reach realtime AudioWorklet and WAV offline. Legacy native
+zero-reflection ABI callers retain their old behaviour (falloff=0).
