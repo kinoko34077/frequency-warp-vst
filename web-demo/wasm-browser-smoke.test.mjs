@@ -291,6 +291,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(await page.$eval("#a-min-value",el=>Number(el.value))>100);
     await page.$eval("#a-band",el=>{el.value="6";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-band-value",el=>Number(el.value)),6);
+    await page.$eval("#a-quality",el=>{el.value="80";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#a-quality-value",el=>Number(el.value)),80);
+    assert.match(await page.$eval("#a-quality-info",el=>el.textContent),/最大ピーク.*本/);
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{timeout:25000});
+
     await page.$eval("#a-reverb",el=>{el.value="35";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-reverb-value",el=>el.value),"35");
     await page.select("#engine","1");
