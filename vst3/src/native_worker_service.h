@@ -28,6 +28,9 @@ public:
     uint64_t acceptedVersion() const noexcept {
         return accepted_.load(std::memory_order_acquire);
     }
+    uint64_t handledRequests() const noexcept {
+        return handled_.load(std::memory_order_acquire);
+    }
     bool start() noexcept {
         if(thread_.joinable())return false;
         stopping_.store(false,std::memory_order_release);
@@ -118,6 +121,7 @@ private:
                     status_.store(active?Status::Ready:Status::Rejected,
                                   std::memory_order_release);
                 }
+                handled_.fetch_add(1,std::memory_order_release);
             }
             bool work=false;
             // A fixed upper bound prevents endless worker-side drain loops
@@ -146,5 +150,6 @@ private:
     std::atomic<bool> stopping_{true};
     std::atomic<Status> status_{Status::Stopped};
     std::atomic<uint64_t> accepted_{0};
+    std::atomic<uint64_t> handled_{0};
 };
 } // namespace fw
