@@ -1085,8 +1085,8 @@ mod tests{
             out[128+i]=if i==0{-0.27}else{(i as f32/53.0).cos()};
         }
         stream.post_process(&mut out,128);
-        let q0=(.37f32*128.0).round()/128.0;
-        let q1=(-.27f32*128.0).round()/128.0;
+        let q0=(0.37f32*128.0).round()/128.0;
+        let q1=(-0.27f32*128.0).round()/128.0;
         for i in 0..128{
             assert_eq!(out[i],q0);assert_eq!(out[128+i],q1);
         }
