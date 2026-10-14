@@ -140,7 +140,7 @@ impl Stream {
     }
     pub fn set_geometry(&mut self,pivot:f64,slope:f64)->Result<(),&'static str>{
         if !pivot.is_finite()||!(0.0..=20000.0).contains(&pivot)||
-           !slope.is_finite()||!(0.1..=4.0).contains(&slope) {
+           !slope.is_finite()||!(-4.0..=4.0).contains(&slope) {
             return Err("invalid frequency pivot/slope");
         }
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
