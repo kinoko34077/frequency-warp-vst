@@ -18,8 +18,18 @@ the mapping permits.
 - **Next research:** R2.2 independently compare sinusoidal partial tracking
   and residual preservation, then stereo/onset/CPU studies under Issue #5.
 
-**Not yet built:** actual VST3 host wrapper, streaming/no-audio-thread-
-allocation engine, final DSP quality selection, product release.
+**Native VST3 status (2026-10-15):** A real Windows x64 VST3 fixed
+Processor/Controller shell now builds and passes Steinberg Validator, using
+stable DAW automation IDs and a 4095-frame delayed-Dry output.
+A separate `fwengine-runtime/` native WASM interpreter (fuel/resource bounded)
+processes interchangeable Identity/Gain `.fwengine` packages. A native
+C++/Rust staticlib ABI and non-allocating pointer-swap ownership primitive
+have isolated Windows/Linux tests. **These components are NOT connected in the
+VST3 audio signal path**: drag/drop, Browse/Reload, live engine switching,
+complete RT-safety validation and actual Frequency Warp DSP adaptation remain
+open under [Issue #83](https://github.com/kinoko34077/frequency-warp-vst/issues/83).
+No installable VST3 artifact is published, and FL Studio/second-DAW testing and
+product audio-fidelity acceptance are not complete.
 
 ## Reference documents
 
