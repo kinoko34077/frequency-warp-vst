@@ -981,11 +981,11 @@ test("B actual shared Rust/WASM long-play identity continuity and nonlinear enve
     // claim. Regression acceptance will require actual modulation bounds.
     const rows=[];
     for(const hop of [4,8]){
-      for(const amount of [0,.42]){
+      for(const amount of [0,.25,.42,.48,.50,.60,.80,1]){
         const run=e.warp_stream_create_ext(rate,1,100,3200,1,amount,1,0,1,1,1,0,0,0,hop);
         assert.ok(run);
         try{
-          const total=rate*8,values=new Float32Array(total);
+          const total=rate*4,values=new Float32Array(total);
           for(let offset=0;offset<total;offset+=frames){
             const input=new Float32Array(e.memory.buffer,src,frames);
             for(let i=0;i<frames;i++)input[i]=.4*Math.cos(2*Math.PI*483.37*(offset+i)/rate);
@@ -993,7 +993,7 @@ test("B actual shared Rust/WASM long-play identity continuity and nonlinear enve
             values.set(new Float32Array(e.memory.buffer,dst,frames),offset);
           }
           const windows=[];
-          for(let offset=rate*2;offset+256<total;offset+=256){
+          for(let offset=rate;offset+256<total;offset+=256){
             let power=0;
             for(let i=offset;i<offset+256;i++)power+=values[i]*values[i];
             windows.push(Math.sqrt(power/256));
