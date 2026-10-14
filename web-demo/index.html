@@ -247,5 +247,11 @@
 </dialog>
 <script defer src="./entry-controls.js"></script>
 <script type="module" src="./app.mjs"></script>
+<script type="module">
+// Layout inspector is strictly opt-in: normal page visitors never load its code.
+if (new URL(location.href).searchParams.get("layout_editor") === "1") {
+  import("./visual-editor.mjs");
+}
+</script>
 </body>
 </html>
