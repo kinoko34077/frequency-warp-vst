@@ -4,7 +4,7 @@ static void check(bool passed) { if (!passed) std::abort(); }
 #include <cmath>
 using namespace fw;
 int main() {
-    static_check(kLatency==4095 && kParamCount==128 && kEngineBegin==64);
+    static_assert(kLatency==4095 && kParamCount==128 && kEngineBegin==64);
     Delay a,b;
     for(int i=0;i<8192;i++) {
         const auto l=a.tick(0,i==0?0.75f:0.0f);
