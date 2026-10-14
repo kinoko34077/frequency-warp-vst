@@ -53,7 +53,15 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.equal(await page.$eval("#invert",el=>el.value),"0");
     assert.equal(await page.$eval("#engine",el=>el.value),"1","B must be initial manual engine");
-    assert.equal(await page.$eval("#mode",el=>el.value),"blend");
+    assert.equal(await page.$eval("#mode",el=>el.value),"reciprocal");
+    assert.deepEqual(await page.$eval("#mode option",opts=>opts.map(o=>o.value)),
+      ["reciprocal","fold-l","fold-h"],"Blend is no longer selectable");
+    assert.equal(await page.$eval("#axis-slope",el=>el.min),"-4");
+    assert.equal(await page.$eval("#axis-slope-value",el=>el.min),"-4");
+    assert.equal(await page.$("figcaption"),null,"Crusher explanation must not be permanent");
+    assert.ok((await page.$(".context-help summary")).length>=5,"Contextual info targets missing");
+    assert.equal(await page.$eval("#crusher-rate-explainer",el=>el.getBoundingClientRect().height),0,
+      "Long sampling text must be hidden until contextual help opens");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
@@ -162,6 +170,18 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     }
     assert.equal(await page.$eval("#axis-pivot",el=>Number(el.value)),0);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
+    // Actual Browser input -> WASM graph must support negative and zero slope.
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    for(const [value,expect] of [[-1,"200"],[0,"350"],[1,"500"]]){
+      await page.$eval("#axis-slope-value",(el,v)=>{
+        el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));
+      },value);
+      assert.match(await page.$eval("#listening-guide",el=>el.textContent),
+        new RegExp("500Hz → "+expect+"Hz"),
+        "Signed slope did not reach shared browser graph: "+value);
+    }
     const beforeLog=await page.$eval("#curve",el=>el.toDataURL());
     await page.$eval("#graph-log",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const afterLog=await page.$eval("#curve",el=>el.toDataURL());
@@ -234,13 +254,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.select("#mode","reciprocal");
     assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/反転固定点.*Hz/);
     assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/折返し点がありません/);
-    await page.select("#mode","blend");
-    assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/補間率.*%/);
     await page.select("#mode","fold-h");
     assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
     assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
 
     await page.click("#tab-map");
+    // Native disclosure can be activated through touch and Escape.
+    await page.click(".fx-header .context-help summary");
+    assert.equal(await page.$eval(".fx-header .context-help",el=>el.open),true);
+    assert.match(await page.$eval("#crusher-rate-explainer",el=>el.textContent),/実効|更新停止/);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.$eval(".fx-header .context-help",el=>el.open),false);
     // Emulate a Touch PointerEvent at iPhone 390px; verify a lower thumb
     // can be swiped without moving the upper synthesis value or overflow.
     await page.$eval("#reflection-dual",el=>{
