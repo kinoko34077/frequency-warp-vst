@@ -1012,3 +1012,42 @@ test("B actual shared Rust/WASM long-play identity continuity and nonlinear enve
     console.log("B_TREMOLO_ENVELOPE_BASELINE "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
 });
+
+test("B phase-locked lobes preserve two separated notes and linked stereo at both overlaps",async()=>{
+  const e=await load(),rate=8192,n=16384,frames=n*2;
+  const src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+  assert.ok(src&&dst);
+  try{
+    const source=new Float32Array(e.memory.buffer,src,frames);
+    for(let c=0;c<2;c++)for(let i=0;i<n;i++){
+      const t=i/rate,level=c===0?1:.6;
+      source[c*n+i]=level*(.35*Math.cos(2*Math.PI*400*t)+
+        .18*Math.cos(2*Math.PI*896*t));
+    }
+    const tone=(audio,c,f)=>{
+      let re=0,im=0;
+      for(let i=4096;i<n;i++){
+        const phi=2*Math.PI*f*i/rate;
+        re+=audio[c*n+i]*Math.cos(phi);
+        im-=audio[c*n+i]*Math.sin(phi);
+      }
+      return 2*Math.hypot(re,im)/(n-4096);
+    };
+    const rows=[];
+    for(const hop of [4,8]){
+      const args=[src,dst,n,2,rate,100,3200,1,.25,1,0,1,1,1,0,0,0,
+        hop,0,1,0,350,0,0,350,1,20,0,1,0,1,0];
+      assert.equal(e.warp_stream_render_f32_zero_controls_ext(...args),0);
+      const pcm=new Float32Array(e.memory.buffer,dst,frames);
+      const amplitudes=[376,624].map(freq=>[tone(pcm,0,freq),tone(pcm,1,freq)]);
+      const ghosts=[400,896].map(freq=>tone(pcm,0,freq));
+      rows.push({hop,amplitudes,ghosts});
+      assert.ok(Math.abs(amplitudes[0][0]-.35)<.035,"mapped first partial");
+      assert.ok(Math.abs(amplitudes[1][0]-.18)<.03,"mapped second partial");
+      assert.ok(Math.abs(amplitudes[0][1]/amplitudes[0][0]-.6)<.02,"stereo partial 1");
+      assert.ok(Math.abs(amplitudes[1][1]/amplitudes[1][0]-.6)<.02,"stereo partial 2");
+      assert.ok(ghosts[0]<.025&&ghosts[1]<.025,"original-frequency ghost must not dominate");
+    }
+    console.log("B_LOCKED_TWO_TONE_STEREO_PCM "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
+});
