@@ -541,7 +541,7 @@ mod tests {
                     invert:1.0,mode:Progression::Reciprocal,quality:0}).unwrap()-marker).abs()<1e-6);
             assert!(warp_invert_reference_frequency(low,high,p,0.35,1).is_nan());
         }
-        assert!((warp_invert_reference_frequency(low,high,0.0,.5,3)-400.0).abs()<1e-9);
+        assert!((warp_invert_reference_frequency(low,high,0.0,0.5,3)-400.0).abs()<1e-9);
     }
     #[test]
     fn outside_pass_preserves_a_high_outside_tone_while_kill_removes_it() {
