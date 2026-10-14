@@ -770,3 +770,40 @@ test("Reciprocal interpolation and invert-Hz marker use common Rust/WASM geometr
   assert.ok(Math.abs(e.warp_invert_reference_frequency(l,h,p,amount,2)-
     e.warp_fold_frequency(l,h,p,amount,2))<1e-9);
 });
+
+test("Continuous signed-0 reflect amplitude 0/.5/1 is real native Rust/WASM in offline and realtime API",async()=>{
+  const e=await load();
+  assert.equal(typeof e.warp_stream_render_f32_controls_ext,"function");
+  assert.equal(typeof e.warp_stream_set_zero_reflect_gain,"function");
+  const fs=8192,n=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  try{
+    const inp=Float32Array.from({length:n},(_,i)=>
+      .4*Math.cos(2*Math.PI*512*i/fs));
+    new Float32Array(e.memory.buffer,src,n).set(inp);
+    const render=(gain,delta)=>{
+      const rc=e.warp_stream_render_f32_controls_ext(
+        src,dst,n,1,fs,20,3000,1,0,1,0,0,1,1,delta,0,0,4,
+        0,1,0,350,0,1,350,1,20,0,1,0,gain);
+      assert.equal(rc,0,"zero gain "+gain+" delta "+delta);
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,n));
+    };
+    const zero=render(0,-768),half=render(.5,-768),full=render(1,-768);
+    const rms=x=>Math.sqrt(x.slice(2300,7300).reduce((sum,v)=>sum+v*v,0)/5000);
+    const results=[zero,half,full].map(x=>rms(x));
+    console.log("ZERO_REFLECT_RUST_WASM "+JSON.stringify({results,ratios:[results[0]/results[2],results[1]/results[2]]}));
+    assert.ok(results[0]<results[2]*.03);
+    assert.ok(Math.abs(results[1]/results[2]-.5)<.015,
+      "50% reflection gain should become half-amplitude, not all-or-nothing");
+    const positiveZero=render(0,80),positiveFull=render(1,80);
+    const mismatch=positiveZero.slice(2300,7300).reduce((acc,v,i)=>
+      acc+Math.abs(v-positiveFull[i+2300]),0)/5000;
+    assert.ok(mismatch<1e-6,"positive targets must not depend on negative reflection gain");
+    const st=e.warp_stream_create_ext(fs,1,20,3000,1,0,1,0,1,1,1,0,0,0,4);
+    assert.ok(st);
+    try{
+      for(const gain of [0,.5,1])assert.equal(e.warp_stream_set_zero_reflect_gain(st,gain),0);
+      assert.equal(e.warp_stream_set_zero_reflect_gain(st,-.01),-2);
+      assert.equal(e.warp_stream_set_zero_reflect_gain(st,1.01),-2);
+    }finally{e.warp_stream_free(st);}
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
