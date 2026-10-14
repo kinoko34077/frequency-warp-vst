@@ -47,12 +47,23 @@
     details.addEventListener("toggle",()=>{
       if(details.open){closeOthers(details);placeHelp(details);}
     });
+    let hoverTimer=null,hoverOpened=false;
     details.addEventListener("mouseenter",()=>{
-      if(window.matchMedia("(hover:hover)").matches){closeOthers(details);details.open=true;placeHelp(details);}
+      if(!window.matchMedia("(hover:hover)").matches)return;
+      hoverTimer=setTimeout(()=>{
+        if(details.matches(":hover")&&!details.open){
+          closeOthers(details);details.open=true;hoverOpened=true;placeHelp(details);
+        }
+      },350);
     });
     details.addEventListener("mouseleave",()=>{
-      if(window.matchMedia("(hover:hover)").matches)details.open=false;
+      clearTimeout(hoverTimer);
+      if(hoverOpened)details.open=false;
+      hoverOpened=false;
     });
+    details.querySelector("summary")?.addEventListener("click",()=>{
+      clearTimeout(hoverTimer);hoverOpened=false;
+    },true);
   }
   document.addEventListener("pointerdown",event=>{
     if(!event.target.closest("details.context-help"))closeOthers(null);
