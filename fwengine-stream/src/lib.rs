@@ -26,7 +26,7 @@ static mut SETTINGS:Option<Settings>=None;
 static mut CHANNELS:usize=0;
 
 fn defaults(rate:f64)->Settings {
-    Settings{low:20.,high:16000_f64.min(rate*.45),curvature:1.,
+    Settings{low:20.,high:16000_f64.min(rate*0.45),curvature:1.,
              invert:0.,mode:Progression::Blend,quality:0}
 }
 #[no_mangle]pub extern "C" fn fw_abi_major()->i32{1}
