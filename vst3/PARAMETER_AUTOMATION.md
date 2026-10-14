@@ -82,3 +82,32 @@ GUI beginEdit/performEdit/endEdit for frequency controls, CPU under dense
 automation, project module identity persistence and real FL Studio/REAPER
 automation clip playback require later gates. The unit-selector Web/UI
 development Issue #79 is separate.
+
+
+## S4b2-B — host audio-binding extension
+
+After S4b2-A validated exact native/WASM `Stream` setters, the actual
+VST3 Processor additionally forwards the following stable ParamIDs to
+the **same** shared spectral DSP worker, preserving sample offsets:
+
+| ID | Physical module value | Canonical Rust setter |
+|---|---|---|
+| 6 Axis Shift | −2..2 axis units | `Stream::set_transform` |
+| 7 Axis Pivot | 0..20000 Hz | `Stream::set_geometry` |
+| 8 Axis Slope | −4..4 | `Stream::set_geometry` |
+| 9 Reflection Synthesis | 0..1 | `Stream::set_zero_reflect_gain` |
+| 10 Ring Enabled | 0 or 1 | `Stream::set_transform` |
+| 13 Reflection Decay | 0..1 | `Stream::set_zero_reflect_decay` |
+| 18 Rational Layout | 0 or 1 | `Stream::set_transform` |
+
+The strict `StreamHostEvents::kBindingIds` table has **11** entries: IDs
+2,3,4,5,6,7,8,9,10,13,18. Each new bounded PCM chunk snapshots those
+11 current physical values at offset0. Changed sample positions consume
+additional entries; packets are subdivided before crossing the 128-event
+ABI limit. The separate demo Gain ID64 is unchanged. Other DAW-visible
+controls still require a verified physical semantic mapping.
+
+No separate DSP mapping formula is implemented in the VST3. Web and native
+WASM use the same `Stream` setters; audio worker and Controller remain
+separate from the host RT thread. This does NOT attest FL Studio host
+automation playback; use S5 for actual host integration and listening.
