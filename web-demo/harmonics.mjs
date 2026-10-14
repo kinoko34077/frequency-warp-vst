@@ -29,7 +29,7 @@ function settingsZeroMode(mode,f){
  * plotting a curve where DSP cannot actually output a spectral component. */
 export function mapAtFrequency(f,
   {low,high,curvature,invert,mode,outside,pitchRatio=1,shiftHz=0,
-   carrierHz=0,zeroMode=0,zeroReflectGain=1,zeroReflectDecay=0,reflectionAmplitude=null,
+   carrierHz=0,zeroMode=0,zeroReflectGain=1,zeroReflectDecay=0,reflectionAmplitude=null,allReflectionGain=null,
    axisShift=0,axisReference=350,axisPivot=axisReference,
    axisSlope=1,ringEnabled=false,rationalEnabled=false,sampleRate=48000,qualityIndex=0},
   warp,translate=(f)=>f) {
@@ -37,30 +37,41 @@ export function mapAtFrequency(f,
   if(!inside&&outside!=="pass")return {f,inside,outputs:[],reason:"帯域外を除去"};
   const base=inside?warp(f,low,high,curvature,invert,mode):f;
   if(!Number.isFinite(base))return {f,inside,outputs:[],reason:"写像不能"};
-  let transformed=base;
+  let transformed=base,sourceAnchor=axisPivot;
   if(inside){
     if(rationalEnabled)transformed=pitchRatio*transformed+shiftHz;
     const pivotInside=axisPivot>=low&&axisPivot<=high;
     const pivotBase=pivotInside?warp(axisPivot,low,high,curvature,invert,mode):axisPivot;
-    const sourceAnchor=pivotBase;
+    sourceAnchor=pivotBase;
     // Rust stream.rs skips axis translation when the optional rational stage
     // already crossed zero; both engines then apply the signed zero policy.
     if(transformed>0)transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
   }
   if(!Number.isFinite(transformed))return {f,inside,outputs:[],reason:"座標計算不能"};
-  const reflected=transformed<0;
-  let reflectionGain=1;
-  if(reflected){
+  const signed=transformed;
+  const allGain=typeof allReflectionGain==="function"?
+    allReflectionGain(f,signed,sourceAnchor):null;
+  const reflected=typeof allGain==="object"&&allGain!==null?
+    allGain.distance>0:transformed<0;
+  let reflectionGain=allGain===null?1:allGain.gain;
+  if(transformed<0){
     if(zeroMode===1)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"0Hz未満を除去"};
     const fftWindow=[1024,2048,4096][qualityIndex]||1024;
     if(zeroMode===2 && -transformed>=sampleRate/fftWindow)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"0Hz未満を減衰除去"};
     if(zeroMode===2)reflectionGain=Math.max(0,1+transformed/(sampleRate/fftWindow));
-    else reflectionGain=typeof reflectionAmplitude==="function"?
+    if(allGain!==null&&zeroMode===0)reflectionGain=allGain.gain;
+    else if(allGain===null)reflectionGain=typeof reflectionAmplitude==="function"?
       reflectionAmplitude(-transformed):
       zeroReflectGain*Math.pow(1-zeroReflectDecay,-transformed/axisReference);
     if(reflectionGain===0)return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"負周波数の反射振幅0%（除去）"};
     transformed=-transformed;
   }
+  if(allGain!==null&&reflectionGain<=0)return {f,inside,outputs:[],
+    reflected:true,reflectionGain:0,reason:"反射成分の合成率0%"};
+  // Positive-frequency L/H fold and monotonic inversion are also reflected.
+  // They keep their positive output location; ONLY negative targets flip.
+  if(allGain!==null&&reflected&&transformed>0&&reflectionGain<=0)
+    return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"反射を除去"};
   if(transformed===0)return {f,inside,outputs:[],reason:"0Hzへ到達"};
   // Ring Mod is applied only to transformed source components in [L,H].
   // Outside Pass is mixed unchanged after the ringed in-band wet signal.

@@ -103,8 +103,7 @@ function settings(){
     // Ring sidebands are additional effects, not the base warp direction.
     // The green underlying transformed curve is the automatic A/B criterion.
     const coreCurve={...value,ringEnabled:false,
-      reflectionAmplitude:distance=>state.mathCore.warp_zero_reflection_amplitude(
-        distance,value.zeroReflectGain,value.zeroReflectDecay,value.axisReference)};
+      allReflectionGain:allReflectionFor(value)};
     const {warp,translate}=mathCallbacksFor(coreCurve);
     value.engine=engineForInbandCurve(coreCurve,f=>
       mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
@@ -121,10 +120,10 @@ function labels(id=""){
   showNumber("zero-reflect-value",100*p.zeroReflectGain);
   showNumber("zero-decay-value",100*p.zeroReflectDecay);
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
-    "% / 減衰 "+displayNumber(100*p.zeroReflectDecay)+"%";
-  $("#zero-reflect-formula").textContent="反射量="+displayNumber(100*p.zeroReflectGain)+
+    "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
+  $("#zero-reflect-formula").textContent="反射成分の音量="+displayNumber(100*p.zeroReflectGain)+
     "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(|負周波数|/"+
-    displayNumber(p.axisReference)+"Hz)。距離基準="+displayNumber(p.axisReference)+"Hz。正周波数は不変。";
+    displayNumber(p.axisReference)+"Hz)。折返しの基準は0HzまたはL/H折返し点。距離基準="+displayNumber(p.axisReference)+"Hz。反転・折返し側の成分だけ適用。";
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
@@ -181,6 +180,19 @@ function mathCallbacksFor(p){
       core.warp_translate_frequency_anchored(f,anchor,pivot,slope,reference,curvature,shift)
   };
 }
+function allReflectionFor(p){
+  const core=state.mathCore;
+  const mode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
+  return (f,signed,anchor)=>{
+    const args=[f,signed,p.low,p.high,p.curvature,p.invert,mode,
+      p.rationalEnabled?1:0,p.pitchRatio,p.shiftHz,anchor,
+      p.axisPivot,p.axisSlope,p.axisReference,p.axisShift];
+    return {
+      distance:core.warp_all_reflection_distance(...args),
+      gain:core.warp_all_reflection_gain(...args,p.zeroReflectGain,p.zeroReflectDecay)
+    };
+  };
+}
 function mathCallbacks(){return mathCallbacksFor(settings());}
 function updateListeningGuide(){
   if(!state.mathCore)return;
@@ -210,8 +222,7 @@ function drawCurve(){
   }
   const p=settings();
   const shown={...p,carrierHz:resolvedCarrierHz(foldPoint),
-    reflectionAmplitude:distance=>state.mathCore.warp_zero_reflection_amplitude(
-      distance,p.zeroReflectGain,p.zeroReflectDecay,p.axisReference)};
+    allReflectionGain:allReflectionFor(p)};
   const {warp,translate}=mathCallbacks();
   const alpha=Number($("#graph-log").value)/100;
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
@@ -238,7 +249,9 @@ async function ensureSharedCore(){
         typeof core.warp_map_frequency!=="function"||
         typeof core.warp_translate_frequency_anchored!=="function"||
         typeof core.warp_invert_reference_frequency!=="function"||
-        typeof core.warp_zero_reflection_amplitude!=="function")throw Error("共通数式APIがありません");
+        typeof core.warp_zero_reflection_amplitude!=="function"||
+        typeof core.warp_all_reflection_distance!=="function"||
+        typeof core.warp_all_reflection_gain!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
       if($("#engine-auto").checked){updateEngineInfo();updateParams("engine-auto");}

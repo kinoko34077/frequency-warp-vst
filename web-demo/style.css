@@ -395,3 +395,16 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .reflect-row{padding:2px 0}
 .reflect-row input[type=range]{width:100%}
 .reflect-title{font-size:11px;color:#a7e7ce}
+
+/* Two independent, full-width, vertically arranged reflection tracks. */
+.quick-panel .reflect-control{grid-column:1/-1;width:100%;min-width:0;padding:11px 12px;
+  border:1px solid #37615e;border-radius:11px;background:#0b2429}
+.quick-panel .reflect-control .reflect-row{display:grid;grid-template-columns:1fr;
+  gap:4px;min-width:0;padding:5px 0}
+.quick-panel .reflect-control .reflect-row input[type=range]{display:block;width:100%;
+  height:32px;min-height:32px;touch-action:pan-y;accent-color:#58e0ba}
+.quick-panel .reflect-control .reflect-row+.reflect-row{border-top:1px solid #294a4a}
+.quick-panel .reflect-control .control-heading label{font-size:12px}
+.quick-panel .reflect-control .inline-value{width:72px;max-width:72px}
+@media(max-width:450px){.quick-panel .reflect-control{padding:8px 9px;
+  grid-column:1/-1}.quick-panel .reflect-control .reflect-row input[type=range]{height:36px}}

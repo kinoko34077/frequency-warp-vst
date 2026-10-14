@@ -6,6 +6,7 @@
 use std::f64::consts::PI;
 
 mod stream;
+mod reflection;
 
 const TAU: f64 = PI * 2.0;
 

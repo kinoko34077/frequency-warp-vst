@@ -2,6 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
+use super::reflection;
 use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,translate_frequency_controls,translate_frequency_anchored,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
@@ -378,7 +379,7 @@ impl Stream {
                     // Exact same signed/DC policy used by the peak-resynthesis
                     // engine. Previously FFT-bin mode *always killed* negative
                     // targets (and clamped pre-shift negatives to 1e-7).
-                    let (target,_gain)=match self.resolve_zero(target,step){
+                    let (target,_gain)=match self.resolve_all(anchor_f,target,step,source_anchor){
                         Some(v)=>v,None=>continue
                     };
                     if target>=self.sample_rate*0.5 {continue;}
@@ -482,7 +483,7 @@ impl Stream {
                     self.axis_pivot,self.axis_slope,
                     self.axis_reference,self.settings.curvature,self.axis_shift)
             };
-            let (target,fade_gain)=match self.resolve_zero(target,step){
+            let (target,fade_gain)=match self.resolve_all(frequency,target,step,source_anchor){
                 Some(v)=>v,None=>continue
             };
             if !(target>0.0&&target<self.sample_rate/2.0){continue;}
@@ -557,7 +558,7 @@ impl Stream {
                             self.axis_pivot,self.axis_slope,self.axis_reference,
                             self.settings.curvature,self.axis_shift)
                     };
-                    let (target,fade_gain)=match self.resolve_zero(target,step){
+                    let (target,fade_gain)=match self.resolve_all(f,target,step,source_anchor){
                         Some(v)=>v,None=>continue
                     };
                     if target>=self.sample_rate/2.0{continue;}
@@ -617,6 +618,17 @@ impl Stream {
         // Fix the pivot through the nonlinear warp, not through optional
         // rational pitch/Hz placement. Those shifts must remain audible.
         base
+    }
+    fn resolve_all(&self,f:f64,target:f64,step:f64,anchor:f64)->Option<(f64,f64)>{
+        let (hz,legacy)=self.resolve_zero(target,step)?;
+        if self.zero_mode!=3{return Some((hz,legacy));}
+        let d=reflection::distance(f,target,self.settings,self.rational_enabled,
+            self.pitch_ratio,self.shift_hz,anchor,self.axis_pivot,
+            self.axis_slope,self.axis_reference,self.axis_shift);
+        if d<=0.0{return Some((hz,1.0));}
+        let g=reflection::gain(d,self.zero_reflect_gain,
+            self.zero_reflect_decay,self.axis_reference);
+        if g>0.0{Some((hz,g))}else{None}
     }
     fn resolve_zero(&self,target:f64,step:f64)->Option<(f64,f64)>{
         if !target.is_finite(){return None;}
