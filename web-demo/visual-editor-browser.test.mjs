@@ -29,6 +29,8 @@ test('layout inspector is opt-in, edits live DOM, restores local changes, and pr
     assert.match(key,/27px/);
     await page.reload({waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>document.querySelector('#fw-layout-inspector')?.shadowRoot);
+    // The editor's own module can boot before the WebAudio app installs its handlers.
+    await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready');
     assert.equal(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'27px');
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=preview]').click());
     await page.click('#settings-open');
