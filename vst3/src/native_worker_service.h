@@ -104,7 +104,7 @@ private:
         // Keep BOTH contracts valid: core Stream IDs2..5 and demo Gain ID64.
         // Filtering is on this off-RT thread; no heap allocations or host
         // parameter semantic aliasing are introduced.
-        if(count>AsyncPcmMailbox::kMaxEvents)return -1;
+        if(count>AsyncPcmMailbox::kMaxEvents||(count>0&&!events))return -1;
         std::array<FWNativeEvent,AsyncPcmMailbox::kMaxEvents> filtered{};
         uint32_t used=0;
         for(uint32_t i=0;i<count;i++) {
