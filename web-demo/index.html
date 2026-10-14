@@ -42,19 +42,40 @@
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <div class="control-grid">
-          <div class="control"><div class="control-heading"><label for="invert">反転</label><input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="invert-value の数値"></div>
-            <input id="invert" type="range" min="0" max="1" step=".005" value="0"><div class="ends"><span>通常</span><strong id="invert-reference-hz" class="invert-hz-marker" aria-live="polite">補間率 0%</strong><span>反転</span></div>
+          <div class="control shape-control">
+            <strong class="reflect-title">変換形状 · デュアルサム</strong>
+            <div class="dual-headings">
+              <label for="invert-value"><span class="dual-dot first"></span>反転 <input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反転の割合 %"></label>
+              <label for="curvature-value"><span class="dual-dot second"></span>移動尺度 <input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="移動尺度 p"></label>
+            </div>
+            <div class="shared-dual-track" id="shape-dual" aria-label="反転と移動の尺度を操作するデュアルサム">
+              <input class="dual-source" id="invert" type="range" min="0" max="1" step="0.005" value="0" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="curvature" type="range" min="0" max="1" step="0.005" value="1" tabindex="-1" aria-hidden="true">
+              <div class="shared-dual-inner" data-dual-inner>
+                <button type="button" id="invert-thumb" class="shared-dual-thumb upper" data-dual-thumb role="slider" aria-label="反転" aria-valuenow="0"></button>
+                <button type="button" id="curvature-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="移動の尺度" aria-valuenow="1"></button>
+              </div>
+            </div>
+            <div class="ends"><span>上：反転　下：尺度</span><strong id="invert-reference-hz" class="invert-hz-marker">補間率 0%</strong></div>
+            <small class="slider-formula" id="curvature-log-formula" aria-live="polite">p=0: S₀(f)=ln(f/L)、p&gt;0: Sₚ(f)=((f/L)ᵖ−1)/p</small>
           </div>
-          <div class="control reflect-control"><strong class="reflect-title">周波数の反射</strong>
-            <div class="reflect-row"><div class="control-heading"><label for="zero-reflect">合成率</label><input id="zero-reflect-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="反射成分の合成率 %"></div>
-              <input id="zero-reflect" type="range" min="0" max="100" step="1" value="100" aria-label="反射成分の一律合成率 0〜100%"></div>
-            <div class="reflect-row"><div class="control-heading"><label for="zero-decay">反射率</label><input id="zero-decay-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反射点からの反射率 %"></div>
-              <input id="zero-decay" type="range" min="0" max="100" step="1" value="0" aria-label="0Hzから遠ざかるほど反射成分を減衰 0〜100%"></div>
-            <div class="ends"><span>0Hzで折返し</span><strong id="zero-reflect-status" class="invert-hz-marker">合成 100% / 反射 0%</strong></div>
-            <small id="zero-reflect-formula" class="slider-formula">負周波数の位置を |f′| に反射。振幅=合成率×(1−減衰率)^(|f′|/基準Hz)。正周波数には適用しません。</small>
-          </div>
-          <div class="control"><div class="control-heading"><label for="curvature">移動の尺度</label><input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="curvature-value の数値"></div>
-            <input id="curvature" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div><small class="slider-formula" id="curvature-log-formula" aria-live="polite">p=0: S₀(f)=ln(f/L), p&gt;0: Sₚ(f)=((f/L)ᵖ−1)/p。移動量は p=0 で倍率、p=1 でHz</small>
+          <div class="control reflect-control">
+            <strong class="reflect-title">周波数の反射 · デュアルサム</strong>
+            <div class="dual-headings">
+              <label for="zero-reflect-value"><span class="dual-dot first"></span>合成率 <input id="zero-reflect-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="反射成分の合成率 %"></label>
+              <label for="zero-decay-value"><span class="dual-dot second"></span>反射率 <input id="zero-decay-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反射成分の反射率 %"></label>
+            </div>
+            <div class="shared-dual-track" id="reflection-dual" aria-label="合成率と反射率を操作するデュアルサム">
+              <input class="dual-source" id="zero-reflect" type="range" min="0" max="100" step="1" value="100" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="zero-decay" type="range" min="0" max="100" step="1" value="0" tabindex="-1" aria-hidden="true">
+              <div class="shared-dual-inner" data-dual-inner>
+                <button type="button" id="zero-reflect-thumb" class="shared-dual-thumb upper" data-dual-thumb role="slider" aria-label="合成率" aria-valuenow="100"></button>
+                <button type="button" id="zero-decay-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="反射率" aria-valuenow="0"></button>
+              </div>
+            </div>
+            <div class="ends"><span>上：合成　下：反射</span><strong id="zero-reflect-status" class="invert-hz-marker">合成 100% / 反射 0%</strong></div>
+            <small id="zero-reflect-formula" class="slider-formula">反射点から離れるほど、反射率に応じて減衰。合成率は反射成分全体の音量。</small>
+            <small id="reflection-activity" class="slider-formula" aria-live="polite"></small>
           </div>
           <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.001" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
             <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
@@ -76,10 +97,14 @@
         </div>
         <div class="bounds">
           <div class="bounds-heading"><strong>変換範囲</strong><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="0.001" value="20"></label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="0.001" value="16000"></label></div>
-          <div class="dual-range" id="dual-range" style="--lo:0%;--hi:96.8%">
-            <input id="low" type="range" aria-label="帯域下限" min="0" max="1000" step="1" value="0">
-            <input id="high" type="range" aria-label="帯域上限" min="0" max="1000" step="1" value="968">
-          </div>
+            <div class="shared-dual-track" id="dual-range" aria-label="帯域下限Lと帯域上限Hを操作するデュアルサム">
+              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="0" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="968" tabindex="-1" aria-hidden="true">
+              <div class="shared-dual-inner" data-dual-inner>
+                <button type="button" id="low-thumb" class="shared-dual-thumb upper" data-dual-thumb role="slider" aria-label="帯域下限L" aria-valuenow="0"></button>
+                <button type="button" id="high-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="帯域上限H" aria-valuenow="968"></button>
+              </div>
+            </div>
           <div class="ends"><span>20 Hz</span><span>20 kHz</span></div>
         </div>
         <div class="effects-panel">
