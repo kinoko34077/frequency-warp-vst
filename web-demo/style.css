@@ -451,3 +451,40 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
     height:49px;min-height:49px}
   .quick-panel .reflect-control,.quick-panel .shape-control{padding:6px 5px}
 }
+
+/* #72: context help is on demand. Primary controls show short names,
+   editable values and units; info is keyboard/touch accessible via summary. */
+.compact-title{display:flex;align-items:center;gap:6px;min-width:0}
+.info-tip{display:inline-flex;align-items:center;position:relative;flex:0 0 auto;z-index:4;font-size:11px;vertical-align:middle}
+.info-tip[open]{z-index:100}
+.info-tip summary{display:grid;place-items:center;list-style:none;cursor:pointer;
+  width:24px;height:24px;min-width:24px;border:1px solid #49736d;
+  border-radius:50%;color:#a9e6d3;background:#173239;user-select:none}
+.info-tip summary::-webkit-details-marker{display:none}
+.info-tip summary:hover,.info-tip summary:focus-visible{background:#24504c}
+.info-tip .info-body{position:absolute;top:calc(100% + 5px);left:0;
+  width:min(290px,82vw);max-height:min(46vh,330px);overflow-y:auto;
+  padding:11px 12px;color:#daeee8;background:#18353a;border:1px solid #5b8d83;
+  border-radius:9px;box-shadow:0 12px 25px #0009;line-height:1.55;
+  overflow-wrap:anywhere;font-size:11px;white-space:normal}
+.info-tip .info-body p{margin-top:7px}
+.info-tip .info-body .slider-formula{font-size:10px;margin-top:6px}
+.fx-item{position:relative}
+.fx-item>.info-tip{margin-left:6px}
+.fx-item>.info-tip .info-body{left:0;right:auto}
+.control-heading>.info-tip{margin-right:auto}
+.quick-panel .bounds-heading>.info-tip{margin:0 5px}
+.graph-scale>.info-tip .info-body{left:auto;right:0;width:min(215px,62vw)}
+.help-inline,.settings-body details.help-inline{margin:5px 0;color:#abd1c9;font-size:11px}
+.help-inline>summary{display:inline-block;padding:4px 0;cursor:pointer;list-style:none;color:#8ee2ca}
+.help-inline>summary::-webkit-details-marker{display:none}
+.help-inline[open]>p{margin:6px 0 0;line-height:1.5}
+.quick-panel .control-heading .inline-value{width:64px}
+.quick-panel .fx-pair .inline-value{width:60px}
+.fx-pair .control-heading{display:flex;flex-wrap:wrap}
+.fx-pair .control-heading label{font-size:11px}
+@media(max-width:450px){
+  .info-tip .info-body{width:min(260px,78vw)}
+  .quick-panel .control-heading>.info-tip{margin-left:2px}
+  .quick-panel .fx-pair .inline-value{width:54px!important}
+}

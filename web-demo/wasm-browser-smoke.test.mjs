@@ -53,7 +53,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.equal(await page.$eval("#invert",el=>el.value),"0");
     assert.equal(await page.$eval("#engine",el=>el.value),"1","B must be initial manual engine");
-    assert.equal(await page.$eval("#mode",el=>el.value),"blend");
+    assert.equal(await page.$eval("#mode",el=>el.value),"reciprocal");
+    assert.equal(await page.$eval("#mode",el=>[...el.options].some(x=>x.value==="blend")),false,"simple blend must not be user-selectable");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
@@ -178,6 +179,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     assert.match(await page.$eval("#listening-guide",el=>el.textContent),/500Hz →/);
     assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形移動量/);
+    // Signed physical slope and 0-convergence are genuine live WASM parameters.
+    await page.$eval("#axis-pivot-value",el=>{el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    for(const [slope,expected] of [[-1,200],[0,350],[-4,250],[1,500]]){
+      await page.$eval("#axis-slope-value",(el,v)=>{el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));},slope);
+      assert.equal(await page.$eval("#axis-slope-value",el=>Number(el.value)),slope);
+      assert.match(await page.$eval("#listening-guide",el=>el.textContent),
+        new RegExp("500Hz → "+expected+"Hz"),"signed slope geometry should reach shared Rust graph");
+    }
+    // Information is hidden until requested, available by pointer and keyboard.
+    const contextHint=await page.$(".shape-control .info-tip summary");
+    assert.ok(contextHint);
+    await contextHint.click();
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
+    assert.match(await page.$eval(".shape-control .info-body",el=>el.textContent),/反転/);
+    await contextHint.press("Enter");
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false);
+    assert.equal(await page.$eval("#crusher-bits",el=>el.closest(".fx-item").textContent.includes("量子化")),true);
+    assert.equal(await page.$eval("#crusher-hold",el=>el.closest(".fx-item").textContent.includes("打刻速度")),true);
     await page.click("#slope-one");
     assert.equal(await page.$eval("#axis-slope",el=>Number(el.value)),1);
     await page.$eval("#axis-shift-value",el=>{
@@ -233,9 +252,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/Hz/);
     await page.select("#mode","reciprocal");
     assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/反転固定点.*Hz/);
-    assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/折返し点がありません/);
-    await page.select("#mode","blend");
-    assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/補間率.*%/);
+    assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/連動対象なし/);
     await page.select("#mode","fold-h");
     assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
     assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
@@ -473,6 +490,15 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(layout.leftPanel.right<=layout.rightPanel.x+3,"Controls must be LEFT of graph "+JSON.stringify(layout));
     assert.ok(Math.abs(layout.leftPanel.top-layout.rightPanel.top)<12,"Controls and graph must SHARE ROW "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
+    // Contextual help must remain on-screen when opened in the narrow graph column.
+    await page.click(".graph-scale .info-tip summary");
+    const popoverBounds=await page.$eval(".graph-scale .info-body",el=>{
+      const r=el.getBoundingClientRect();
+      return {left:r.left,right:r.right,width:r.width,screen:document.documentElement.clientWidth};
+    });
+    assert.ok(popoverBounds.left>=-1 && popoverBounds.right<=popoverBounds.screen+1,
+      "mobile help panel escaped viewport "+JSON.stringify(popoverBounds));
+    await page.click(".graph-scale .info-tip summary");
     assert.ok(layout.curve.width<=210,"Mobile graph should use freed space for sliders "+JSON.stringify(layout));
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);

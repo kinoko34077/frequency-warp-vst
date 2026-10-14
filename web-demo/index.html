@@ -43,9 +43,9 @@
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <div class="control-grid">
           <div class="control shape-control">
-            <strong class="reflect-title">変換形状 · デュアルサム</strong>
+            <div class="compact-title"><strong class="reflect-title">変換形状</strong><details class="info-tip"><summary aria-label="変換形状の説明" title="変換形状の説明">ⓘ</summary><div class="info-body">反転は周波数の並びを変えます。移動尺度p=0は倍率的、p=1は一定Hz的な移動です。<small id="invert-reference-hz" class="slider-formula"></small><small class="slider-formula" id="curvature-log-formula" aria-live="polite"></small></div></details></div>
             <div class="dual-headings">
-              <label for="invert-value"><span class="dual-dot first"></span>反転 <input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反転の割合 %"></label>
+              <label for="invert-value"><span class="dual-dot first"></span>反転 <input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反転の割合 %">%</label>
               <label for="curvature-value"><span class="dual-dot second"></span>移動尺度 <input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="移動尺度 p"></label>
             </div>
             <div class="shared-dual-track" id="shape-dual" aria-label="反転と移動の尺度を操作するデュアルサム">
@@ -56,14 +56,14 @@
                 <button type="button" id="curvature-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="移動の尺度" aria-valuenow="1"></button>
               </div>
             </div>
-            <div class="ends"><span>上：反転　下：尺度</span><strong id="invert-reference-hz" class="invert-hz-marker">補間率 0%</strong></div>
-            <small class="slider-formula" id="curvature-log-formula" aria-live="polite">p=0: S₀(f)=ln(f/L)、p&gt;0: Sₚ(f)=((f/L)ᵖ−1)/p</small>
+            
+            
           </div>
           <div class="control reflect-control">
-            <strong class="reflect-title">周波数の反射 · デュアルサム</strong>
+            <div class="compact-title"><strong class="reflect-title">周波数の反射</strong><details class="info-tip"><summary aria-label="反射の説明" title="反射の説明">ⓘ</summary><div class="info-body">合成率は反射成分全体の振幅、反射率は折返し点からの距離減衰を調整します。<small id="zero-reflect-status" class="slider-formula"></small><small id="zero-reflect-formula" class="slider-formula"></small><small id="reflection-activity" class="slider-formula" aria-live="polite"></small></div></details></div>
             <div class="dual-headings">
-              <label for="zero-reflect-value"><span class="dual-dot first"></span>合成率 <input id="zero-reflect-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="反射成分の合成率 %"></label>
-              <label for="zero-decay-value"><span class="dual-dot second"></span>反射率 <input id="zero-decay-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反射成分の反射率 %"></label>
+              <label for="zero-reflect-value"><span class="dual-dot first"></span>合成率 <input id="zero-reflect-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="反射成分の合成率 %">%</label>
+              <label for="zero-decay-value"><span class="dual-dot second"></span>反射率 <input id="zero-decay-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反射成分の反射率 %">%</label>
             </div>
             <div class="shared-dual-track" id="reflection-dual" aria-label="合成率と反射率を操作するデュアルサム">
               <input class="dual-source" id="zero-reflect" type="range" min="0" max="100" step="1" value="100" tabindex="-1" aria-hidden="true">
@@ -73,30 +73,29 @@
                 <button type="button" id="zero-decay-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="反射率" aria-valuenow="0"></button>
               </div>
             </div>
-            <div class="ends"><span>上：合成　下：反射</span><strong id="zero-reflect-status" class="invert-hz-marker">合成 100% / 反射 0%</strong></div>
-            <small id="zero-reflect-formula" class="slider-formula">反射点から離れるほど、反射率に応じて減衰。合成率は反射成分全体の音量。</small>
-            <small id="reflection-activity" class="slider-formula" aria-live="polite"></small>
+            
+            
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.001" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
+          <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><details class="info-tip"><summary aria-label="移動の説明" title="移動の説明">ⓘ</summary><div class="info-body">移動尺度p=0で倍率、p=1でHz移動です。<small id="axis-explainer" class="axis-explainer"></small><small id="axis-mode-hint" class="axis-mode-hint"></small></div></details><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.001" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
             <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
             
-            <div class="move-inline"><span>下降 −</span><small class="axis-explainer" id="axis-explainer">移動 0 Hz</small><span>上昇 ＋</span></div><small class="axis-mode-hint" id="axis-mode-hint">倍率移動だけを聴くときは反転量0%にしてください。</small>
+            <div class="ends"><span>下降 −</span><span>上昇 ＋</span></div>
           </div>
-                    <div class="control"><div class="control-heading"><label for="wet">Mix</label><input class="inline-value" id="wet-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="wet-value の数値"></div>
+                    <div class="control"><div class="control-heading"><label for="wet">Mix</label><input class="inline-value" id="wet-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="wet-value の数値">%</div>
             <input id="wet" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-pivot">起点</label><input class="inline-value" id="axis-pivot-value" type="number" min="0" max="20000" step="0.001" value="350" aria-label="axis-pivot-value の数値"></div>
+          <div class="control"><div class="control-heading"><label for="axis-pivot">起点</label><details class="info-tip"><summary aria-label="起点の説明" title="起点の説明">ⓘ</summary><div class="info-body">傾きによる周波数の伸縮基準です。移動0では起点の周波数を固定します。</div></details><input class="inline-value" id="axis-pivot-value" type="number" min="0" max="20000" step="0.001" value="350" aria-label="axis-pivot-value の数値"> Hz</div>
             <input id="axis-pivot" type="range" min="0" max="1000" step="1" value="414">
             <div class="ends"><span>0 Hz</span><span>20 kHz</span></div>
           </div>
-          <div class="control"><div class="control-heading"><label for="axis-slope">傾き</label><span class="axis-value-tools"><input class="inline-value" id="axis-slope-value" type="number" min="0.1" max="4" step="0.001" value="1" aria-label="axis-slope-value の数値"><button id="slope-one" type="button" class="zero-button" aria-label="傾きを1へ戻す">1へ</button></span></div>
-            <input id="axis-slope" type="range" min="0.1" max="4" step=".01" value="1">
-            <div class="ends"><span>間隔を縮める</span><span>間隔を広げる</span></div>
+          <div class="control"><div class="control-heading"><label for="axis-slope">傾き</label><details class="info-tip"><summary aria-label="傾きの説明" title="傾きの説明">ⓘ</summary><div class="info-body">起点からのHz距離の倍率。正は元の向き、0は一点へ集中、負は周波数の並びを反転します。0Hz未満に進む成分は反射設定に従います。</div></details><span class="axis-value-tools"><input class="inline-value" id="axis-slope-value" type="number" min="-4" max="4" step="0.001" value="1" aria-label="axis-slope-value の数値"> 倍 <button id="slope-one" type="button" class="zero-button" aria-label="傾きを1へ戻す">1へ</button></span></div>
+            <input id="axis-slope" type="range" min="-4" max="4" step=".01" value="1">
+            <div class="ends"><span>反転 −</span><span>拡大 ＋</span></div>
           </div>
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="bounds-heading"><strong>変換範囲</strong><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="0.001" value="20"></label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="0.001" value="16000"></label></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="0.001" value="20"> Hz</label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="0.001" value="16000"> Hz</label></div>
             <div class="dual-range shared-dual-track" id="dual-range" aria-label="帯域下限Lと帯域上限Hを操作するデュアルサム">
               <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="0" tabindex="-1" aria-hidden="true">
               <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="968" tabindex="-1" aria-hidden="true">
@@ -110,23 +109,23 @@
         <div class="effects-panel">
           <h3>追加加工</h3>
           <div class="fx-item">
-            <label class="fx-toggle"><input id="ring-enabled" type="checkbox"> リング変調</label>
+            <label class="fx-toggle"><input id="ring-enabled" type="checkbox"> リング変調</label><details class="info-tip"><summary aria-label="リング変調の説明" title="リング変調の説明">ⓘ</summary><div class="info-body">変換対象の音に搬送波を掛け、和・差の2つの側帯波を発生させます。搬送波は折返し点へ連動できます。</div></details>
             <div class="fx-body">
-              <div class="control-heading"><label for="carrier">搬送波</label><input id="carrier" class="inline-value" type="number" min="0" max="20000" step="0.001" value="350"></div>
+              <div class="control-heading"><label for="carrier">搬送波</label><input id="carrier" class="inline-value" type="number" min="0" max="20000" step="0.001" value="350"> Hz</div>
               <input id="carrier-range" type="range" min="0" max="1000" step="1" value="592" aria-label="搬送波周波数"><label class="link-carrier"><input id="carrier-link" type="checkbox"> 折返し点に連動</label>
       
               <small id="carrier-linked-value" class="fx-help"></small>
             </div>
           </div>
           <div class="fx-item">
-            <label class="fx-toggle"><input id="crusher-enabled" type="checkbox"> ビットクラッシャー</label>
+            <label class="fx-toggle"><input id="crusher-enabled" type="checkbox"> ビットクラッシャー</label><details class="info-tip"><summary aria-label="ビットクラッシャーの説明" title="ビットクラッシャーの説明">ⓘ</summary><div class="info-body">量子化は振幅の段数、打刻速度は標本値の更新回数です。打刻0Hzは最初の値を保持します。<p id="crusher-rate-explainer" class="setting-help"></p><p>波形例：灰＝原波形、橙＝加工後、薄線＝保持位置と量子化段階（単音モデル）。</p></div></details>
             <div class="fx-pair">
-              <div><div class="control-heading"><label for="crusher-bits">ビット数</label><input id="crusher-bits-value" class="inline-value" type="number" min="2" max="16" step="1" value="8"></div><input id="crusher-bits" type="range" min="2" max="16" step="1" value="8"></div>
-              <div><div class="control-heading"><label for="crusher-hold">間引き後の実効周波数</label><input id="crusher-hold-value" class="inline-value" type="number" min="0" max="192000" step="0.001" value="12000" aria-label="間引き更新周波数 Hz。0で更新停止"></div><input id="crusher-hold" type="range" min="0" max="1000" step="1" value="880" aria-label="間引き後の更新周波数 0Hz固定から原サンプルレートまで"></div>
+              <div><div class="control-heading"><label for="crusher-bits">量子化</label><input id="crusher-bits-value" class="inline-value" type="number" min="2" max="16" step="1" value="8"> bit</div><input id="crusher-bits" type="range" min="2" max="16" step="1" value="8"></div>
+              <div><div class="control-heading"><label for="crusher-hold">打刻速度</label><input id="crusher-hold-value" class="inline-value" type="number" min="0" max="192000" step="0.001" value="12000" aria-label="打刻速度 Hz。0で更新停止"> Hz</div><input id="crusher-hold" type="range" min="0" max="1000" step="1" value="880" aria-label="間引き後の更新周波数 0Hz固定から原サンプルレートまで"></div>
             </div>
           </div>
-          <p id="crusher-rate-explainer" class="setting-help">実効 12000 Hz（48kHz入力で4サンプル保持）</p>
-          <figure class="crusher-wave-view"><figcaption>間引き＋量子化の処理例 · 灰＝原波形、橙＝処理後、薄線＝保持時刻／量子化段階（単音モデル）</figcaption><canvas id="crusher-preview" role="img" aria-label="ビットクラッシャーのサンプル保持と振幅の階段形状"></canvas></figure>
+          
+          <figure class="crusher-wave-view"><figcaption>波形例</figcaption><canvas id="crusher-preview" role="img" aria-label="ビットクラッシャーのサンプル保持と振幅の階段形状"></canvas></figure>
           <details class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
         </div>
       </section>
@@ -135,7 +134,7 @@
           <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
         <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
         <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="0.001" value="0" aria-label="基準音 セント"><input class="inline-value" id="sine-hz" type="number" min="65" max="2100" step="0.001" value="440" aria-label="基準音 Hz"></div>
-        <p class="setting-help">音の比較用サイン波。</p>
+        
       </section>
     </div>
 
@@ -149,18 +148,18 @@
         <div class="curve-panel">
           <canvas id="curve" tabindex="0" role="button" aria-label="周波数表示を2kHzと20kHzで切り替える"></canvas>
         </div>
-        <div class="graph-scale"><label for="graph-log">表示軸</label><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div><p id="graph-log-formula" class="slider-formula" aria-live="polite">α=1: ln(1+f/20)/ln(1+M/20)。0Hzを含む表示軸、Mは表示上限</p>
+        <div class="graph-scale"><label for="graph-log">表示軸</label><details class="info-tip"><summary aria-label="グラフ表示の説明" title="グラフ表示の説明">ⓘ</summary><div class="info-body">表示の線形／対数の割合を変えます。音声は変化しません。<p id="graph-log-formula" class="slider-formula" aria-live="polite"></p><p>周波数曲線は単音の理論経路で、実測スペクトルではありません。</p></div></details><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div>
         <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音（ガイド・Mix100%では非出力）</span><span id="crusher-alias-legend" hidden>━ 間引き後の実線＝折返し音、薄線＝追加スペクトル像</span></div>
         <p id="crusher-alias-note" class="graph-note" hidden></p>
-        <p class="graph-note">周波数経路は単一成分の解析モデル。量子化による追加倍音・位相衝突・混合音全体の実測スペクトルではありません。</p>
-        <p class="graph-note">タップ：2kHz／20kHz</p>
+        
+        
         <div id="listening-guide" class="listening-guide" role="status" aria-live="polite"></div>
         <div id="signal-diagnostic" class="signal-diagnostic" role="status">実際の入力／変換音量：再生後に測定</div>
         <div class="harmonic-mini" aria-live="polite"><div class="mini-heading"><strong>仮想基音</strong><span id="mini-fundamental">H = 87.5 Hz</span></div><div id="mini-harmonics" class="mini-harmonics">第1〜3倍音を表示</div><button id="mini-expand" type="button" class="text-button">倍音を詳しく ↗</button></div>
       </div>
       <div id="view-math" role="tabpanel" aria-labelledby="tab-math" hidden>
         <div class="section-header"><h2>仮想基音と倍音</h2></div>
-        <p class="math-note">手入力した基音による理論値です。自動検出ではありません。</p>
+        <details class="help-inline"><summary>ⓘ 解析値について</summary><p class="math-note">手入力した基音による理論値です。自動検出ではありません。</p></details>
         <div id="math-axis-note" class="math-caption" aria-live="polite"></div>
         <details class="math-debug"><summary>変換の詳しい値</summary><dl id="coordinate-details" class="variable-grid"></dl></details>
         <div class="math-controls">
@@ -210,7 +209,7 @@
         <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
       </select>
       <output id="engine-auto-result" class="engine-auto-result" role="status" aria-live="polite" hidden></output>
-      <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p>
+      <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p></details>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
           <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
@@ -218,30 +217,29 @@
           <div><label for="a-band">A · 抽出帯域幅 <input class="inline-value" id="a-band-value" type="number" min="1" max="8" step="1" value="1"></label><input id="a-band" type="range" min="1" max="8" step="1" value="1"></div>
           <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
         </div>
-        <p id="a-quality-info" class="setting-help" aria-live="polite">品質0: 基準ピーク数。品質を上げるとピーク候補が増え、CPU負荷も増え得ます。原音忠実度100%の保証ではありません。</p>
-        <p class="setting-help">Aのみ。精細度はピーク候補・検出閾値と、非ピーク成分を同じ変換曲線で補完する試験的な残差量を連動調節します。抽出帯域幅はピーク間の距離の別設定です。残差分離は近似で、フォルマントや過渡音の完全復元ではありません。高設定ではCPU負荷が増加します。</p>
+        <details class="help-inline"><summary>ⓘ A方式の説明</summary><p id="a-quality-info" class="setting-help" aria-live="polite"></p><p class="setting-help">精細度はピーク抽出数・閾値・残差補完を連動調節します。抽出帯域幅は近接ピークの分離基準です。音質は実験段階で、高設定はCPU負荷が増加します。</p></details>
       </div>
     </fieldset>
     <fieldset><legend>反転と帯域</legend>
       <div class="settings-pair">
-        <div><label for="mode">反転の進行</label><select id="mode"><option value="blend" selected>単純補間</option><option value="reciprocal">逆数的・幾何補間</option><option value="fold-l">L側で折返し</option><option value="fold-h">H側で折返し</option></select></div>
+        <div><label for="mode">反転の進行</label><select id="mode"><option value="reciprocal" selected>逆数的・幾何補間</option><option value="fold-l">L側で折返し</option><option value="fold-h">H側で折返し</option></select></div>
         <div><label for="outside">L/Hの外側</label><select id="outside"><option value="pass" selected>通過する</option><option value="kill">除去する</option></select></div>
       </div>
-      <p class="setting-help">単純補間は周波数の加重平均。逆数的・幾何補間は f′=f^(1−a)×I(f)^a（Iは選択尺度での完全反転）、中間では周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点ができます。反転スライダー中央のHzは各方式の折れ点／反転固定点を示します。</p>
-      <p class="setting-help">0Hz以下の処理は「変換する」側の1本のシークバーに移動しました。0%=除去、100%=全量折返し、中間は反射成分を減衰します。</p>
+      <details class="help-inline"><summary>ⓘ 反転方式の説明</summary><p class="setting-help">幾何補間は f′=f^(1−a)×I(f)^a。中間で周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点を生みます。</p></details>
+      
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>
-      <p class="setting-help">グラフ下の小窓は最大3倍音、詳細表は選んだ倍音数まで表示します。</p>
+      <details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">グラフ下の小窓は最大3倍音、詳細表は選んだ倍音数まで表示します。</p></details>
     </fieldset>
     <fieldset><legend>計算量・応答性</legend>
       <div class="settings-pair"><div><label for="quality">FFT窓サイズ</label><select id="quality"><option value="eco" selected>1024 · 低遅延</option><option value="standard">2048 · 標準</option><option value="high">4096 · 高分解能</option></select></div>
       <div><label for="overlap">重ね合わせ量</label><select id="overlap"><option value="4" selected>4× / hop N/4</option><option value="8">8× / hop N/8</option></select></div></div>
-      <p class="setting-help">FFT窓：大きいほど周波数を細かく調べますが、遅延が増えます。重ね合わせ：8×は分析回数が増え、処理が重くなります。変更すると処理状態を作り直します。</p>
+      <details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">FFT窓：大きいほど周波数を細かく調べますが、遅延が増えます。重ね合わせ：8×は分析回数が増え、処理が重くなります。変更すると処理状態を作り直します。</p></details>
     </fieldset>
     <fieldset><legend>数値表示</legend><label for="decimal-digits">小数点以下の表示桁数</label><select id="decimal-digits"><option value="2">2桁</option><option value="3" selected>3桁</option></select><p class="setting-help">数値欄・倍音表の見た目を切り替えます。どちらでも直接入力した小数第3位まで音に反映されます。整数設定は整数のままです。</p></fieldset>
     <fieldset><legend>操作</legend><button id="settings-reset" type="button" class="reset-button">エフェクトの設定を初期値に戻す</button>
-      <p class="setting-help">音声ファイルと再生位置はそのまま。研究用試作品のため一部の変更で短い音切れが生じます。</p>
+      <details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">音声ファイルと再生位置はそのまま。研究用試作品のため一部の変更で短い音切れが生じます。</p></details>
     </fieldset>
     <details><summary>この試作版について</summary><p>VST3は未完成です。Ring Modは周波数反転とは別の効果です。残差・音質・モバイルCPU耐性は研究中であり、処理品質を保証しません。</p></details>
   </div>

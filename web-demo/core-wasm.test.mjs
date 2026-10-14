@@ -364,6 +364,44 @@ test("zero pivot physical slope makes an octave in both FFT and peak audio paths
  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
 
+test("negative, zero and positive physical slope change actual WASM PCM in engines A/B",async()=>{
+ const e=await load();
+ for(const p of [0,0.5,1]){
+   assert.ok(Math.abs(e.warp_translate_frequency_anchored(500,350,350,-1,350,p,0)-200)<1e-7);
+   assert.ok(Math.abs(e.warp_translate_frequency_anchored(500,350,350,0,350,p,0)-350)<1e-7);
+   assert.ok(Math.abs(e.warp_translate_frequency_anchored(500,350,350,1,350,p,0)-500)<1e-7);
+   assert.ok(Math.abs(e.warp_translate_frequency_anchored(750,350,350,-1,350,p,0)+50)<1e-7);
+ }
+ const frames=16384,rate=8192,src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+ try{
+  const original=new Float32Array(e.memory.buffer,src,frames);
+  for(let i=0;i<frames;i++)original[i]=.45*Math.cos(2*Math.PI*500*i/rate);
+  for(const engine of [0,1]){
+    const render=slope=>{
+      const rc=e.warp_stream_render_f32_geometry_ext(src,dst,frames,1,rate,
+        20,3000,1,0,3,0,0,engine,1,0,0,0,4,0,1,0,350,0,0,350,slope);
+      assert.equal(rc,0,"signed slope rejected by engine "+engine);
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,frames));
+    };
+    const spectral=(pcm,freq)=>{
+      let re=0,im=0;
+      for(let i=4500;i<12000;i++){
+        const angle=2*Math.PI*freq*i/rate;
+        re+=pcm[i]*Math.cos(angle);im+=pcm[i]*Math.sin(angle);
+      }
+      return Math.hypot(re,im);
+    };
+    for(const [slope,target] of [[1,500],[0,350],[-1,200]]){
+      const pcm=render(slope);
+      const correct=spectral(pcm,target);
+      const stale=spectral(pcm,slope===1?200:500);
+      assert.ok(correct>10 && correct>stale*2,
+         "engine "+engine+" signed "+slope+" should emit "+target+"Hz, got "+correct+"/"+stale);
+    }
+  }
+ }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
+});
+
 test("A minimum partial frequency and synthesis reverb change real PCM without affecting B",async()=>{
   const e=await load();
   assert.equal(typeof e.warp_stream_render_f32_a_ext,"function");

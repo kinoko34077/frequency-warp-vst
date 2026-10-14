@@ -523,3 +523,10 @@ double-route behavior, and does NOT guarantee iOS background continuity.
 移動量/起点、A品質/残響は一つのトラックへ無理にまとめない。
 折返し部分音が存在しない設定ではC/Rを変えても音量に変化が
 出ないため、その状態を主グラフ横の操作説明に明示する。
+
+
+## 2026-10-14 signed slope / compact controls (#72)
+
+- Physical frequency-axis slope accepts -4 to +4: negative reverses orientation around the selected pivot, 0 converges to the pivot (before the separate axis translation); 1 is the unchanged normal-spacing baseline. Signed outputs remain subject to reflection settings, and the Web plot uses Rust's same frequency mapping and reflected attenuation.
+- The user-facing inversion progression offers geometric interpolation and Fold L/H. Earlier Blend mode is no longer selectable and is not the reset default; the ABI retains it for compatibility.
+- The main controls keep input value and unit together, e.g. `量子化 [8] bit`, `打刻速度 [12000] Hz`. Detailed formulas, Crusher update-rate distinction and Ring Mod explanation are available using the nearby `ⓘ` control by click/tap/keyboard rather than persistent text. Important runtime errors remain visible.

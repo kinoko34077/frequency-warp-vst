@@ -65,7 +65,7 @@ pub fn translate_frequency_affine(f:f64,pivot:f64,p:f64,shift:f64,slope:f64)->f6
     if !f.is_finite()||f<=0.0||!pivot.is_finite()||pivot<=0.0||
        !p.is_finite()||!(0.0..=1.0).contains(&p)||
        !shift.is_finite()||shift.abs()>4.0||!slope.is_finite()||
-       !(0.1..=4.0).contains(&slope){return f64::NAN;}
+       !(-4.0..=4.0).contains(&slope){return f64::NAN;}
     if slope==1.0&&shift==0.0{return f;}
     // C_p(pivot; pivot) = 0: the anchor's displacement is exactly shift.
     let u=slope*coordinate(f,pivot,p)+shift;
@@ -89,7 +89,7 @@ pub extern "C" fn warp_translate_frequency_affine(
 
 pub fn translate_frequency_controls(f:f64,pivot:f64,slope:f64,reference:f64,p:f64,shift:f64)->f64{
  if !f.is_finite()||!pivot.is_finite()||!(0.0..=20000.0).contains(&pivot)
- || !slope.is_finite()||!(0.1..=4.0).contains(&slope)
+ || !slope.is_finite()||!(-4.0..=4.0).contains(&slope)
  || !reference.is_finite()||reference<=0.0
  || !p.is_finite()||!(0.0..=1.0).contains(&p)
  || !shift.is_finite()||shift.abs()>4.0{return f64::NAN;}
@@ -106,7 +106,7 @@ pub extern "C" fn warp_translate_frequency_controls(f:f64,pivot:f64,slope:f64,re
 pub fn translate_frequency_anchored(f:f64,anchor:f64,pivot:f64,slope:f64,reference:f64,p:f64,shift:f64)->f64{
     if !f.is_finite()||!anchor.is_finite()||!pivot.is_finite()
        ||!(0.0..=20000.0).contains(&pivot)||!slope.is_finite()
-       ||!(0.1..=4.0).contains(&slope)||!reference.is_finite()
+       ||!(-4.0..=4.0).contains(&slope)||!reference.is_finite()
        ||reference<=0.0||!p.is_finite()||!(0.0..=1.0).contains(&p)
        ||!shift.is_finite()||shift.abs()>4.0{return f64::NAN;}
     let value=pivot+slope*(f-anchor);
@@ -587,6 +587,21 @@ mod tests {
         let mid=translate_frequency(f,reference,0.5,shift);
         assert!(mid>f+100.0 && mid<f*shift.exp());
         assert!((warp_translate_frequency(f,reference,1.0,-2.5)+100.0).abs()<1e-8);
+    }
+    #[test]
+    fn signed_physical_slope_zero_and_negative_preserve_anchor_and_old_identity() {
+        for p in [0.0,0.5,1.0] {
+            assert!((warp_translate_frequency_anchored(500.0,500.0,350.0,1.0,350.0,p,0.0)-350.0).abs()<1e-8);
+            assert!((warp_translate_frequency_anchored(250.0,350.0,350.0,1.0,350.0,p,0.0)-250.0).abs()<1e-8);
+            assert!((warp_translate_frequency_anchored(500.0,350.0,350.0,0.0,350.0,p,0.0)-350.0).abs()<1e-8);
+            assert!((warp_translate_frequency_anchored(500.0,350.0,350.0,-1.0,350.0,p,0.0)-200.0).abs()<1e-8);
+            assert!((warp_translate_frequency_anchored(750.0,350.0,350.0,-1.0,350.0,p,0.0)+50.0).abs()<1e-8);
+        }
+        assert!((warp_translate_frequency_controls(500.0,350.0,-1.0,350.0,1.0,0.0)-200.0).abs()<1e-8);
+        assert!((warp_translate_frequency_controls(750.0,350.0,-1.0,350.0,1.0,0.0)+50.0).abs()<1e-8);
+        assert!((warp_translate_frequency_controls(500.0,350.0,0.0,350.0,1.0,0.0)-350.0).abs()<1e-8);
+        assert!(warp_translate_frequency_controls(500.0,350.0,-4.001,350.0,1.0,0.0).is_nan());
+        assert!((warp_translate_frequency_affine(250.0,500.0,1.0,0.0,-1.0)-750.0).abs()<1e-8);
     }
     #[test]
     fn c_abi_works() {
