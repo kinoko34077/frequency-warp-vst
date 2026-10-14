@@ -53,7 +53,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.equal(await page.$eval("#invert",el=>el.value),"0");
     assert.equal(await page.$eval("#engine",el=>el.value),"1","B must be initial manual engine");
-    assert.equal(await page.$eval("#mode",el=>el.value),"blend");
+    assert.equal(await page.$eval("#mode",el=>el.value),"reciprocal");
+    assert.equal(await page.$eval("#mode",el=>[...el.options].some(x=>x.value==="blend")),false,"simple blend must not be user-selectable");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
@@ -178,6 +179,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     assert.match(await page.$eval("#listening-guide",el=>el.textContent),/500Hz →/);
     assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/線形移動量/);
+    // Signed physical slope and 0-convergence are genuine live WASM parameters.
+    await page.$eval("#axis-pivot-value",el=>{el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    for(const [slope,expected] of [[-1,200],[0,350],[-4,250],[1,500]]){
+      await page.$eval("#axis-slope-value",(el,v)=>{el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));},slope);
+      assert.equal(await page.$eval("#axis-slope-value",el=>Number(el.value)),slope);
+      assert.match(await page.$eval("#listening-guide",el=>el.textContent),
+        new RegExp("500Hz → "+expected+"Hz"),"signed slope geometry should reach shared Rust graph");
+    }
+    // Information is hidden until requested, available by pointer and keyboard.
+    const info=await page.$(".shape-control .info-tip summary");
+    assert.ok(info);
+    await info.click();
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
+    assert.match(await page.$eval(".shape-control .info-body",el=>el.textContent),/反転/);
+    await info.press("Enter");
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false);
+    assert.equal(await page.$eval("#crusher-bits",el=>el.closest(".fx-item").textContent.includes("量子化")),true);
+    assert.equal(await page.$eval("#crusher-hold",el=>el.closest(".fx-item").textContent.includes("打刻速度")),true);
     await page.click("#slope-one");
     assert.equal(await page.$eval("#axis-slope",el=>Number(el.value)),1);
     await page.$eval("#axis-shift-value",el=>{
@@ -234,8 +253,6 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.select("#mode","reciprocal");
     assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/反転固定点.*Hz/);
     assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/折返し点がありません/);
-    await page.select("#mode","blend");
-    assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/補間率.*%/);
     await page.select("#mode","fold-h");
     assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
     assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
