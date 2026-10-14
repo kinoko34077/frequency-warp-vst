@@ -505,3 +505,32 @@ suspension, audio focus/ducking, or an actual physical iPhone. WebKit
 bug reports describe AudioContext suspended/silent in background even
 when JS reports running; therefore this mitigates a proven host-level
 double-route behavior, and does NOT guarantee iOS background continuity.
+
+## Issue #65 U3 — actual single-rail dual-thumb UI (2026-10-14)
+
+In the original user wording, "デュアルサムスライダー" means **ONE
+horizontal rail with TWO individually draggable thumbs**, not separate
+parallel progress bars. The 0–100% `合成率` (upper thumb, green) and
+`反射率` (lower thumb, amber) now share one scale and rail; the
+numbers are independently editable in place to 0.001% precision.
+They do **not** act as lower/upper limits and may cross without swapping
+their meanings. The underlying two native range elements remain
+keyboard/tab/screen-reader accessible. `dual-thumb.mjs` exclusively
+owns pointerdown/move/up, pointer capture and nearest 2D-thumb hit tests,
+even where the native inputs overlap on touch-enabled iOS browsers.
+It dispatches native `input` events, so the existing settings state,
+shared Rust/WASM AudioWorklet live setters, WAV export and common
+graph oracle all use exactly the same parameters as numeric editing.
+Numeric changes and the factory reset also refresh thumb positions.
+
+The existing frequency `L/H` source-band lower/upper bound pair has
+the **same shared-rail gesture controller** and keeps the previous
+ordering and clamping rules. Those bounds have a meaningful interval;
+reflection controls are independent amounts. Pitch curvature, Move,
+Mix, A detail vs reverb, Crusher Hz vs bit depth, Ring carrier and
+rational ratios are different physical variables, so joining them
+into a double-ended rail would be semantically deceptive.
+Gesture acceptance uses *actual browser Pointer Events* including
+pointer capture and crossing, keyboard arrows, live Worklet parameter
+acknowledgment, and 390px mobile viewport/no-overflow checks.
+Automated Chrome is not direct certification on a physical iPhone.
