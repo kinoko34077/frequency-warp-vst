@@ -700,3 +700,46 @@ test("A mapped residual preserves stereo level ratio and does not duplicate unsh
       "A mapped residual must not leave substantial original unshifted 480Hz ghost");
   }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
 });
+
+test("Ring Mod affects only source L/H and preserves actual out-of-band Pass on Rust/WASM",async()=>{
+  const e=await load(),rate=8192,n=8192;
+  const src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  const input=Float32Array.from({length:n},(_,i)=>
+    .45*Math.cos(2*Math.PI*400*i/rate)+.32*Math.cos(2*Math.PI*1600*i/rate));
+  const magnitude=(signal,f)=>{
+    let re=0,im=0;
+    for(let i=2400;i<7300;i++){
+      const phase=2*Math.PI*f*i/rate;
+      re+=signal[i]*Math.cos(phase);im-=signal[i]*Math.sin(phase);
+    }
+    return Math.hypot(re,im);
+  };
+  try{
+    new Float32Array(e.memory.buffer,src,n).set(input);
+    const render=(outside,ring)=>{
+      const rc=e.warp_stream_render_f32_a_quality_ext(
+        src,dst,n,1,rate,20,1200,1,0,1,0,outside,1,1,0,256,0,4,
+        0,1,0,350,ring,0,350,1,20,0,1,0);
+      assert.equal(rc,0);
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,n));
+    };
+    const off=render(1,0),on=render(1,1),kill=render(0,1);
+    const m=(a,f)=>magnitude(a,f);
+    const rows={
+      passthrough1600:m(on,1600)/m(off,1600),
+      sideband144:m(on,144)/m(off,400),
+      sideband656:m(on,656)/m(off,400),
+      unexpectedOutsideSidebands:(m(on,1344)+m(on,1856))/m(off,1600),
+      outsideKill:m(kill,1600)/m(off,1600)
+    };
+    console.log("RING_BAND_RUST_WASM "+JSON.stringify(rows));
+    assert.ok(rows.passthrough1600>.94&&rows.passthrough1600<1.06,
+      "out-of-band original should pass ring unchanged "+JSON.stringify(rows));
+    assert.ok(rows.sideband144>.3&&rows.sideband656>.3,
+      "in-band mapped carrier must create two sidebands "+JSON.stringify(rows));
+    assert.ok(rows.unexpectedOutsideSidebands<.10,
+      "source outside L/H must not ring sidebands "+JSON.stringify(rows));
+    assert.ok(rows.outsideKill<.06,
+      "Kill must also suppress outside source "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
