@@ -6,13 +6,16 @@ Issue: https://github.com/kinoko34077/frequency-warp-vst/issues/83
   Controller F8C2D41E84B9475BB5DC4E2FB948A0D3.
 - Exactly 128 stable VST3 host ParamIDs: 0 Wet, 1 Bypass, 2 Lower,
   3 Upper, 4 Invert, 5 Curvature, 6 Shift, 7 Pivot, 8 Slope,
-  9 Reflection, 10 Ring, 11 Crusher, 12 Quality; 13..63 reserved;
+  9 Reflection Synthesis, 10 Ring Enable, 11 Crusher Enable, 12 FFT Quality;
+  **13..33 distinct additional live DSP controls**, 34..63 reserved;
   64..127 generic engine slots **unbound** pending semantic mapping.
+  See [complete host-visible binding table](PARAMETER_AUTOMATION.md).
 - Supports exactly mono -> mono and stereo -> stereo; host f32/f64;
   variable blocks, in-place, zero-sample parameter events, state save/restore.
 - Signal path deliberately delayed dry/identity by exactly 4095 samples
   for all modes, even bypass. Fixed-PDC Missing Engine fallback.
-  Host parameters do NOT currently affect audio: no module engine installed.
+  Host parameter **automation and project-state values** are received but
+  do NOT currently affect audio: no module engine is attached yet.
 - No native runtime, no .fwengine file loader in VST3, no module hot-swap,
   no dedicated plugin editor/drag-and-drop. These are S3/S4 gates.
 - Compile/Steinberg validator in Windows CI is not FL Studio validation,
@@ -24,6 +27,7 @@ Visual Studio 2022 and CMake 3.25+:
     cmake -S vst3 -B build/vst3 -G "Visual Studio 17 2022" -A x64 -DFW_VST3_SDK_DIR=C:/dev/vst3sdk -DSMTG_CREATE_PLUGIN_LINK=OFF -DSMTG_RUN_VST_VALIDATOR=ON
     cmake --build build/vst3 --config Release --target FrequencyWarpShell
     cmake --build build/vst3 --config Release --target fw_shell_delay_test
+    cmake --build build/vst3 --config Release --target fw_shell_automation_test
     ctest --test-dir build/vst3 -C Release --output-on-failure
 
 This repository does not vendor the Steinberg SDK. SDK terms remain governed
