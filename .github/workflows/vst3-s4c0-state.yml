@@ -1,0 +1,30 @@
+name: S4c0 VST3 saved engine state codec
+on:
+  pull_request:
+    paths:
+      - 'vst3/src/engine_project_state.h'
+      - 'vst3/tests/state/**'
+      - '.github/workflows/vst3-s4c0-state.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'vst3/src/engine_project_state.h'
+      - 'vst3/tests/state/**'
+      - '.github/workflows/vst3-s4c0-state.yml'
+permissions:
+  contents: read
+jobs:
+  portable-codec:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure standalone engine state codec tests
+        run: cmake -S vst3/tests/state -B _state_build -DCMAKE_BUILD_TYPE=Release
+      - name: Compile C++17
+        run: cmake --build _state_build --config Release
+      - name: Run v1/v2 serialization and corruption tests
+        run: ctest --test-dir _state_build -C Release --output-on-failure
