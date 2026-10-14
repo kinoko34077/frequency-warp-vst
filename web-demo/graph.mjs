@@ -86,6 +86,10 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   const crushing=settings.crusherBits>0&&(settings.crusherHold>1||settings.crusherHold===0);
   const effectiveHz=settings.crusherHold>0?
     settings.sampleRate/settings.crusherHold:0;
+  canvas.dataset.crusherSpectrum=crushing?
+    (effectiveHz===0?"dc-frozen":"linear-zoh-images-before-quantizer"):"none";
+  canvas.dataset.crusherUpdateHz=String(effectiveHz);
+  canvas.dataset.crusherMirrorHz=String(effectiveHz/2);
   if(crushing){
     // Horizontal mirror boundaries in the ACTUAL output-frequency axis:
     // the fundamental Nyquist reflection is y=F_hold/2.
