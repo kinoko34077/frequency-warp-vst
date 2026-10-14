@@ -537,3 +537,11 @@ double-route behavior, and does NOT guarantee iOS background continuity.
 - Frequency limits L/H and Engine A minimum selection accept strictly positive `0.001Hz` to `20000Hz` (while H remains greater than L and below stream Nyquist). The sliders have a continuous logarithmic 0.001–20Hz segment and an existing 20–20000Hz segment; default L=20Hz and default A floor=20Hz are preserved. Precise typed input is retained for DSP rather than rounded to the gesture track.
 - **Boundary:** DC=0Hz input/output is *not* produced as a periodic partial, and the finite FFT window/sampling rate determine the smallest actually distinguishable audio frequency even if a positive L near zero is accepted. The Web graph is a display-window model and is not a guarantee that millihertz components are audible or plotted at finite resolution.
 - Rust shared WASM/native, Chrome UI and WAV path use a common reflection oracle; 0Hz-negative signed fold-out remains reflected and attenuated exactly once. Older superseded prose about any descending inversion being reflected no longer describes accepted behavior.
+
+## 2026-10-14 — shape Hz marker, opt-in virtual root ↔ pivot, typed parameter units (#77 candidate)
+
+The main `変換形状` row once again shows its input-domain hinge/reference in Hz without having to open ⓘ. Fold L/H labels say `L折返し/H折返し`; Reciprocal says `固定点` (a fixed point, not a physical fold).
+
+The `🔗 H ↔ 起点` toggle adjacent to the always-visible virtual fundamental readout links `H=rF/m` to physical pivot `P`. F/m/r edits then move the pivot; editing the pivot solves `F=mP/r` with the existing 20–2000Hz F bounds. OFF retains independent controls; reset turns the link off. This does not connect n/q to unrelated DSP sliders and does not enable Rational Layout or Ring.
+
+See [Common parameter and unit contract](../docs/PARAMETER_BINDING_SPEC.md) for the staged design to accept Hz, note+cents and slider % on compatible frequency controls, ratio/semitone/cents on pitch ratios, and only meaningful types on fraction/count/axis-coordinate knobs. The first pure codec and Node regressions exist in `parameter-units.mjs`; **global unit-selector UI migration is not yet implemented** and must not be represented as published.
