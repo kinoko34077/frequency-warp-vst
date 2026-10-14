@@ -33,6 +33,9 @@ public:
     }
     // Request correlation is a single atomic record, so id+outcome cannot
     // be mismatched during concurrent UI polls. Controller serializes loads.
+    uint64_t lastCompletedWord() const noexcept {
+        return lastCompleted_.load(std::memory_order_acquire);
+    }
     uint64_t lastCompletedId() const noexcept {
         return lastCompleted_.load(std::memory_order_acquire)>>1;
     }
