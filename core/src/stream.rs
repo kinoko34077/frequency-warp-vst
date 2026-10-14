@@ -619,6 +619,17 @@ impl Stream {
         // rational pitch/Hz placement. Those shifts must remain audible.
         base
     }
+    fn resolve_all(&self,f:f64,target:f64,step:f64,anchor:f64)->Option<(f64,f64)>{
+        let (hz,legacy)=self.resolve_zero(target,step)?;
+        if self.zero_mode!=3{return Some((hz,legacy));}
+        let d=reflection::distance(f,target,self.settings,self.rational_enabled,
+            self.pitch_ratio,self.shift_hz,anchor,self.axis_pivot,
+            self.axis_slope,self.axis_reference,self.axis_shift);
+        if d<=0.0{return Some((hz,1.0));}
+        let g=reflection::gain(d,self.zero_reflect_gain,
+            self.zero_reflect_decay,self.axis_reference);
+        if g>0.0{Some((hz,g))}else{None}
+    }
     fn resolve_zero(&self,target:f64,step:f64)->Option<(f64,f64)>{
         if !target.is_finite(){return None;}
         let (frequency,gain)=if target<0.0 {
