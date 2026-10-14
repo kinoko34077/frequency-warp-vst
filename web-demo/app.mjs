@@ -6,7 +6,7 @@ import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
-import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
+import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -33,8 +33,19 @@ const hzFromScale=value=>{
     MIN_POSITIVE_HZ*Math.exp(Math.log(20/MIN_POSITIVE_HZ)*x/LOW_BREAK):
     20*Math.exp(Math.log(1000)*(x-LOW_BREAK)/(1000-LOW_BREAK));
 };
-const pivotFromScale=value=>Number(value)<=0?0:20*Math.exp(Math.log(1000)*(Number(value)-1)/999);
-const scaleFromPivot=hz=>hz<=0?0:1+Math.round(999*Math.log(Math.max(20,hz)/20)/Math.log(1000));
+// 0Hz is its own pivot position; the positive track covers 0.001Hz..20kHz
+// with a smooth break at 20Hz to avoid losing sub-bass harmonic links.
+const pivotFromScale=value=>{
+  const x=clamp(Number(value),0,1000);
+  if(x<=0)return 0;
+  if(x<=200)return .001*Math.exp(Math.log(20000)*(x-1)/199);
+  return 20*Math.exp(Math.log(1000)*(x-200)/800);
+};
+const scaleFromPivot=hz=>{
+  if(hz<=0)return 0;
+  if(hz<=20)return 1+Math.round(199*Math.log(Math.max(.001,hz)/.001)/Math.log(20000));
+  return 200+Math.round(800*Math.log(Math.min(20000,hz)/20)/Math.log(1000));
+};
 const scaleFromHz=hz=>{
   const f=clamp(hz,MIN_POSITIVE_HZ,20000);
   return f<=20?
@@ -81,6 +92,20 @@ function bounds(changed=""){
   rail.style.setProperty("--hi",($("#high").value/10)+"%");
   dualControls.bounds?.sync();
   return state.effective;
+}
+const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
+function syncHarmonicToPivot(){
+  const {F,m,r}=harmonicParameters(),H=r*F/m;
+  state.precise["axis-pivot"]=H;
+  $("#axis-pivot").value=String(scaleFromPivot(H));
+  return H;
+}
+function syncPivotToHarmonic(){
+  const P=scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
+  const result=setFundamentalFromPivot(P);
+  if(!result)return;
+  state.precise["axis-pivot"]=result.H;
+  $("#axis-pivot").value=String(scaleFromPivot(result.H));
 }
 function settings(){
   const {low,high}=bounds();
@@ -165,9 +190,9 @@ function labels(id=""){
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
   const modeCode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
   const hz=state.mathCore?.warp_invert_reference_frequency?.(p.low,p.high,p.curvature,p.invert,modeCode);
-  $("#invert-reference-hz").textContent=p.mode==="blend"?"補間率 "+displayNumber(p.invert*100)+"%":
-    (p.mode==="reciprocal"?"反転固定点 ":p.mode==="fold-l"?"L側折返し ":"H側折返し ")+
-    (Number.isFinite(hz)?displayNumber(hz)+" Hz":"計算中");
+  $("#invert-reference-hz").textContent=p.mode==="blend"?"反転 "+displayNumber(p.invert*100)+"%":
+    (p.mode==="reciprocal"?"固定点 ":p.mode==="fold-l"?"L折返し ":"H折返し ")+
+    (Number.isFinite(hz)?displayNumber(hz)+" Hz":"—");
   const pText=displayNumber(p.curvature);
   $("#curvature-log-formula").textContent="p="+pText+" · S₀(f)=ln(f/L)、Sₚ(f)=((f/L)ᵖ−1)/p (p>0)。移動量は p=0: f×eᵘ、p=1: f+uR Hz（他の傾き/起点設定は別）。";
   $("#axis-explainer").textContent=p.curvature===0?
@@ -649,6 +674,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     // kept separately and sent to Rust instead of reading snapped range.value.
     state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
+    if(range==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
     if(range==="wet"){labels();tuneWet();drawCurve();}
     else {updateParams(changed);updateEngineInfo();}
   };
@@ -691,7 +717,11 @@ $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
 });
 for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
-  $("#"+name).addEventListener("input",()=>{delete state.precise[name];updateParams(name);updateEngineInfo();});
+  $("#"+name).addEventListener("input",()=>{
+    delete state.precise[name];
+    if(name==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
+    updateParams(name);updateEngineInfo();
+  });
 }
 // Native mobile selectors dispatch CHANGE; do not wait for a slider gesture.
 for(const name of ["mode","outside","quality","overlap","engine"]){
@@ -898,13 +928,14 @@ controls.download.addEventListener("click",()=>{
 // It remains available even when a Rust/DSP module import fails.
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
+    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"532","axis-slope":"1",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
+  $("#harmonic-pivot-link").checked=false;
   $("#engine-auto").checked=false;
   $("#a-min").value="200";$("#a-reverb").value="0";
   $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
@@ -997,7 +1028,16 @@ $("#sine-enabled").addEventListener("change",async()=>{
 });
 window.addEventListener("pagehide",stopSine);
 updateSineLabel();
-attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker,settings);
+$("#harmonic-pivot-link").addEventListener("change",()=>{
+  if(isHarmonicPivotLinked())syncHarmonicToPivot();
+  updateParams("harmonic-pivot-link");updateEngineInfo();
+});
+attachHarmonicPanel(id=>{
+  if(isHarmonicPivotLinked()&&["fundamental","denominator","pitch-ratio"].includes(id)){
+    syncHarmonicToPivot();
+  }
+  updateParams(id);updateEngineInfo();
+},foldPoint,axisMarker,settings);
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});
 // Set only after all interactive controls have registered successfully.
