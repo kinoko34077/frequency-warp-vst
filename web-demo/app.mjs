@@ -450,7 +450,7 @@ async function mediaBridge(player){
     element.srcObject=node.stream;
     await element.play();
     if(state.player!==player){element.pause();return;}
-    player.master.disconnect(state.ctx.destination);
+    if(!element.paused)switchAudioRoute(player,state.ctx,true);
     player.mediaBridge=node;
   }catch{
     try{if(node)player.master.disconnect(node);}catch{}
