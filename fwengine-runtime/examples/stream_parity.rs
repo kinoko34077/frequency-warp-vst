@@ -18,14 +18,23 @@ fn frame_input(start:usize,frames:usize)->Vec<f32>{
     result
 }
 fn native_chunk(stream:&mut Stream,src:&[f32],frames:usize,cut:usize,
-                changed:&mut Settings)->Result<Vec<f32>,Box<dyn Error>>{
+                changed:&mut Settings,geometry_change:bool)->Result<Vec<f32>,Box<dyn Error>>{
     let mut dst=vec![0f32;2*frames];
     let mut pos=0;
     while pos<frames {
         if pos==cut{
-            changed.invert=0.72;
-            changed.curvature=0.35;
-            stream.configure(*changed,0)?;
+            if geometry_change {
+                // Same canonical Web AudioWorklet Stream setter calls:
+                // transform, geometry, reflection amplitude and decay.
+                stream.set_transform(0.4,350.,1,1)?;
+                stream.set_geometry(500.,-0.6)?;
+                stream.set_zero_reflect_gain(0.65)?;
+                stream.set_zero_reflect_decay(0.4)?;
+            }else{
+                changed.invert=0.72;
+                changed.curvature=0.35;
+                stream.configure(*changed,0)?;
+            }
         }
         let end=if pos<cut{cut}else{frames};
         let len=end-pos;
@@ -63,13 +72,21 @@ fn main()->Result<(),Box<dyn Error>>{
     let mut unchanged=Stream::new(48000.,2,dry_settings,0)?;
     for block in 0..BLOCKS{
         let input=frame_input(block*F,F);
-        let cut=if block==64{32}else{F};
+        let cut=if block==64{32}else if block==80{40}else{F};
         let events=if block==64{
             vec![ParamEvent{id:4,offset:32,value:0.72},
                  ParamEvent{id:5,offset:32,value:0.35}]
+        }else if block==80{
+            vec![ParamEvent{id:6,offset:40,value:0.4},
+                 ParamEvent{id:7,offset:40,value:500.0},
+                 ParamEvent{id:8,offset:40,value:-0.6},
+                 ParamEvent{id:9,offset:40,value:0.65},
+                 ParamEvent{id:10,offset:40,value:1.0},
+                 ParamEvent{id:13,offset:40,value:0.4},
+                 ParamEvent{id:18,offset:40,value:1.0}]
         }else{vec![]};
         let actual=wasm.process(&input,F,&events)?;
-        let expected=native_chunk(&mut native,&input,F,cut,&mut native_settings)?;
+        let expected=native_chunk(&mut native,&input,F,cut,&mut native_settings,block==80)?;
         let mut baseline=vec![0.;2*F];
         unchanged.process(&input,&mut baseline,F)?;
         for ((a,b),z) in actual.iter().zip(expected.iter()).zip(baseline.iter()){
@@ -80,7 +97,7 @@ fn main()->Result<(),Box<dyn Error>>{
         assert!(actual.iter().all(|v|v.is_finite()),"bad real WASM audio");
     }
     assert!(power>1e-6,"shared Stream emitted no audio");
-    assert!(after_diff>0.1,"L/H/Invert/Curvature event produced no audible PCM difference");
+    assert!(after_diff>0.1,"canonical spectral and geometric events produced no PCM difference");
     assert!(biggest<0.008,"WASM/native canonical spectral PCM diverged: max={biggest}");
     // A DAW is free to automate L and H independently. Even though each
     // canonical value fits its own range, their combination can be invalid.
@@ -127,10 +144,13 @@ fn main()->Result<(),Box<dyn Error>>{
     let low_output=low_rate.process(&low_input,F,&low_events)?;
     assert!(!low_rate.faulted()&&low_output.iter().all(|v|v.is_finite()),
         "host default above low-rate Nyquist must retain valid 8k DSP");
+    // Reject invalid new geometry values without compromising DSP.
+    assert!(wasm.process(&frame_input(16896,F),F,&[
+        ParamEvent{id:8,offset:0,value:4.1}]).is_err());
     // Unsupported host param (e.g. Gain ID64) MUST fail on actual Stream,
     // while demo Identity/Gain native regression still accepts ID64.
     let buf=frame_input(16384,F);
     assert!(wasm.process(&buf,F,&[ParamEvent{id:64,offset:0,value:0.5}]).is_err());
-    println!("PASS S4a canonical Rust Stream/native Wasmi PCM: 16384 frames, max_error={biggest:.7}, post_event_diff={after_diff:.4}, declared_latency=1023, bad_manifest_rejected");
+    println!("PASS S4b2a native/WASM Stream: 16K PCM, L/H geometry/ring/reflection sample-offset parity max_error={biggest:.7}, changed_diff={after_diff:.4}, latency=1023");
     Ok(())
 }
