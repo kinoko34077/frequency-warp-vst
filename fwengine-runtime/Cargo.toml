@@ -1,0 +1,13 @@
+[package]
+name = "fwengine-runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+wasmi = "=2.0.0"
+fwengine-package = { path = "../fwengine-package" }
+
+[dev-dependencies]
+wat = "1.228.0"
