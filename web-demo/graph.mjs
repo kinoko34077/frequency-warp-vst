@@ -26,9 +26,14 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   }
   ctx.font=(10*ratio)+"px system-ui";ctx.textAlign="center";ctx.textBaseline="top";
   ctx.strokeStyle="#244149";ctx.lineWidth=ratio;
-  const ticks=MAX===20000?[20,5000,10000,15000,20000]:[20,500,1000,1500,2000];
+  const ticks=logAmount>=.5?
+    (MAX===20000?[20,50,100,200,500,1000,2000,5000,10000,20000]:[20,50,100,200,500,1000,2000]):
+    (MAX===20000?[20,5000,10000,15000,20000]:[20,500,1000,1500,2000]);
+  let lastTick=-Infinity;
   for(const value of ticks){
     const xx=x(value),yy=y(value);
+    if(xx-lastTick<27*ratio&&value!==MAX)continue;
+    lastTick=xx;
     ctx.beginPath();ctx.moveTo(xx,top);ctx.lineTo(xx,bottom);
     ctx.moveTo(left,yy);ctx.lineTo(right,yy);ctx.stroke();
     ctx.fillStyle="#9cb7bb";
