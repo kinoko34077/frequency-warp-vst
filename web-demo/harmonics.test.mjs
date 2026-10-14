@@ -110,3 +110,19 @@ test("Ring Mod graph only shows sidebands inside source L/H",()=>{
   assert.deepEqual(mapAtFrequency(1600,params,x=>x).outputs,[1600]);
   assert.deepEqual(mapAtFrequency(400,params,x=>x).outputs,[656,144]);
 });
+
+test("continuous zero reflection gain plots killed/attenuated/full branches without changing positive",()=>{
+  const cfg={low:100,high:1000,curvature:1,invert:0,mode:"blend",
+    outside:"pass",rationalEnabled:true,pitchRatio:1,shiftHz:-700,
+    axisReference:350,axisPivot:350,axisSlope:1,axisShift:0,
+    sampleRate:8192,qualityIndex:0};
+  const mapped=gain=>mapAtFrequency(500,{...cfg,zeroReflect:gain},x=>x,x=>x);
+  assert.equal(mapped(0).outputs.length,0);
+  assert.deepEqual(mapped(.5).outputs,[200]);
+  assert.equal(mapped(.5).reflected,true);
+  assert.equal(mapped(.5).reflectionGain,.5);
+  assert.deepEqual(mapped(1).outputs,[200]);
+  const positive=mapAtFrequency(800,{...cfg,zeroReflect:0},x=>x,x=>x);
+  assert.deepEqual(positive.outputs,[100]);
+  assert.equal(positive.reflected,false);
+});
