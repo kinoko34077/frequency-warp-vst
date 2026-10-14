@@ -43,10 +43,10 @@
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <div class="control-grid">
           <div class="control"><div class="control-heading"><label for="invert">反転</label><input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="invert-value の数値"></div>
-            <input id="invert" type="range" min="0" max="1" step=".005" value="0"><div class="ends"><span>通常</span><span>反転</span></div>
+            <input id="invert" type="range" min="0" max="1" step=".005" value="0"><div class="ends"><span>通常</span><strong id="invert-reference-hz" class="invert-hz-marker" aria-live="polite">補間率 0%</strong><span>反転</span></div>
           </div>
           <div class="control"><div class="control-heading"><label for="curvature">移動の尺度</label><input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="curvature-value の数値"></div>
-            <input id="curvature" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div>
+            <input id="curvature" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div><small class="slider-formula" id="curvature-log-formula" aria-live="polite">p=0: S₀(f)=ln(f/L), p&gt;0: Sₚ(f)=((f/L)ᵖ−1)/p。移動量は p=0 で倍率、p=1 でHz</small>
           </div>
           <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.001" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
             <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
@@ -116,7 +116,7 @@
         <div class="curve-panel">
           <canvas id="curve" tabindex="0" role="button" aria-label="周波数表示を2kHzと20kHzで切り替える"></canvas>
         </div>
-        <div class="graph-scale"><label for="graph-log">表示軸</label><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div>
+        <div class="graph-scale"><label for="graph-log">表示軸</label><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div><p id="graph-log-formula" class="slider-formula" aria-live="polite">α=1: ln(f/20)/ln(M/20)。Mは表示上限</p>
         <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音</span><span id="crusher-alias-legend" hidden>┈ 間引きによる折返し候補（理論位置）</span></div>
         <p id="crusher-alias-note" class="graph-note" hidden></p>
         <p class="graph-note">タップ：2kHz／20kHz</p>
@@ -190,10 +190,10 @@
     </fieldset>
     <fieldset><legend>反転と帯域</legend>
       <div class="settings-pair">
-        <div><label for="mode">反転の進行</label><select id="mode"><option value="blend" selected>単純補間</option><option value="fold-l">L側で折返し</option><option value="fold-h">H側で折返し</option></select></div>
+        <div><label for="mode">反転の進行</label><select id="mode"><option value="blend" selected>単純補間</option><option value="reciprocal">逆数的・幾何補間</option><option value="fold-l">L側で折返し</option><option value="fold-h">H側で折返し</option></select></div>
         <div><label for="outside">L/Hの外側</label><select id="outside"><option value="pass" selected>通過する</option><option value="kill">除去する</option></select></div>
       </div>
-      <p class="setting-help">単純補間は元の音から反転後へ滑らかに混ぜます。折返しは途中で曲線が折れます。L/Hの外側は、元の音を通すか消すかを選びます。</p>
+      <p class="setting-help">単純補間は周波数の加重平均。逆数的・幾何補間は f′=f^(1−a)×I(f)^a（Iは選択尺度での完全反転）、中間では周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点ができます。反転スライダー中央のHzは各方式の折れ点／反転固定点を示します。</p>
       <label for="zero-mode">0Hz以下へ移動した成分</label><select id="zero-mode"><option value="0">Reflect / 折返し</option><option value="1">Kill / 除去</option><option value="2">Fade / 減衰（実験版）</option></select><p class="setting-help">折返し：負の周波数を正へ戻す。除去：消す。減衰：0Hz付近から弱くする実験設定です。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
