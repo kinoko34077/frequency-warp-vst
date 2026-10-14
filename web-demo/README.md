@@ -250,3 +250,30 @@ in a small independent `entry-controls.js` script, and remains available
 even when the DSP module graph cannot initialize. An explicit error is
 displayed if the main application never boots. Chrome touch simulation
 and live HTTP/browser checks do not constitute a physical iPhone test.
+
+## 2026-10-14 audio replacement recoverability and WAV audit (#46)
+
+- **Audio timeline audit — NOT A BUG.** The native Rust `Stream::latency()`
+  is `fftSize - 1` (1023/2047/4095 frames), and the realtime AudioWorklet
+  delays its Dry output by that many frames. However, importantly, Rust's
+  `warp_stream_render_f32_a_band_ext` **compensates that latency before WAV
+  export** by discarding the leading delayed samples and flushing the
+  remaining tail with zero input. Thus the existing offline samplewise
+  `mixWet(source, processed, wet)` is correct and **must not delay Dry again**.
+  A temporary mistaken alignment change on the unmerged audit branch was
+  reverted after checking the complete native Rust offline render.
+  Automated Chrome verifies the real downloadable WAV at 0%, 50%, 100% Wet
+  against samplewise PCM midpoint, without falsely assuming a leading
+  silence section.
+- **Confirmed recoverability bug corrected.** Previously any failed file
+  replacement (invalid / too short / too large) discarded the currently
+  loaded track, rendered WAV and transport, even though the replacement
+  was never usable. Now the new file is decoded and validated independently
+  first. Failure leaves the previous audio and its output accessible with
+  explicit error feedback; success atomically commits the new file and
+  resets the previous seek and render. Concurrent import tokens prevent
+  stale decode operations overriding a newer selection.
+- Test acceptance uses a 390px mobile Chrome/public Pages sequence
+  valid WAV → too-short WAV → valid WAV, plus real offline WAV 0/50/100
+  byte-level tests and the existing Rust/WASM live streaming tests. Physical
+  iPhone hardware and subjective sound differences remain UNVERIFIED.

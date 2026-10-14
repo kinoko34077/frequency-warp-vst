@@ -10,8 +10,8 @@ import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import puppeteer from "puppeteer-core";
 
-function shortWav(){
-  const rate=16000,frames=rate,wav=Buffer.alloc(44+frames*2);
+function shortWav(seconds=1){
+  const rate=16000,frames=Math.max(1,Math.round(rate*seconds)),wav=Buffer.alloc(44+frames*2);
   wav.write("RIFF",0);wav.writeUInt32LE(wav.length-8,4);
   wav.write("WAVE",8);wav.write("fmt ",12);wav.writeUInt32LE(16,16);
   wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);
@@ -83,6 +83,69 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       !document.querySelector("#play-wet").disabled &&
       document.querySelector("#file-meta").textContent.includes("picker.wav"),
       {timeout:23000});
+    // Failed replacement must leave the previously decoded sample ready to
+    // play and export, without forcing the user to re-select it.
+    const bad=join(root,"too-short.wav");await writeFile(bad,shortWav(.01));
+    await (await page.$("#audio-file")).uploadFile(bad);
+    await page.waitForFunction(()=>
+      document.querySelector("#status").textContent.includes("音声を開けませんでした"),{
+      timeout:30000
+    });
+    assert.match(await page.$eval("#file-meta",el=>el.textContent),/picker\.wav/);
+    assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
+    assert.equal(await page.$eval("#render",el=>el.disabled),false);
+    assert.match(await page.$eval("#status",el=>el.textContent),/以前の音声は保持/);
+    // Replacing with another valid file still succeeds after the failure.
+    await (await page.$("#audio-file")).uploadFile(wav);
+    await page.waitForFunction(()=>
+      document.querySelector("#status").textContent.includes("読み込み完了。再生できます。"),{
+      timeout:30000
+    });
+    assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
+    // The Rust offline renderer has ALREADY removed stream lookahead and
+    // flushed the tail. The saved WAV must therefore mix Dry and processed
+    // samplewise, unlike the latency-compensated *realtime* AudioWorklet.
+    await page.click(".offline-tool summary");
+    await page.click("#render");
+    await page.waitForFunction(()=>
+      !document.querySelector("#download").disabled,{timeout:30000});
+    await page.evaluate(()=>{
+      window.__capturedWavs=[];
+      const native=URL.createObjectURL.bind(URL);
+      URL.createObjectURL=blob=>{
+        window.__capturedWavs.push(blob);return native(blob);
+      };
+    });
+    for(const wet of [0,.5,1]){
+      await page.$eval("#wet",(el,v)=>{
+        el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));
+      },wet);
+      await page.click("#download");
+    }
+    const rendered=await page.evaluate(async()=>{
+      const blobs=window.__capturedWavs;
+      const views=await Promise.all(blobs.map(async blob=>new DataView(await blob.arrayBuffer())));
+      if(views.length!==3)return {exports:views.length};
+      const rate=views[0].getUint32(24,true);
+      const frames=(views[0].byteLength-44)/2;
+      let error=0,distinct=false,nonzero=0;
+      for(let i=0;i<frames;i++){
+        const offset=44+i*2;
+        const dry=views[0].getInt16(offset,true),mid=views[1].getInt16(offset,true),
+          wet=views[2].getInt16(offset,true);
+        error=Math.max(error,Math.abs(mid-(dry+wet)/2));
+        if(Math.abs(dry-wet)>100)distinct=true;
+        nonzero=Math.max(nonzero,Math.abs(mid));
+      }
+      return {exports:views.length,rate,frames,error,distinct,nonzero};
+    });
+    assert.equal(rendered.exports,3,"Wet 0, 50 and 100% must each export a WAV");
+    assert.equal(rendered.frames,rendered.rate,
+      "one-second WAV length must follow the decoded AudioContext rate: "+JSON.stringify(rendered));
+    assert.ok(rendered.error<=3,
+      "actual WAV Wet 50% is not an aligned samplewise mix: "+JSON.stringify(rendered));
+    assert.ok(rendered.distinct&&rendered.nonzero>100,
+      "real dry and wet outputs must not be trivial silence: "+JSON.stringify(rendered));
     assert.deepEqual(errors,[],"No missing module/asset or JavaScript runtime errors");
     if(!liveUrl){
       // Deliberately fail a large module import. Independent entry-controls.js

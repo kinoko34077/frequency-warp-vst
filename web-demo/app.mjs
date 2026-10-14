@@ -15,7 +15,7 @@ const controls={
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
-  qualityIndex:0,settingsRevision:0,name:"audio",processing:false,
+  qualityIndex:0,settingsRevision:0,name:"audio",fileMeta:"音声未選択",processing:false,
   precise:Object.create(null),
   effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0
 };
@@ -662,15 +662,13 @@ async function decodeFileWithoutPlayback(file,token){
 async function load(file){
   if(!file)return;
   const token=++state.loadToken;
+  const previousReady=Boolean(state.dry);
+  // Never discard the current song merely because a *replacement* failed.
+  // Decode/validate into local state, then commit only after full success.
   try{
-    await stop();
-    if(token!==state.loadToken)return;
-    if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
-    state.offline=null;state.decoded=null;state.dry=null;state.seek=0;
-    for(const node of [controls.dry,controls.wet,controls.render,controls.download])node.disabled=true;
     if(file.size>75_000_000)throw Error("最大75MBです");
-    $("#file-meta").textContent=file.name+" · 読み込み中";
-    message("音声を開いています…");
+    $("#file-meta").textContent=file.name+" · 読み込み中"+(previousReady?"（現在の音声は保持）":"");
+    message("音声を開いています…"+(previousReady?" 現在の音声はそのまま使えます。":""));
     const data=await decodeFileWithoutPlayback(file,token);
     if(token!==state.loadToken||!data)return;
     const count=Math.min(2,data.numberOfChannels);
@@ -678,17 +676,30 @@ async function load(file){
     if(length<4096)throw Error("短すぎる音声です");
     const dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice(0,length));
     if(token!==state.loadToken)return;
-    state.dry=dry;state.decoded={sampleRate:data.sampleRate};
+
+    // Atomic replacement boundary: old playable audio and completed offline
+    // WAV survive until the new source is guaranteed to be usable.
+    await stop();
+    if(token!==state.loadToken)return;
+    if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
+    if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
+    state.offline=null;state.decoded={sampleRate:data.sampleRate};
+    state.dry=dry;state.seek=0;state.lastStats=null;
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
-    $("#file-meta").textContent=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
+    state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
+    $("#file-meta").textContent=state.fileMeta;
     labels("high");drawCurve();drawAudio();refreshStatusSeek();
-    controls.dry.disabled=false;controls.wet.disabled=false;controls.render.disabled=false;
+    controls.dry.disabled=false;controls.wet.disabled=false;
+    controls.stop.disabled=true;
+    controls.render.disabled=false;controls.download.disabled=true;
+    $("#progress").value=0;
     message("読み込み完了。再生できます。");
   }catch(error){
     if(token!==state.loadToken)return;
-    $("#file-meta").textContent="読み込み失敗（ファイルを選び直せます）";
-    message("音声を開けませんでした: "+error.message,"error");
+    $("#file-meta").textContent=previousReady?state.fileMeta:"読み込み失敗（ファイルを選び直せます）";
+    message("音声を開けませんでした: "+error.message+
+      (previousReady?"。以前の音声は保持しています。":""),"error");
   }
 }
 
@@ -717,6 +728,7 @@ controls.render.addEventListener("click",()=>{
   }
   state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;message("WAV書出し用オフライン処理中（試聴とは独立）…");
+  const renderSettings=settings();
   const worker=new Worker(new URL("./processor.worker.mjs",import.meta.url),{type:"module"});
   state.offlineWorker=worker;
   worker.onmessage=({data})=>{
@@ -734,13 +746,13 @@ controls.render.addEventListener("click",()=>{
     }
   };
   worker.onerror=e=>{
+    if(state.offlineWorker!==worker)return;
     controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
     message("オフライン処理失敗: "+e.message,"error");
   };
   const copies=state.dry.map(c=>new Float32Array(c));
   worker.postMessage({
-    type:"process",channels:copies,sampleRate:state.decoded.sampleRate,settings
-      :settings()
+    type:"process",channels:copies,sampleRate:state.decoded.sampleRate,settings:renderSettings
   },copies.map(c=>c.buffer));
 });
 function makeWav(channels,rate){
