@@ -2,6 +2,7 @@
 // Native Wasmi is NEVER called from the audio thread. Actual package loading is S3b4-B.
 #include "delay.h"
 #include "async_pcm_mailbox.h"
+#include "native_engine_abi.h"
 #include "parameter_registry.h"
 #include "base/source/fstring.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
@@ -56,6 +57,8 @@ public:
     tresult PLUGIN_API initialize(FUnknown* context) override {
         auto r=AudioEffect::initialize(context);
         if(r!=kResultOk)return r;
+        // Static Rust interpreter ABI handshake on host lifecycle, NEVER RT.
+        if(fw_native_abi_major()!=1u)return kResultFalse;
         addAudioInput(STR16("Audio In"),SpeakerArr::kStereo);
         addAudioOutput(STR16("Audio Out"),SpeakerArr::kStereo);
         return kResultOk;
