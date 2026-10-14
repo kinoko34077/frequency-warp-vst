@@ -102,6 +102,42 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       timeout:30000
     });
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
+    // Inspect real downloadable PCM, not merely Rust helper outputs. At Wet
+    // 50%, the first 800 frames are pre-STFT latency. They must be silent
+    // because BOTH processed and dry branches share the same timeline.
+    await page.$eval("#wet",el=>{
+      el.value=".5";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click(".offline-tool summary");
+    await page.click("#render");
+    await page.waitForFunction(()=>
+      !document.querySelector("#download").disabled,{timeout:30000});
+    await page.evaluate(()=>{
+      window.__capturedWav=null;
+      const native=URL.createObjectURL.bind(URL);
+      URL.createObjectURL=blob=>{
+        window.__capturedWav=blob;return native(blob);
+      };
+    });
+    await page.click("#download");
+    const rendered=await page.evaluate(async()=>{
+      const blob=window.__capturedWav;
+      if(!blob)return {hasBlob:false};
+      const data=new DataView(await blob.arrayBuffer());
+      const first=800,windowStart=2048,windowEnd=Math.min(5500,(data.byteLength-44)/2);
+      let startupPeak=0,laterPeak=0;
+      for(let i=0;i<first;i++)startupPeak=Math.max(startupPeak,
+        Math.abs(data.getInt16(44+2*i,true)));
+      for(let i=windowStart;i<windowEnd;i++)laterPeak=Math.max(laterPeak,
+        Math.abs(data.getInt16(44+2*i,true)));
+      return {hasBlob:true,startupPeak,laterPeak,frames:(data.byteLength-44)/2};
+    });
+    assert.ok(rendered.hasBlob&&rendered.frames===16000,
+      "actual WAV export must produce the full selected clip: "+JSON.stringify(rendered));
+    assert.ok(rendered.startupPeak<500,
+      "offline 50%-Wet dry/wet timing mismatch leaked undelayed original at file start: "+JSON.stringify(rendered));
+    assert.ok(rendered.laterPeak>100,
+      "actual WAV output must retain audible signal after latency: "+JSON.stringify(rendered));
     assert.deepEqual(errors,[],"No missing module/asset or JavaScript runtime errors");
     if(!liveUrl){
       // Deliberately fail a large module import. Independent entry-controls.js
