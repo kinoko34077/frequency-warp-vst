@@ -34,6 +34,7 @@ jobs:
         run: |
           cmake --build _build/vst3 --config Release --target fw_shell_delay_test --parallel 2
           cmake --build _build/vst3 --config Release --target fw_shell_automation_test --parallel 2
+          cmake --build _build/vst3 --config Release --target fw_swap_mailbox_test --parallel 2
           ctest --test-dir _build/vst3 -C Release --output-on-failure
       - name: Confirm native VST3 bundle exists without publishing
         shell: pwsh
