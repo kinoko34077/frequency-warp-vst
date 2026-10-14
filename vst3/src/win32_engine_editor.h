@@ -170,10 +170,9 @@ private:
         if(!poll_)return;
         const auto state=poll_();
         if(!state.known)return;
-        if(history_.awaiting() && state.state==0 &&
-           state.completedId!=history_.pendingId()){
-            history_.cancel();
-            setStatus(L"Host worker stopped before engine activation.");
+        if(state.state==0){
+            if(history_.awaiting())history_.cancel();
+            setStatus(L"Host worker stopped. Select or reload engine when active.");
             return;
         }
         if(history_.awaiting() && state.completedId==history_.pendingId()){
@@ -181,7 +180,9 @@ private:
             if(outcome==VerifiedEngineHistory::Outcome::Accepted){
                 if(backButton_)EnableWindow(backButton_,
                     history_.previous().bytes.empty()?FALSE:TRUE);
-                setStatus(L"Worker accepted engine. Active (verified).");
+                setStatus(state.state==4
+                   ? L"Worker accepted engine. Active (verified)."
+                   : L"Engine accepted but inactive/faulted; Dry fallback.");
             }else if(outcome==VerifiedEngineHistory::Outcome::Rejected){
                 setStatus(L"Module rejected; last valid engine unchanged.");
             }
