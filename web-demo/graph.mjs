@@ -1,4 +1,5 @@
 import {DISPLAY_MIN,DISPLAY_MAX,graphSegments} from "./harmonics.mjs";
+import {aliasFrequency} from "./crusher-visual.mjs";
 // Geometry only. Live mapping is supplied by the SAME compiled Rust/WASM
 // function warp_map_frequency used by native streaming DSP.
 
@@ -89,6 +90,34 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
       active=true;lastInside=point.inside;lastY=yy;
     }
     if(active)ctx.stroke();
+  }
+  // A bitcrusher uses zero-order sample hold at Fs/hold, NOT a unique
+  // f -> f' transformation. Plot baseband alias location only; frequencies
+  // and opacity do not assert actual spur magnitude or quantisation noise.
+  if(settings.crusherBits>0&&settings.crusherHold>1){
+    const effectiveHz=settings.sampleRate/settings.crusherHold;
+    for(let channel=0;channel<(settings.ringEnabled?2:1);channel++){
+      ctx.save();ctx.strokeStyle="#e7b06c";ctx.lineWidth=ratio;
+      ctx.setLineDash([2.5*ratio,4*ratio]);ctx.globalAlpha=.7;
+      ctx.beginPath();let active=false,lastY=0,lastInside=false;
+      for(const point of rows){
+        const original=point.outputs[channel];
+        const folded=aliasFrequency(original,effectiveHz);
+        if(!Number.isFinite(original)||!Number.isFinite(folded)||
+           folded<DISPLAY_MIN||folded>MAX||Math.abs(folded-original)<1){
+          if(active){ctx.stroke();ctx.beginPath();active=false;}
+          continue;
+        }
+        const xx=x(point.f),yy=y(folded);
+        if(!active||lastInside!==point.inside||Math.abs(yy-lastY)>height*.32){
+          if(active){ctx.stroke();ctx.beginPath();}
+          ctx.moveTo(xx,yy);
+        }else ctx.lineTo(xx,yy);
+        active=true;lastInside=point.inside;lastY=yy;
+      }
+      if(active)ctx.stroke();
+      ctx.restore();
+    }
   }
   ctx.globalAlpha=1;
   ctx.fillStyle="#b4c6c5";ctx.font=(11*ratio)+"px system-ui";
