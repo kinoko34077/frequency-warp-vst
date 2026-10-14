@@ -11,7 +11,7 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'){
   const numberControls=[['width','幅'],['height','高さ'],['padding','内側余白'],['margin','外側余白'],['gap','要素間隔'],['border-radius','角丸'],['font-size','文字サイズ']];
   const fields=numberControls.map(x=>'<label>'+x[1]+'<input type="number" step="1" min="0" max="3000" placeholder="auto" data-prop="'+x[0]+'"></label>').join('');
   shadow.innerHTML='<style>'+
-   ':host{all:initial;position:fixed!important;z-index:2147483646!important;top:12px;right:12px;color:#e2f5eb;font:12px/1.5 system-ui,sans-serif}'+
+   ':host{all:initial;position:fixed!important;z-index:2147483646!important;bottom:12px;right:12px;color:#e2f5eb;font:12px/1.5 system-ui,sans-serif}'+
    '*{box-sizing:border-box}.panel{width:min(335px,calc(100vw - 24px));max-height:min(92dvh,850px);overflow:auto;background:#112a2e;border:1px solid #40665f;border-radius:12px;padding:13px;box-shadow:0 18px 40px #000b;display:flex;flex-direction:column;gap:10px}'+
    '.head{display:flex;align-items:center;justify-content:space-between}.head strong{color:#81f0ca;font-size:15px}'+
    '.actions,.foot{display:flex;gap:5px;flex-wrap:wrap}.actions button,.foot button{flex:1}button{cursor:pointer;background:#224a42;color:#f0fff7;border:1px solid #477b6f;border-radius:7px;padding:7px;font:inherit}button:hover{background:#32665a}button:disabled{opacity:.38;cursor:not-allowed}button[aria-pressed=true]{background:#71ddb8;color:#0d2e25}'+
@@ -19,7 +19,7 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'){
    'label{display:flex;flex-direction:column;gap:3px;color:#b4d7ce}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}'+
    '.path{font:11px ui-monospace,monospace;background:#081e23;padding:7px;border-radius:5px;overflow-wrap:anywhere;max-height:65px;overflow:auto}.scope{display:flex;align-items:center;gap:8px}.scope span{flex:1}.scope select{flex:2}'+
    '.status{font-size:11px;color:#81e4bc;min-height:16px}.hint{font-size:10px;color:#9ac0b8}.collapsed .panel>:not(.head){display:none}.collapsed .panel{width:180px}'+
-   '@media(max-width:480px){:host{top:8px;right:8px}.panel{max-height:60dvh}}'+
+   '@media(max-width:480px){:host{bottom:8px;right:8px}.panel{max-height:60dvh}}'+
    '</style><div class="panel"><div class="head"><strong>∿ Layout Inspector</strong><button data-action="collapse" aria-label="最小化">−</button></div>'+
    '<div class="actions"><button data-action="pick" aria-pressed="true">要素を選択</button><button data-action="preview" aria-pressed="false">動作確認</button><button data-action="parent">親要素 ↑</button></div>'+
    '<div class="path" id="path">ページ上の要素をクリックして選択</div>'+
