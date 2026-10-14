@@ -181,6 +181,19 @@ function mathCallbacksFor(p){
       core.warp_translate_frequency_anchored(f,anchor,pivot,slope,reference,curvature,shift)
   };
 }
+function allReflectionFor(p){
+  const core=state.mathCore;
+  const mode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
+  return (f,signed,anchor)=>{
+    const args=[f,signed,p.low,p.high,p.curvature,p.invert,mode,
+      p.rationalEnabled?1:0,p.pitchRatio,p.shiftHz,anchor,
+      p.axisPivot,p.axisSlope,p.axisReference,p.axisShift];
+    return {
+      distance:core.warp_all_reflection_distance(...args),
+      gain:core.warp_all_reflection_gain(...args,p.zeroReflectGain,p.zeroReflectDecay)
+    };
+  };
+}
 function mathCallbacks(){return mathCallbacksFor(settings());}
 function updateListeningGuide(){
   if(!state.mathCore)return;
