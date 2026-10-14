@@ -31,3 +31,7 @@ add_test(NAME fw_swap_mailbox_test COMMAND fw_swap_mailbox_test)
 add_executable(fw_swap_concurrency_test tests/swap/concurrency_test.cpp)
 target_compile_features(fw_swap_concurrency_test PRIVATE cxx_std_17)
 add_test(NAME fw_swap_concurrency_test COMMAND fw_swap_concurrency_test)
+
+add_executable(fw_async_pcm_test tests/async/async_pcm_test.cpp)
+target_compile_features(fw_async_pcm_test PRIVATE cxx_std_17)
+add_test(NAME fw_async_pcm_test COMMAND fw_async_pcm_test)
