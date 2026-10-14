@@ -77,19 +77,28 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   };
   const rows=graphSegments(settings,warp,translate,MAX,inversePosition);
   for(let channel=0;channel<(settings.ringEnabled?2:1);channel++){
+    ctx.save();
     ctx.lineWidth=1.05*ratio;ctx.strokeStyle=channel===0?"#66e9ba":"#f0b97b";
-    ctx.globalAlpha=Math.min(1,Math.max(0,settings.wet??1));
-    ctx.beginPath();let active=false,lastInside=false,lastY=0;
+    ctx.beginPath();let active=false,lastInside=false,lastY=0,lastAlpha=1,lastReflect=false;
     for(const point of rows){
       const f=point.outputs[channel];
       if(f===undefined){if(active)ctx.stroke();ctx.beginPath();active=false;continue;}
+      const reflected=Boolean(point.reflected);
+      const alpha=Math.min(1,Math.max(0,settings.wet??1))*
+        (reflected?Math.min(1,Math.max(0,point.reflectionGain??1)):1);
       const xx=x(point.f),yy=y(f);
-      if(!active || lastInside!==point.inside || Math.abs(yy-lastY)>height*.32){
-        if(active)ctx.stroke();ctx.beginPath();ctx.moveTo(xx,yy);
+      const discontinuity=!active||lastInside!==point.inside||lastReflect!==reflected||
+        Math.abs(lastAlpha-alpha)>.0001||Math.abs(yy-lastY)>height*.32;
+      if(discontinuity){
+        if(active)ctx.stroke();
+        ctx.beginPath();ctx.globalAlpha=alpha;
+        ctx.setLineDash(reflected?[3*ratio,4*ratio]:[]);
+        ctx.moveTo(xx,yy);
       }else ctx.lineTo(xx,yy);
-      active=true;lastInside=point.inside;lastY=yy;
+      active=true;lastInside=point.inside;lastReflect=reflected;lastAlpha=alpha;lastY=yy;
     }
     if(active)ctx.stroke();
+    ctx.restore();
   }
   // A bitcrusher uses zero-order sample hold at Fs/hold, NOT a unique
   // f -> f' transformation. Plot baseband alias location only; frequencies
