@@ -1,0 +1,42 @@
+name: Windows VST3 S2 fixed shell and Steinberg Validator
+on:
+  pull_request:
+    paths: ['vst3/**','.github/workflows/vst3-s2-windows.yml']
+  push:
+    branches: [main]
+    paths: ['vst3/**','.github/workflows/vst3-s2-windows.yml']
+permissions:
+  contents: read
+jobs:
+  windows-x64:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch official Steinberg SDK with all recursive submodules
+        shell: bash
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git _sdk/vst3sdk
+          git -C _sdk/vst3sdk rev-parse HEAD
+          test -f _sdk/vst3sdk/LICENSE.txt
+      - name: Configure genuine VST3 Windows x64
+        shell: bash
+        run: |
+          cmake -S vst3 -B _build/vst3 -G "Visual Studio 17 2022" -A x64 \
+            -DFW_VST3_SDK_DIR="$GITHUB_WORKSPACE/_sdk/vst3sdk" \
+            -DSMTG_CREATE_PLUGIN_LINK=OFF \
+            -DSMTG_RUN_VST_VALIDATOR=ON
+      - name: Build VST3 plugin with Steinberg Validator post-build
+        shell: bash
+        run: cmake --build _build/vst3 --config Release --target FrequencyWarpShell --parallel 2
+      - name: Run delay regression
+        shell: bash
+        run: |
+          cmake --build _build/vst3 --config Release --target fw_shell_delay_test --parallel 2
+          ctest --test-dir _build/vst3 -C Release --output-on-failure
+      - name: Confirm native VST3 bundle exists without publishing
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem "_build/vst3" -Recurse -Filter "FrequencyWarpShell.vst3")
+          if ($files.Count -lt 1) { throw "Built VST3 bundle not found" }
+          $files | Select-Object FullName
