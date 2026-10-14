@@ -58,20 +58,64 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
     assert.equal(await page.$eval(".dual-range",el=>el.querySelectorAll("input[type=range]").length),2);
+    for(const root of ["reflection-dual","shape-dual","dual-range"]){
+      const shape=await page.$eval("#"+root,el=>({
+        sources:el.querySelectorAll("input[type=range]").length,
+        thumbs:el.querySelectorAll("[role=slider]").length,
+        inner:el.querySelector("[data-dual-inner]")?.getBoundingClientRect().height,
+        track:el.getBoundingClientRect().height
+      }));
+      assert.equal(shape.sources,2,root+" must preserve both native Rust parameters");
+      assert.equal(shape.thumbs,2,root+" must have TWO accessible thumbs");
+      assert.ok(shape.track>=40&&shape.inner>=40,root+" must have one useable track");
+    }
+    const dragDual=async(root,which,from,to)=>{
+      await page.$eval("#"+root,el=>el.scrollIntoView({block:"center"}));
+      const b=await page.$eval("#"+root+" [data-dual-inner]",el=>{
+        const r=el.getBoundingClientRect();
+        return {x:r.x,y:r.y,width:r.width,height:r.height};
+      });
+      const y=b.y+(which===0?11:b.height-11);
+      await page.mouse.move(b.x+from*b.width,y);
+      await page.mouse.down();
+      await page.mouse.move(b.x+to*b.width,y,{steps:7});
+      await page.mouse.up();
+    };
+    // Genuine Chrome pointer-drag, not element.value assignment: moving
+    // ONE thumb MUST NOT move its companion.
+    await dragDual("reflection-dual",0,1,.40);
+    assert.ok(Math.abs(Number(await page.$eval("#zero-reflect",n=>n.value))-40)<=2);
+    assert.equal(await page.$eval("#zero-decay",n=>n.value),"0");
+    await dragDual("reflection-dual",1,0,.65);
+    assert.ok(Math.abs(Number(await page.$eval("#zero-decay",n=>n.value))-65)<=2);
+    assert.ok(Math.abs(Number(await page.$eval("#zero-reflect",n=>n.value))-40)<=2);
+    await page.focus("#zero-decay-thumb");
+    await page.keyboard.press("ArrowRight");
+    assert.ok(Math.abs(Number(await page.$eval("#zero-decay",n=>n.value))-66)<=2,
+      "thumb keyboard must update the real source parameter");
+    assert.match(await page.$eval("#zero-reflect-status",n=>n.textContent),/合成.*反射/);
+    await dragDual("shape-dual",0,0,.32);
+    assert.ok(Math.abs(Number(await page.$eval("#invert",n=>n.value))-.32)<.02);
+    assert.equal(await page.$eval("#curvature",n=>n.value),"1");
+    await dragDual("shape-dual",1,1,.53);
+    assert.ok(Math.abs(Number(await page.$eval("#curvature",n=>n.value))-.53)<.02);
+    await dragDual("dual-range",1,.968,.82);
+    assert.ok(Number(await page.$eval("#high",n=>n.value))<900);
+    // Restore test baseline before the rest of the DSP regression suite.
+    for(const [id,value] of [["zero-reflect","100"],["zero-decay","0"],
+      ["invert","0"],["curvature","1"],["low","0"],["high","968"]]){
+      await page.$eval("#"+id,(el,v)=>{
+        el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));
+      },value);
+    }
+
     assert.equal(await page.$eval("#engine",el=>el.value),"1");
     assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
     assert.equal(await page.$eval("#math-results",el=>el.textContent.includes("|")),false);
     assert.equal(await page.$eval("#ring-enabled",el=>el.closest(".effects-panel")!==null),true);
     assert.equal(await page.$eval("#crusher-enabled",el=>el.closest(".effects-panel")!==null),true);
     assert.equal(await page.$eval("#carrier",el=>el.closest(".effects-panel")!==null),true);
-    await page.$eval("#dual-range",el=>{
-      const r=el.getBoundingClientRect();
-      el.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,
-        clientX:r.x+r.width*.30,clientY:r.y+r.height/2}));
-    });
-    assert.ok(await page.$eval("#low",el=>Number(el.value))>0,
-      "tapping shared rail should move nearest threshold");
-    await page.$eval("#low",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#low",el=>el.value),"0");
 
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
     for(const id of ["curvature","invert","wet"]){
