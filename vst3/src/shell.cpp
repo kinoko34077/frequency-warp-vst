@@ -1,5 +1,7 @@
 // Windows VST3 S2 FIXED SHELL: delayed identity only. Swappable WASM runtime is S3.
 #include "delay.h"
+#include "parameter_registry.h"
+#include "base/source/fstring.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include "public.sdk/source/main/pluginfactory.h"
@@ -21,7 +23,7 @@ static const FUID kControllerCID(0xF8C2D41E,0x84B9475B,0xB5DC4E2F,0xB948A0D3);
 static constexpr int32 kMagic=0x46575332, kSchema=1; // FWS2 state v1
 using Values=std::array<double,kParamCount>;
 static Values defaults() {
-    Values v{};v.fill(0.5);v[0]=1.;v[1]=0.;return v;
+    return defaultHostValues();
 }
 static bool readState(IBStream* stream,Values& result) {
     if(!stream)return false;
@@ -178,28 +180,64 @@ public:
     tresult PLUGIN_API initialize(FUnknown* context) override {
         auto r=EditController::initialize(context);
         if(r!=kResultOk)return r;
-        static const char* fixed[]={"Wet","Bypass","Lower Frequency",
-            "Upper Frequency","Invert","Curvature","Shift","Pivot",
-            "Slope","Reflection","Ring","Bit Crusher","Quality"};
         const auto def=defaults();
         for(uint32_t i=0;i<kParamCount;i++) {
             char generated[64]{};
-            const char* name=nullptr;
-            if(i<sizeof(fixed)/sizeof(fixed[0]))name=fixed[i];
-            else {
+            const Param* desc=findParam(i);
+            const char* name=desc?desc->name:nullptr;
+            if(!name) {
                 std::snprintf(generated,sizeof(generated),
                     i<kEngineBegin ? "Reserved %02u":"Engine Slot %02u (unbound)",
                     static_cast<unsigned>(i));
                 name=generated;
             }
-            String128 title{};
+            String128 title{},unit{};
             UString(title,128).fromAscii(name);
+            if(desc)UString(unit,128).fromAscii(desc->unit);
             const int32 flags=i==1
                ? (ParameterInfo::kCanAutomate|ParameterInfo::kIsBypass)
-               : (i>=13&&i<kEngineBegin ? 0 : ParameterInfo::kCanAutomate);
-            parameters.addParameter(title,nullptr,i==1 ? 1 : 0,
+               : (i>=kActiveCount&&i<kEngineBegin ? 0 : ParameterInfo::kCanAutomate);
+            parameters.addParameter(title,desc?unit:nullptr,
+                desc?static_cast<int32>(desc->steps):0,
                 def[i],flags,static_cast<ParamID>(i));
         }
+        return kResultOk;
+    }
+    // Host generic parameter readouts reflect canonical units, not rail position.
+    // The plugin editor added in S3 must call beginEdit/performEdit/endEdit.
+    tresult PLUGIN_API getParamStringByValue(ParamID id,ParamValue normalized,
+        String128 result) override {
+        const auto* p=findParam(id);
+        if(!p)return EditController::getParamStringByValue(id,normalized,result);
+        const auto physical=physicalFromNormalized(*p,normalized);
+        char text[96]{};
+        if(p->scale==Scale::Discrete) {
+            const int v=static_cast<int>(std::lround(physical));
+            if(const auto* title=discreteLabel(id,v))
+                std::snprintf(text,sizeof(text),"%s",title);
+            else
+                std::snprintf(text,sizeof(text),"%d%s%s",
+                    v,p->unit[0]?" ":"",p->unit);
+        } else if(p->unit[0]=='%'&&p->unit[1]=='\0') {
+            std::snprintf(text,sizeof(text),"%.3f %%",physical*100.);
+        } else {
+            std::snprintf(text,sizeof(text),"%.3f%s%s",
+                physical,p->unit[0]?" ":"",p->unit);
+        }
+        UString(result,128).fromAscii(text);
+        return kResultOk;
+    }
+    tresult PLUGIN_API getParamValueByString(ParamID id,TChar* input,
+        ParamValue& normalized) override {
+        const auto* p=findParam(id);
+        if(!p)return EditController::getParamValueByString(id,input,normalized);
+        if(!input)return kInvalidArgument;
+        String text(input);
+        double value=0.;
+        if(!text.scanFloat(value)||!std::isfinite(value))return kResultFalse;
+        if(p->unit[0]=='%'&&p->unit[1]=='\0')value/=100.;
+        if(value<p->min||value>p->max)return kResultFalse;
+        normalized=normalizedFromPhysical(*p,value);
         return kResultOk;
     }
     tresult PLUGIN_API setComponentState(IBStream* stream) override {
