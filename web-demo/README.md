@@ -346,3 +346,26 @@ source frequencies can map to one target frequency, spectral collision,
 variable formants, onset smearing and phase-locking remain unresolved.
 It is not a claim that #5's independent R2.2 research candidate, native
 VST3 or perceptual tuning are complete.
+
+## 2026-10-14 Ring source-band and crusher-frequency controls — Issue #54 stage U1
+
+The Ring Mod checkbox applies carrier amplitude modulation to the **processed
+source-frequency range [L,H] only**. Out-of-band `Pass` material is
+independently inverse-STFT reconstructed and added **after** Ring Mod; out-of-band
+`Kill` still removes it. The actual source bandwidth uses the same [L,H]
+as the green frequency-map graph; it does not restrict generated upper/lower
+sidebands to [L,H]. Linked carrier still derives from the input-domain Fold
+breakpoint; otherwise manual carrier in Hz. This is shared native/WASM Rust
+DSP for realtime and WAV, and sample-phase is based on absolute analysis time
+so overlapping windows agree.
+
+The bitcrusher interval uses a **requested Hz** control (slider low→high
+from left to right, instead of the old 1→32 held-sample direction). Actual
+zero-order hold is integer `hold=round(Fs/requestedHz)` limited to 1..32;
+the effective frequency displayed is `Fs/hold` and can differ from the
+requested Hz. This is sampling/holding, **not** frequency filtering. The
+main mapping graph adds candidate alias folded-frequency trajectories when
+the crusher is ON and the reduced sample rate can cause aliasing. Their
+amplitude is **not estimated**. A separate small synthetic 4.3-cycle waveform
+shows original sine in gray and sample-held amplitude-quantized signal in
+orange; it is an explanatory model, never the waveform of the loaded file.
