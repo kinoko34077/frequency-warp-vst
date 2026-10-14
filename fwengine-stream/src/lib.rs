@@ -23,6 +23,19 @@ static mut SEG_IN:[f32;MAX_SAMPLES]=[0.;MAX_SAMPLES];
 static mut SEG_OUT:[f32;MAX_SAMPLES]=[0.;MAX_SAMPLES];
 static mut STREAM:Option<Stream>=None;
 static mut SETTINGS:Option<Settings>=None;
+// Physics/state reuse the canonical Stream setters already used by Web.
+#[derive(Clone,Copy)]
+struct ExtraControls {
+    shift:f64,pivot:f64,slope:f64,gain:f64,decay:f64,
+    ring:bool,rational:bool,
+}
+impl Default for ExtraControls {
+    fn default()->Self {
+        Self{shift:0.,pivot:350.,slope:1.,gain:1.,decay:0.,
+             ring:false,rational:false}
+    }
+}
+static mut EXTRA:Option<ExtraControls>=None;
 static mut CHANNELS:usize=0;
 
 fn defaults(rate:f64)->Settings {
@@ -43,7 +56,7 @@ pub extern "C" fn fw_create(rate:f64,channels:i32,max_block:i32)->i32{
     let settings=defaults(rate);
     match Stream::new(rate,channels as usize,settings,OUTSIDE_PASS){
         Ok(engine)=>unsafe{
-            STREAM=Some(engine);SETTINGS=Some(settings);
+            STREAM=Some(engine);SETTINGS=Some(settings);EXTRA=Some(ExtraControls::default());
             CHANNELS=channels as usize;
             HANDLE
         },
@@ -61,14 +74,41 @@ pub extern "C" fn fw_create(rate:f64,channels:i32,max_block:i32)->i32{
     }}
 }
 #[no_mangle]pub extern "C" fn fw_destroy(handle:i32){
-    if handle==HANDLE{unsafe{STREAM=None;SETTINGS=None;CHANNELS=0;}}
+    if handle==HANDLE{unsafe{STREAM=None;SETTINGS=None;EXTRA=None;CHANNELS=0;}}
 }
 fn valid_event(event:Event)->bool{
     event.value.is_finite()&&match event.id{
         2|3=>event.value>=0.001&&event.value<=20000.,
-        4|5=>event.value>=0.&&event.value<=1.,
+        4|5|9|13=>event.value>=0.&&event.value<=1.,
+        6=>event.value>=-2.&&event.value<=2.,
+        7=>event.value>=0.&&event.value<=20000.,
+        8=>event.value>=-4.&&event.value<=4.,
+        10|18=>event.value==0.||event.value==1.,
         _=>false,
     }
+}
+fn modify_extra(extra:&mut ExtraControls,event:Event)->bool {
+    match event.id {
+        6=>extra.shift=event.value,
+        7=>extra.pivot=event.value,
+        8=>extra.slope=event.value,
+        9=>extra.gain=event.value,
+        10=>extra.ring=event.value!=0.,
+        13=>extra.decay=event.value,
+        18=>extra.rational=event.value!=0.,
+        _=>return false,
+    }
+    true
+}
+// Error-free for prevalidated physical values. Keep the same public Stream
+// setters that the Web AudioWorklet invokes; do not clone any spectral math.
+fn apply_extra(engine:&mut Stream,extra:ExtraControls)->Result<(),&'static str>{
+    engine.set_transform(extra.shift,350.,extra.ring as u32,
+                         extra.rational as u32)?;
+    engine.set_geometry(extra.pivot,extra.slope)?;
+    engine.set_zero_reflect_gain(extra.gain)?;
+    engine.set_zero_reflect_decay(extra.decay)?;
+    Ok(())
 }
 fn modify(settings:&mut Settings,event:Event) {
     match event.id{
@@ -90,7 +130,7 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
     let f=frames as usize;
     let e=count as usize;
     unsafe{
-        if STREAM.is_none()||SETTINGS.is_none()||CHANNELS==0{return -1;}
+        if STREAM.is_none()||SETTINGS.is_none()||EXTRA.is_none()||CHANNELS==0{return -1;}
         let channel_count=CHANNELS;
         let mut last=0;
         for i in 0..e {
@@ -101,10 +141,20 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
         }
         let engine=STREAM.as_mut().unwrap();
         let settings=SETTINGS.as_mut().unwrap();
+        let extra=EXTRA.as_mut().unwrap();
         if f==0 {
             if e>0 {
                 let mut next=*settings;
-                for i in 0..e{modify(&mut next,EVENTS[i]);}
+                let mut following=*extra;
+                let mut extraChanged=false;
+                for i in 0..e{
+                    modify(&mut next,EVENTS[i]);
+                    extraChanged|=modify_extra(&mut following,EVENTS[i]);
+                }
+                if extraChanged {
+                    if apply_extra(engine,following).is_err(){return -3;}
+                    *extra=following;
+                }
                 // Physical host parameters can individually be in-range but
                 // jointly impossible (L>=H or H>=host Nyquist). These are
                 // ordinary DAW automation crossings, NOT a WASM runtime trap.
@@ -122,8 +172,16 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
         while pos<f{
             if ei<e&&(EVENTS[ei].offset as usize)==pos{
                 let mut next=*settings;
+                let mut following=*extra;
+                let mut extraChanged=false;
                 while ei<e&&(EVENTS[ei].offset as usize)==pos{
-                    modify(&mut next,EVENTS[ei]);ei+=1;
+                    modify(&mut next,EVENTS[ei]);
+                    extraChanged|=modify_extra(&mut following,EVENTS[ei]);
+                    ei+=1;
+                }
+                if extraChanged {
+                    if apply_extra(engine,following).is_err(){return -3;}
+                    *extra=following;
                 }
                 // Physical host parameters can individually be in-range but
                 // jointly impossible (L>=H or H>=host Nyquist). These are

@@ -98,7 +98,11 @@ impl Runtime{
             let allowed=if self.manifest.engine_id=="org.kinotch.stream" {
                 match e.id {
                     2|3 => e.value.is_finite()&&(0.001..=20000.0).contains(&e.value),
-                    4|5 => e.value.is_finite()&&(0.0..=1.0).contains(&e.value),
+                    4|5|9|13 => e.value.is_finite()&&(0.0..=1.0).contains(&e.value),
+                    6 => e.value.is_finite()&&(-2.0..=2.0).contains(&e.value),
+                    7 => e.value.is_finite()&&(0.0..=20000.0).contains(&e.value),
+                    8 => e.value.is_finite()&&(-4.0..=4.0).contains(&e.value),
+                    10|18 => e.value==0.0||e.value==1.0,
                     _=>false
                 }
             }else{e.id==64&&e.value.is_finite()&&(0.0..=4.0).contains(&e.value)};
