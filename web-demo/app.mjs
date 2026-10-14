@@ -23,11 +23,25 @@ const state={
   precise:Object.create(null),
   effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0
 };
-const hzFromScale=value=>20*Math.exp(Math.log(1000)*Number(value)/1000);
+// Continuous log bands around 20 Hz: 0..200 resolves 0.001..20 Hz,
+// 200..1000 resolves 20..20,000 Hz. Exact typed values remain independent.
+const MIN_POSITIVE_HZ=0.001;
+const LOW_BREAK=200;
+const hzFromScale=value=>{
+  const x=clamp(Number(value),0,1000);
+  return x<=LOW_BREAK?
+    MIN_POSITIVE_HZ*Math.exp(Math.log(20/MIN_POSITIVE_HZ)*x/LOW_BREAK):
+    20*Math.exp(Math.log(1000)*(x-LOW_BREAK)/(1000-LOW_BREAK));
+};
 const pivotFromScale=value=>Number(value)<=0?0:20*Math.exp(Math.log(1000)*(Number(value)-1)/999);
 const scaleFromPivot=hz=>hz<=0?0:1+Math.round(999*Math.log(Math.max(20,hz)/20)/Math.log(1000));
-const scaleFromHz=hz=>Math.round(1000*Math.log(Math.max(20,hz)/20)/Math.log(1000));
-const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":Math.round(hz)+" Hz";
+const scaleFromHz=hz=>{
+  const f=clamp(hz,MIN_POSITIVE_HZ,20000);
+  return f<=20?
+    Math.round(LOW_BREAK*Math.log(f/MIN_POSITIVE_HZ)/Math.log(20/MIN_POSITIVE_HZ)):
+    Math.round(LOW_BREAK+(1000-LOW_BREAK)*Math.log(f/20)/Math.log(1000));
+};
+const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":hz<20?Number(hz.toFixed(3))+" Hz":Math.round(hz)+" Hz";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 const displayDigits=()=>Number($("#decimal-digits")?.value||3);
@@ -51,9 +65,9 @@ function bounds(changed=""){
   low=Math.min(low,cap/1.08);
   if(high<low*1.06){
     if(changed==="low")high=Math.min(cap,low*1.08);
-    else low=Math.max(20,high/1.08);
+    else low=Math.max(MIN_POSITIVE_HZ,high/1.08);
   }
-  if(high<=low)low=Math.max(20,high/1.08);
+  if(high<=low)low=Math.max(MIN_POSITIVE_HZ,high/1.08);
   $("#low").value=String(scaleFromHz(low));
   $("#high").value=String(scaleFromHz(high));
   low=Math.min(scalar("low",()=>hzFromScale($("#low").value)),cap/1.08);
@@ -129,7 +143,7 @@ function labels(id=""){
     "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
   $("#zero-reflect-formula").textContent="振幅="+displayNumber(100*p.zeroReflectGain)+
     "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(反射点からの周波数距離/"+
-    displayNumber(p.axisReference)+"Hz)。L/H・反転・0Hzの反射区間に適用。";
+    displayNumber(p.axisReference)+"Hz)。L/Hの折返し枝と0Hz越えの成分だけに適用。単なる周波数反転・負の傾きには適用しません。";
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
@@ -600,12 +614,12 @@ function updateParams(changed){
 }
 // Value fields are the readout themselves. Editing one immediately moves its slider.
 const inline={
-  "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",20,20000],
+  "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",MIN_POSITIVE_HZ,20000],
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
-  "low-value":["low",v=>scaleFromHz(v),"low",20,20000],
-  "high-value":["high",v=>scaleFromHz(v),"high",20,20000],
+  "low-value":["low",v=>scaleFromHz(v),"low",MIN_POSITIVE_HZ,20000],
+  "high-value":["high",v=>scaleFromHz(v),"high",MIN_POSITIVE_HZ,20000],
   "axis-pivot-value":["axis-pivot",v=>scaleFromPivot(v),"axis-pivot",0,20000],
   "invert-value":["invert",v=>v/100,"invert",0,100],
   "zero-reflect-value":["zero-reflect",v=>v,"zero-reflect",0,100],
@@ -884,7 +898,7 @@ controls.download.addEventListener("click",()=>{
 // It remains available even when a Rust/DSP module import fails.
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
+    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
@@ -892,7 +906,7 @@ $("#settings-reset").addEventListener("click",()=>{
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#engine-auto").checked=false;
-  $("#a-min").value="0";$("#a-reverb").value="0";
+  $("#a-min").value="200";$("#a-reverb").value="0";
   $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="880";

@@ -68,7 +68,7 @@ export function mapAtFrequency(f,
   }
   if(allGain!==null&&reflectionGain<=0)return {f,inside,outputs:[],
     reflected:true,reflectionGain:0,reason:"反射成分の合成率0%"};
-  // Positive-frequency L/H fold and monotonic inversion are also reflected.
+  // Only actual L/H Fold branches and crossed-zero targets are reflected.
   // They keep their positive output location; ONLY negative targets flip.
   if(allGain!==null&&reflected&&transformed>0&&reflectionGain<=0)
     return {f,inside,outputs:[],reflected:true,reflectionGain:0,reason:"反射を除去"};

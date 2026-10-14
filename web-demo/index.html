@@ -95,10 +95,10 @@
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="20" max="20000" step="0.001" value="20"> Hz</label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="20" max="20000" step="0.001" value="16000"> Hz</label></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="0.001" max="20000" step="0.001" value="20"> Hz</label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="0.001" max="20000" step="0.001" value="16000"> Hz</label></div>
             <div class="dual-range shared-dual-track" id="dual-range" aria-label="帯域下限Lと帯域上限Hを操作するデュアルサム">
-              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="0" tabindex="-1" aria-hidden="true">
-              <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="968" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="200" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="974" tabindex="-1" aria-hidden="true">
               <div class="shared-dual-inner" data-dual-inner>
                 <button type="button" id="low-thumb" class="shared-dual-thumb upper" data-dual-thumb role="slider" aria-label="帯域下限L" aria-valuenow="0"></button>
                 <button type="button" id="high-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="帯域上限H" aria-valuenow="968"></button>
@@ -212,7 +212,7 @@
       <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p></details>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
-          <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
+          <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="0.001" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="200"></div>
           <div><label for="a-quality">A · 再合成精細度（品質と処理負荷） <input class="inline-value" id="a-quality-value" type="number" min="0" max="100" step="1" value="0"></label><input id="a-quality" type="range" min="0" max="100" step="1" value="0"></div>
           <div><label for="a-band">A · 抽出帯域幅 <input class="inline-value" id="a-band-value" type="number" min="1" max="8" step="1" value="1"></label><input id="a-band" type="range" min="1" max="8" step="1" value="1"></div>
           <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>

@@ -928,6 +928,56 @@ test("Distinct synthesis and frequency-distance falloff: real stereo Rust/WASM n
   }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
 });
 
+test("only genuine Fold and 0Hz boundary reflections attenuate real WASM audio",async()=>{
+ const e=await load(),rate=8192,n=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+ const distance=(f,target,mode,invert,slope,pivot)=>e.warp_all_reflection_distance(
+   f,target,100,1400,1,invert,mode,0,1,0,pivot,pivot,slope,350,0);
+ assert.equal(distance(500,1000,3,1,1,350),0,
+   "Reciprocal full inversion is not a physical Fold");
+ assert.equal(distance(500,1000,3,0,-1,750),0,
+   "negative physical slope is not a physical Fold");
+ assert.equal(distance(400,1050,0,.5,1,350),0,
+   "FoldHigh forward branch must pass without attenuation");
+ assert.ok(distance(1100,400,0,.5,1,350)>0,
+   "FoldHigh reflected branch must attenuate");
+ assert.equal(distance(500,-100,3,0,1,350),100,
+   "actual zero crossing must remain a reflection");
+ for(const p of [0,0.5,1]){
+   const low=.001,hi=200;
+   assert.ok(Math.abs(e.warp_map_frequency(low,low,hi,p,0,3)-low)<1e-9);
+   assert.ok(Number.isFinite(e.warp_map_frequency(.002,low,hi,p,1,3)));
+ }
+ try{
+   const rms=pcm=>{
+     let power=0;for(let i=2200;i<n;i++)power+=pcm[i]*pcm[i];
+     return Math.sqrt(power/(n-2200));
+   };
+   const cases=[
+     {label:"slope-negative",f:500,mode:3,invert:0,pivot:750,slope:-1,reflected:false},
+     {label:"reciprocal-reversed",f:500,mode:3,invert:1,pivot:350,slope:1,reflected:false},
+     {label:"fold-forward",f:400,mode:0,invert:.5,pivot:350,slope:1,reflected:false},
+     {label:"fold-reflected",f:1100,mode:0,invert:.5,pivot:350,slope:1,reflected:true}
+   ];
+   for(const engine of [0,1]){
+     for(const row of cases){
+       const input=new Float32Array(e.memory.buffer,src,n);
+       for(let i=0;i<n;i++)input[i]=.42*Math.cos(2*Math.PI*row.f*i/rate);
+       const render=(C,D)=>{
+         const args=[src,dst,n,1,rate,100,1400,1,row.invert,row.mode,0,0,
+           engine,1,0,0,0,4,0,1,0,350,0,0,row.pivot,row.slope,20,0,1,0,C,D];
+         assert.equal(e.warp_stream_render_f32_zero_controls_ext(...args),0);
+         return rms(new Float32Array(e.memory.buffer,dst,n));
+       };
+       const normal=render(1,0),muted=render(0,1);
+       assert.ok(normal>.02,"test source has inaudible output: "+row.label+" engine "+engine+" RMS="+normal);
+       const ratio=muted/normal;
+       assert.ok(row.reflected?ratio<.08:Math.abs(ratio-1)<.06,
+         "wrong amplitude policy "+JSON.stringify({...row,engine,ratio,normal,muted}));
+     }
+   }
+ }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
+
 test("Crusher 0Hz frozen level and exact ZOH frequency images from actual shared Rust/WASM stereo PCM",async()=>{
   const e=await load(),rate=8192,n=8192,count=n*2,freq=400;
   const src=e.warp_alloc_f32(count),dst=e.warp_alloc_f32(count);

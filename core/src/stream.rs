@@ -146,7 +146,7 @@ impl Stream {
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
     pub fn set_a_options(&mut self,min_hz:f64,reverb:f64)->Result<(),&'static str>{
-        if !min_hz.is_finite()||!(20.0..=20000.0).contains(&min_hz)
+        if !min_hz.is_finite()||!(0.001..=20000.0).contains(&min_hz)
            || !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
             return Err("invalid A options");
         }
@@ -1203,7 +1203,9 @@ mod tests{
         assert!(a.set_a_options(900.0,0.4).is_ok());
         assert_eq!(a.a_min_hz,900.0);
         assert!((a.a_reverb_amount-0.4).abs()<0.00001);
-        assert!(a.set_a_options(2.0,1.0).is_err());
+        assert!(a.set_a_options(0.0001,1.0).is_err());
+        assert!(a.set_a_options(0.001,0.4).is_ok());
+        assert!(a.set_a_options(2.0,0.4).is_ok());
         b.set_a_options(900.0,1.0).unwrap();
         let mut aa=vec![0.0f32;128];aa[0]=0.7;
         let mut bb=aa.clone();

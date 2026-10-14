@@ -18,42 +18,38 @@ pub fn gain(distance:f64,synthesis:f64,reflection:f64,reference:f64)->f64{
     synthesis*(1.0-reflection).powf(distance/reference)
 }
 
+/// Only a real finite-band Fold L/H branch or a signed crossing of 0 Hz
+/// is a reflection. A decreasing output curve by itself is *inversion*, not
+/// a folded component (Reciprocal and physical negative slope are examples).
 pub fn distance(f:f64,signed_target:f64,s:Settings,rational:bool,
     pitch:f64,delta:f64,anchor:f64,pivot:f64,slope:f64,
     reference:f64,shift:f64)->f64{
-    let negative=(-signed_target).max(0.0);
-    if !(f>=s.low&&f<=s.high)||slope==0.0||(s.invert==0.0&&slope>=0.0){return negative;}
-    // Classify reflection in the FINAL physical mapping. Negative slope may
-    // reverse an otherwise forward warp, or cancel a previous inversion.
-    // Outside-band Pass never acquires this reflected amplitude.
-    let epsilon=((s.high-s.low)*0.00001).max(0.001);
-    let lower=(f-epsilon).max(s.low);
-    let upper=(f+epsilon).min(s.high);
-    if upper<=lower{return negative;}
-    let fa=match mapped_target(lower,s,rational,pitch,delta,anchor,pivot,slope,reference,shift){
-        Some(x)=>x,None=>return negative
+    let zero_crossing=(-signed_target).max(0.0);
+    if !(f>=s.low&&f<=s.high) || s.invert<=0.0 {
+        return zero_crossing;
+    }
+    let hinge=match s.mode {
+        Progression::FoldHigh | Progression::FoldLow => fold_frequency(s),
+        Progression::Reciprocal | Progression::Blend => None
     };
-    let fb=match mapped_target(upper,s,rational,pitch,delta,anchor,pivot,slope,reference,shift){
-        Some(x)=>x,None=>return negative
+    let Some(hinge)=hinge else{return zero_crossing;};
+    // The reflected side is intrinsic to the source-domain Fold mode.
+    // Multiplying by a negative physical slope must NOT create or remove
+    // a Fold event merely by changing the sign of the final derivative.
+    let reflected=match s.mode {
+        Progression::FoldHigh => f>hinge,
+        Progression::FoldLow => f<hinge,
+        _=>false
     };
-    if fb>=fa-1e-9{return negative;}
-    let wa=match map_frequency(lower,s){Ok(x)=>x,Err(_)=>return negative};
-    let wb=match map_frequency(upper,s){Ok(x)=>x,Err(_)=>return negative};
-    let mirror=if slope<0.0&&wb>=wa-1e-9{
-        // Negative physical slope reflects around the configured pivot.
-        // The pivot remains fixed for shift=0 even after nonlinear warp.
-        translate_frequency_anchored(anchor,anchor,pivot,slope,reference,s.curvature,shift)
-    }else{
-        // Existing Fold L/H or reciprocal turning/reference point.
-        let fold=fold_frequency(s).unwrap_or_else(||{
-            warp_invert_reference_frequency(s.low,s.high,s.curvature,s.invert,3)
-        });
-        match mapped_target(fold,s,rational,pitch,delta,anchor,pivot,slope,reference,shift){
-            Some(x)=>x,None=>return negative
-        }
+    if !reflected{return zero_crossing;}
+    let signed_hinge=match mapped_target(hinge,s,rational,pitch,delta,
+        anchor,pivot,slope,reference,shift){
+        Some(x)=>x,
+        None=>return zero_crossing
     };
-    if !mirror.is_finite(){return negative;}
-    negative+(signed_target-mirror).abs()
+    // Measure only actual travel away from the hinge in the final physical
+    // coordinate, and accumulate an additional 0-Hz crossing once.
+    zero_crossing+(signed_target-signed_hinge).abs()
 }
 fn settings(low:f64,high:f64,p:f64,invert:f64,mode:u32)->Settings{
     Settings{low,high,curvature:p,invert,quality:0,mode:match mode{
@@ -82,19 +78,62 @@ pub extern "C" fn warp_all_reflection_gain(
 #[cfg(test)]
 mod tests{
  use super::*;
- #[test]fn negative_slope_reflects_around_pivot_and_double_reversal_is_forward(){
+ #[test]fn inversion_without_fold_does_not_attenuate(){
   let ordinary=Settings{low:100.0,high:1000.0,curvature:1.0,invert:0.0,
       mode:Progression::Reciprocal,quality:0};
-  let target=200.0;
-  let d=distance(500.0,target,ordinary,false,1.0,0.0,350.0,350.0,-1.0,350.0,0.0);
-  assert!((d-150.0).abs()<1e-7,"negative slope distance {d}");
-  assert!((gain(d,0.5,0.0,350.0)-0.5).abs()<1e-7);
-  let forward=distance(500.0,500.0,ordinary,false,1.0,0.0,350.0,350.0,1.0,350.0,0.0);
-  assert_eq!(forward,0.0);
+  for slope in [-2.0,-1.0,0.0,1.0,2.0]{
+    let target=mapped_target(500.0,ordinary,false,1.0,0.0,
+      350.0,350.0,slope,350.0,0.0).unwrap();
+    if target>0.0{
+      let d=distance(500.0,target,ordinary,false,1.0,0.0,
+        350.0,350.0,slope,350.0,0.0);
+      assert_eq!(d,0.0,"plain slope {slope} is not a folded branch");
+      assert_eq!(gain(d,0.0,1.0,350.0),1.0);
+    }
+  }
   let inverse=Settings{invert:1.0,..ordinary};
-  let neg_target=mapped_target(500.0,inverse,false,1.0,0.0,350.0,350.0,-1.0,350.0,0.0).unwrap();
-  let double=distance(500.0,neg_target,inverse,false,1.0,0.0,350.0,350.0,-1.0,350.0,0.0);
-  assert_eq!(double,(-neg_target).max(0.0),"two direction reversals must not count as a positive-fold");
+  for slope in [-1.0,1.0]{
+    let target=mapped_target(500.0,inverse,false,1.0,0.0,
+      350.0,350.0,slope,350.0,0.0).unwrap();
+    if target>=0.0{
+      assert_eq!(distance(500.0,target,inverse,false,1.0,0.0,
+        350.0,350.0,slope,350.0,0.0),0.0);
+    }
+  }
+ }
+ #[test]fn only_the_actual_fold_branch_is_reflected(){
+  let neutral=Settings{low:100.0,high:1000.0,curvature:1.0,
+      invert:0.5,mode:Progression::FoldHigh,quality:0};
+  let hinge=fold_frequency(neutral).unwrap();
+  for slope in [-1.0,1.0]{
+    for (mode,reflected_f,forward_f) in [
+      (Progression::FoldHigh,800.0,300.0),
+      (Progression::FoldLow,300.0,800.0)
+    ]{
+      let s=Settings{mode,..neutral};
+      let turn=fold_frequency(s).unwrap();
+      let fwd=mapped_target(forward_f,s,false,1.0,0.0,
+        350.0,350.0,slope,350.0,0.0).unwrap();
+      if fwd>=0.0 {
+        assert_eq!(distance(forward_f,fwd,s,false,1.0,0.0,
+          350.0,350.0,slope,350.0,0.0),0.0,
+          "forward branch should not be affected even with negative slope");
+      }
+      let target=mapped_target(reflected_f,s,false,1.0,0.0,
+        350.0,350.0,slope,350.0,0.0).unwrap();
+      let d=distance(reflected_f,target,s,false,1.0,0.0,
+        350.0,350.0,slope,350.0,0.0);
+      assert!(d>0.0,"Fold branch must be classified at {turn} / slope {slope}");
+    }
+  }
+  assert!(hinge>100.0&&hinge<1000.0);
+ }
+ #[test]fn signed_zero_crossing_is_reflected_even_without_fold(){
+  let s=Settings{low:100.0,high:1000.0,curvature:1.0,
+    invert:0.0,mode:Progression::Reciprocal,quality:0};
+  let d=distance(100.0,-40.0,s,false,1.0,0.0,350.0,350.0,1.0,350.0,0.0);
+  assert_eq!(d,40.0);
+  assert!((gain(d,0.75,0.0,350.0)-0.75).abs()<1e-9);
  }
  #[test]fn reflected_positive_fold(){
   let s=Settings{low:100.0,high:1000.0,curvature:1.0,
