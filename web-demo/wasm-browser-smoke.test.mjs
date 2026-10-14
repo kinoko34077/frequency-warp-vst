@@ -230,7 +230,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#zero-reflect",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/除去 0%/);
+    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/合成 0%/);
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),true);
     const reflectedKill=await page.$eval("#curve",el=>el.toDataURL());
