@@ -505,3 +505,21 @@ suspension, audio focus/ducking, or an actual physical iPhone. WebKit
 bug reports describe AudioContext suspended/silent in background even
 when JS reports running; therefore this mitigates a proven host-level
 double-route behavior, and does NOT guarantee iOS background continuity.
+
+## 2026-10-14 Issue #65 U3 — デュアルサムUIの一本化
+
+この更新は新しいDSP式を追加しない。すでに公開済みの「周波数の反射」
+(C=合成率、R=反射率) の2値を、1本の横トラックで縦に位置を
+ずらした独立2つまみへ統合する。上の丸が合成率、下の丸が
+反射率。数値入力の精度・0〜100%はそのままで、ポインター
+(タッチを含む) のドラッグ、トラックタップ、キーボードの
+方向キー・PageUp/PageDown・Home/Endを同一入力経路に接続する。
+音声はすでに共通Rust/WASM側でFold L/H・逆数的反転・0Hz
+反射を扱っており、グラフの減衰表示も同一WASMの反射ゲインを使用する。
+
+同じ操作パターンを既存のL/H範囲 (単一トラックの上下限) に適用し、
+0〜1で表現される「反転量／移動の尺度」を「変換形状」の
+2つまみに統合した。異なる単位を持つCrusherのビット数/Hz、
+移動量/起点、A品質/残響は一つのトラックへ無理にまとめない。
+折返し部分音が存在しない設定ではC/Rを変えても音量に変化が
+出ないため、その状態を主グラフ横の操作説明に明示する。
