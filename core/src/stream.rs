@@ -1014,7 +1014,7 @@ mod tests{
             invert:0.0,mode:Progression::Blend,quality:0};
         let mut st=Stream::new_extended(8192.0,1,stg,1,1,1.0,0.0,0.0,0,4).unwrap();
         assert_eq!(st.resolve_zero(-200.0,8.0),Some((200.0,1.0)));
-        assert_eq!(st.set_zero_reflect_gain(-.1),Err("invalid zero reflect gain"));
+        assert_eq!(st.set_zero_reflect_gain(-0.1),Err("invalid zero reflect gain"));
         assert_eq!(st.set_zero_reflect_gain(1.1),Err("invalid zero reflect gain"));
         for (gain,expected) in [(0.0,None),(0.25,Some((200.0,0.25))),
             (0.5,Some((200.0,0.5))),(1.0,Some((200.0,1.0)))]{
