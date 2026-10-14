@@ -446,3 +446,79 @@ test("A peak-neighborhood reaches actual offline WAV Rust renderer",async()=>{
       "offline render ignored A FFT-bin neighborhood: "+averageDifference);
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+/** Direct identity-mapping acoustic degradation measurement (Issue #48).
+ * Diagnostic metrics deliberately DO NOT assert a "good" threshold:
+ * a green test here means the real Rust/WASM signals were measured,
+ * not that the experimental Engine A satisfies transparent no-op fidelity.
+ */
+test("Engine A neutral transform: actual PCM fidelity vs engine B across tonal/noise input",async()=>{
+  const e=await load();
+  const rate=12000,frames=12000;
+  const src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+  assert.ok(src&&dst);
+  const mixSeed=(()=>{
+    let state=0x34077;
+    return ()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;
+      return 2*state/4294967296-1;};
+  })();
+  const generated=Array.from({length:frames},()=>mixSeed());
+  const signals={
+    tone:Float32Array.from({length:frames},(_,i)=>.33*Math.cos(2*Math.PI*440*i/rate)),
+    wideband_noise:Float32Array.from(generated,v=>.23*v),
+    tone_plus_noise:Float32Array.from(generated,(v,i)=>
+      .29*Math.cos(2*Math.PI*440*i/rate)+.13*v),
+    gated_burst:Float32Array.from({length:frames},(_,i)=>
+      (i%2400<96 ? .6 : 0)*Math.cos(2*Math.PI*880*i/rate))
+  };
+  const start=4200,end=10000;
+  const metrics=(input,output)=>{
+    let en=0,out=0,err=0,dot=0;const block=[];
+    for(let i=start;i<end;i+=400){
+      let blockPower=0;
+      for(let j=i;j<Math.min(end,i+400);j++){
+        const a=input[j],b=output[j],delta=a-b;
+        en+=a*a;out+=b*b;err+=delta*delta;dot+=a*b;blockPower+=b*b;
+      }
+      block.push(Math.sqrt(blockPower/Math.min(400,end-i)));
+    }
+    const mean=block.reduce((a,b)=>a+b,0)/block.length;
+    const sd=Math.sqrt(block.reduce((a,b)=>a+(b-mean)**2,0)/block.length);
+    return {
+      rmsGain:Number(Math.sqrt(out/en).toFixed(5)),
+      normalizedRmse:Number(Math.sqrt(err/en).toFixed(5)),
+      correlation:Number((dot/Math.sqrt(en*out||1)).toFixed(5)),
+      outputRmsVariation:Number((sd/(mean||1)).toFixed(5))
+    };
+  };
+  try{
+    const rows=[];
+    for(const [kind,input] of Object.entries(signals)){
+      const qualityOptions=kind==="wideband_noise"?[0,1,2]:[0];
+      for(const qualityIndex of qualityOptions){
+        for(const [engine,peakBins] of [[0,1],[0,8],[1,1]]){
+          new Float32Array(e.memory.buffer,src,frames).set(input);
+          const status=e.warp_stream_render_f32_a_band_ext(
+            src,dst,frames,1,rate,20,5500,1,0,1,qualityIndex,1,
+            engine,1,0,0,0,4,0,1,0,350,0,0,350,1,20,0,peakBins);
+          assert.equal(status,0,"Rust offline neutral render "+JSON.stringify({kind,qualityIndex,engine,peakBins}));
+          const output=Float32Array.from(new Float32Array(e.memory.buffer,dst,frames));
+          assert.ok(output.every(Number.isFinite),"non-finite output");
+          const score=metrics(input,output);
+          assert.ok(Number.isFinite(score.rmsGain)&&Number.isFinite(score.normalizedRmse));
+          rows.push({kind,qualityIndex,engine:engine===0?"A_peaks":"B_bins",
+            peakBins,...score});
+        }
+      }
+    }
+    console.log("ENGINE_A_IDENTITY_PCM_DIAGNOSTIC "+JSON.stringify({
+      rate,frames,low:20,high:5500,curvature:1,invert:0,
+      shift:0,slope:1,ring:false,rational:false,crusher:false,reverb:0,
+      outside:"pass",wet:1,comparison:"Rust offline latency-compensated",
+      sampleWindow:[start,end],rows
+    }));
+    assert.equal(rows.length,4*3+2*3,"fixture/report coverage drift");
+  }finally{
+    e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);
+  }
+});
