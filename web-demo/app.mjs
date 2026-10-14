@@ -118,9 +118,9 @@ function labels(id=""){
   showNumber("axis-slope-value",p.axisSlope);
   showNumber("invert-value",100*p.invert);
   showNumber("zero-reflect-value",100*p.zeroReflectGain);
-  showNumber("zero-decay-value",100*p.zeroReflectDecay);
+  showNumber("zero-decay-value",100*(1-p.zeroReflectDecay));
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
-    "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
+    "% / 反射 "+displayNumber(100*(1-p.zeroReflectDecay))+"%";
   $("#zero-reflect-formula").textContent="反射成分の音量="+displayNumber(100*p.zeroReflectGain)+
     "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(|負周波数|/"+
     displayNumber(p.axisReference)+"Hz)。折返しの基準は0HzまたはL/H折返し点。距離基準="+displayNumber(p.axisReference)+"Hz。反転・折返し側の成分だけ適用。";
@@ -850,7 +850,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
     engine:"1",mode:"blend",outside:"pass",quality:"eco",
-    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","zero-decay":"100","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
