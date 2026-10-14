@@ -945,3 +945,68 @@ test("Crusher 0Hz frozen level and exact ZOH frequency images from actual shared
     console.log("CRUSHER_ZOH_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
 });
+
+test("B actual shared Rust/WASM long-play identity continuity and nonlinear envelope diagnostic",async()=>{
+  const e=await load(),rate=8192,frames=128,src=e.warp_alloc_f32(frames),
+    dst=e.warp_alloc_f32(frames);
+  assert.ok(src&&dst);
+  try{
+    // 90 seconds of continuous 128-frame playback, without hiding the
+    // analysis history behind periodic synthetic resets.
+    const ptr=e.warp_stream_create_ext(rate,1,100,3200,1,0,1,0,1,1,1,0,0,0,4);
+    assert.ok(ptr);
+    const secs=new Float64Array(90),counts=new Uint32Array(90);
+    try{
+      for(let block=0;block<90*rate/frames;block++){
+        const offset=block*frames;
+        const input=new Float32Array(e.memory.buffer,src,frames);
+        for(let i=0;i<frames;i++)input[i]=.4*Math.cos(2*Math.PI*480*(offset+i)/rate);
+        assert.equal(e.warp_stream_process(ptr,src,dst,frames),0);
+        const out=new Float32Array(e.memory.buffer,dst,frames);
+        const second=Math.floor(offset/rate);
+        for(let i=0;i<frames;i++){secs[second]+=out[i]*out[i];counts[second]++;}
+      }
+      const rms=Array.from(secs,(sum,i)=>Math.sqrt(sum/counts[i]));
+      const stable=rms.slice(2);
+      const min=Math.min(...stable),max=Math.max(...stable);
+      console.log("B_LONGPLAY_RUST_WASM "+JSON.stringify({
+        seconds:90,first:rms.slice(0,4),middle:rms.slice(42,47),last:rms.slice(-6),
+        min,max}));
+      assert.ok(min>.18,"persistent Rust FFT B output must not die after an extended run");
+      assert.ok(max/min<1.15,"identity B must not oscillate throughout long-run");
+    }finally{e.warp_stream_free(ptr);}
+    // Compare nonlinear warp on off-grid steady sinusoidal input. Here
+    // multiple neighboring analysis bins map to the same relocated bin.
+    // This baseline is intentionally diagnostic, not a fabricated pass
+    // claim. Regression acceptance will require actual modulation bounds.
+    const rows=[];
+    for(const hop of [4,8]){
+      for(const amount of [0,.42]){
+        const run=e.warp_stream_create_ext(rate,1,100,3200,1,amount,1,0,1,1,1,0,0,0,hop);
+        assert.ok(run);
+        try{
+          const total=rate*8,values=new Float32Array(total);
+          for(let offset=0;offset<total;offset+=frames){
+            const input=new Float32Array(e.memory.buffer,src,frames);
+            for(let i=0;i<frames;i++)input[i]=.4*Math.cos(2*Math.PI*483.37*(offset+i)/rate);
+            assert.equal(e.warp_stream_process(run,src,dst,frames),0);
+            values.set(new Float32Array(e.memory.buffer,dst,frames),offset);
+          }
+          const windows=[];
+          for(let offset=rate*2;offset+256<total;offset+=256){
+            let power=0;
+            for(let i=offset;i<offset+256;i++)power+=values[i]*values[i];
+            windows.push(Math.sqrt(power/256));
+          }
+          windows.sort((a,b)=>a-b);
+          const q=(p)=>windows[Math.floor((windows.length-1)*p)];
+          const row={hop,amount,p10:q(.1),p50:q(.5),p90:q(.9),
+            envelopeRatio:q(.1)/q(.9)};
+          rows.push(row);
+          assert.ok(Number.isFinite(row.envelopeRatio));
+        }finally{e.warp_stream_free(run);}
+      }
+    }
+    console.log("B_TREMOLO_ENVELOPE_BASELINE "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
+});
