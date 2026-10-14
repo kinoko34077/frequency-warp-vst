@@ -1,0 +1,61 @@
+name: VST3 S1 swappable DSP file contract
+on:
+  pull_request:
+    paths:
+      - 'fwengine-demo/**'
+      - 'fwengine-package/**'
+      - 'scripts/fwengine_pack.py'
+      - 'scripts/test_fwengine_packages.py'
+      - 'scripts/test_fwengine_runtime.mjs'
+      - 'docs/VST3_MODULAR_SHELL_SPEC.md'
+      - 'schemas/fwengine-manifest-v1.schema.json'
+      - '.github/workflows/fwengine-s1-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'fwengine-demo/**'
+      - 'fwengine-package/**'
+      - 'scripts/fwengine_pack.py'
+      - 'scripts/test_fwengine_packages.py'
+      - 'scripts/test_fwengine_runtime.mjs'
+      - 'docs/VST3_MODULAR_SHELL_SPEC.md'
+      - 'schemas/fwengine-manifest-v1.schema.json'
+      - '.github/workflows/fwengine-s1-tests.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Rust WASM target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Test native .fwengine bounded package loader
+        run: cargo test --manifest-path fwengine-package/Cargo.toml
+      - name: Compile one independent Identity .wasm module
+        run: |
+          cargo build --manifest-path fwengine-demo/Cargo.toml --release --target wasm32-unknown-unknown
+          mkdir -p _s1_fixture
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s1_fixture/identity.wasm
+      - name: Compile an alternative Gain-half .wasm WITHOUT editing the host harness
+        run: |
+          cargo build --manifest-path fwengine-demo/Cargo.toml --release --target wasm32-unknown-unknown --features gain-half
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s1_fixture/gain-half.wasm
+      - name: Pack distinct single-file .fwengine archives
+        run: |
+          python3 scripts/fwengine_pack.py _s1_fixture/identity.wasm _s1_fixture/identity.fwengine org.kinotch.identity
+          python3 scripts/fwengine_pack.py _s1_fixture/gain-half.wasm _s1_fixture/gain-half.fwengine org.kinotch.gainhalf
+          sha256sum _s1_fixture/*.fwengine
+      - name: Build native verifier CLI
+        run: cargo build --release --manifest-path fwengine-package/Cargo.toml
+      - name: Validate package, content hash, ZIP bounds, adversarial cases
+        run: |
+          fwengine-package/target/release/fwengine-package _s1_fixture/identity.fwengine
+          fwengine-package/target/release/fwengine-package _s1_fixture/gain-half.fwengine
+          python3 scripts/test_fwengine_packages.py fwengine-package/target/release/fwengine-package _s1_fixture/identity.fwengine
+      - name: Actual WASM PCM swap and parameter automation (unchanged harness)
+        run: |
+          node scripts/test_fwengine_runtime.mjs fwengine-package/target/release/fwengine-package _s1_fixture/identity.fwengine _s1_fixture/gain-half.fwengine

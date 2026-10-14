@@ -94,6 +94,24 @@ parameter event v1:
 
 OS/hostからの変更はVST3 `IParamValueQueue` を受取りサンプルオフセットを保持。プラグイン画面側の操作はUIスレッドから `beginEdit/performEdit/endEdit` でホストを介して更新する。`process` 呼出し時、音声バッファなしのパラメータフラッシュも処理可能。独立したGUIレートでメータ表示し、process内でcontrollerに通知しない。VST3本体が処理・編集controllerを所有する（VST3仕様の分離）。
 
+### S1 implementation note — v1 WASM memory layout (before native plugin release)
+
+Host needs safe pointers into the module's *exported* linear memory, not host-native pointers or guessed offsets. v1 additionally requires these **pure metadata getters** after `fw_create`:
+
+```text
+fw_input_offset()  -> u32
+fw_output_offset() -> u32
+fw_event_offset()  -> u32
+fw_event_capacity() -> u32
+fw_event_stride()   -> u32  // must equal 16
+```
+
+Input/output samples are separate non-overlapping planar `f32` arrays containing `channels * frames` samples, with each plane's stride equal to the **actual** frame count of that call. Offsets refer to WASM linear-memory byte offsets; the host checks alignment, bounds and non-overlap **on every module preparation** and after any detected memory growth. Events use `repr(C)` 16 bytes, little endian: uint32 hostParamID at byte 0, uint32 sampleOffset at byte 4, float64 canonicalValue at byte 8. Events must be sorted by sample offset. The entire capacity must be preallocated before calling audio processing. Host checks `event_count <= capacity`, manifest maxFrames/channel/memory limit, output finite PCM. This amendment completes the missing interoperation data path, **without changing the v1 major**, since no VST3 module binary was previously published.
+
+`frames==0` is a parameter-flush invocation with no audio read/write; any events at sampleOffset=0 apply to persistent engine state. Engine creation/reset/destruction, code validation and allocation are off the audio thread. A broken module must not silently become the active engine. A test-module may implement only host generic parameter slot 64 for Gain; future production modules must use the fixed registry with stable semantic bindings.
+
+**S1 scope and evidence**: `fwengine-demo` is intentionally only a tiny separately compilable Identity/Gain engine, not a replacement for the real `core/src/stream.rs` DSP. `fwengine-package` is a reusable **native Rust archive preflight loader** (ZIP sizes/entries/identity/hash/manifest). `scripts/test_fwengine_runtime.mjs` acts as a **test-only WASM host**, validates zero imported functions and actual PCM when only the single `.fwengine` file changes. A future **native VST3 runtime** must also enforce WASM imports, memory/fuel budgets, thread affinity, executable lifetime and runtime trap handling; archive preflight alone does not make code safe. No VST3 host or drag/drop UI exists until S2/S3.
+
 ## 5. Host ParamID / 単位 / オートメーション
 
 プラグインID（Processor/Controller Class IDs）は**初回公開時に一度生成し以後変更しない**。ホストへ公開するParamIDも変えない。VST3ではモジュール交換のたびにホストから見えるパラメータ数やIDを自由に変更できない。
