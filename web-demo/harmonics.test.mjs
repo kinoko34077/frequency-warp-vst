@@ -130,3 +130,21 @@ test("negative-frequency reflection gain controls a genuinely translucent branch
   const legacyKill=mapAtFrequency(400,{...base,zeroMode:1},x=>x,translate);
   assert.deepEqual(legacyKill.outputs,[],"historical Kill explanation survives");
 });
+
+test("reflection glow attenuation follows actual source absolute distance from 0Hz",()=>{
+  const base={low:100,high:1400,curvature:1,invert:0,mode:"blend",outside:"pass",
+    zeroMode:0,zeroReflectGain:.8,zeroReflectDecay:.5,
+    axisReference:350,axisPivot:350,axisSlope:1,axisShift:-2,
+    sampleRate:8192,qualityIndex:0};
+  const trans=(f,pivot,p,shift,slope,anchor)=>pivot+slope*(f-anchor)+shift*350;
+  const ref=distance=>.8*Math.pow(.5,distance/350);
+  const at=f=>mapAtFrequency(f,{...base,reflectionAmplitude:ref},x=>x,trans);
+  const near=at(650),far=at(400),positive=at(900),outside=at(1600);
+  assert.deepEqual(near.outputs,[50]);
+  assert.deepEqual(far.outputs,[300]);
+  assert.ok(near.reflectionGain>far.reflectionGain,"far reflected image must have less opacity");
+  assert.ok(Math.abs(near.reflectionGain-ref(50))<1e-9);
+  assert.ok(Math.abs(far.reflectionGain-ref(300))<1e-9);
+  assert.equal(positive.reflectionGain,1);
+  assert.equal(outside.reflectionGain,1);
+});
