@@ -1,5 +1,6 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
+import {engineForInbandCurve} from "./engine-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
@@ -24,11 +25,12 @@ const scaleFromHz=hz=>Math.round(1000*Math.log(Math.max(20,hz)/20)/Math.log(1000
 const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":Math.round(hz)+" Hz";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
-const view2=value=>Number(value.toFixed(2)).toString();
+const displayDigits=()=>Number($("#decimal-digits")?.value||3);
+const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
 const scalar=(name,fallback)=>state.precise[name]??fallback();
 function showNumber(id,value){
   const field=$("#"+id);
-  if(document.activeElement!==field&&Number.isFinite(value))field.value=view2(value);
+  if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
   const s=Math.max(0,seconds);
@@ -67,7 +69,10 @@ function settings(){
     low,high,curvature:scalar("curvature",()=>Number($("#curvature").value)),
     invert:scalar("invert",()=>Number($("#invert").value)),
     mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
-    engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
+    engine:$("#engine-auto").checked?engineForInbandCurve({low,high,
+      curvature:scalar("curvature",()=>Number($("#curvature").value)),
+      invert:scalar("invert",()=>Number($("#invert").value)),mode:$("#mode").value},state.mathCore):
+      Number($("#engine").value),hopDiv:Number($("#overlap").value),
     pitchRatio:harmonicParameters().r,
     shiftHz:harmonicParameters().n*harmonicParameters().r*harmonicParameters().F/harmonicParameters().m,
     carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode,
@@ -82,7 +87,8 @@ function settings(){
     crusherBits:$("#crusher-enabled").checked?scalar("crusher-bits",()=>Number($("#crusher-bits").value)):0,
     crusherHold:scalar("crusher-hold",()=>Number($("#crusher-hold").value)),
     aMinHz:scalar("a-min",()=>hzFromScale($("#a-min").value)),
-    aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100)
+    aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100),
+    aBandBins:Number($("#a-band").value)
   };
 }
 function labels(id=""){
@@ -95,13 +101,14 @@ function labels(id=""){
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
+  showNumber("a-band-value",p.aBandBins);
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
   showNumber("crusher-hold-value",p.crusherHold);
   const u=p.axisShift,ref=p.axisReference;
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
   $("#axis-explainer").textContent=p.curvature===0?
-    "移動倍率 ×"+Math.exp(u).toFixed(2):p.curvature===1?
+    "移動倍率 ×"+displayNumber(Math.exp(u)):p.curvature===1?
     "移動 "+Math.round(u*ref)+" Hz":"移動：中間尺度";
 }
 
@@ -158,7 +165,7 @@ function drawCurve(){
   const p=settings();
   const shown={...p,carrierHz:resolvedCarrierHz(foldPoint)};
   const {warp,translate}=mathCallbacks();
-  drawFrequencyGraph(canvas,shown,warp,translate,graphMax);
+  drawFrequencyGraph(canvas,shown,warp,translate,graphMax,Number($("#graph-log").value)/100);
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
 }
@@ -175,6 +182,7 @@ async function ensureSharedCore(){
         typeof core.warp_translate_frequency_anchored!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
+      if($("#engine-auto").checked){updateEngineInfo();updateParams("engine-auto");}
       return bytes;
     })().catch(error=>{
       state.wasmPromise=null;
@@ -192,10 +200,11 @@ function updateEngineInfo(){
     "部分音追跡と発振器による実験的な再合成方式です。残差や過渡音は完全に復元されません。",
     "FFTビン再配置による実験的な再合成方式です。位相・離散格子誤差に注意してください。"
   ];
-  $("#engine-a-settings").hidden=s.engine!==0;
+  $("#engine").disabled=$("#engine-auto").checked;
+  $("#engine-a-settings").hidden=s.engine!==0&&!$("#engine-auto").checked;
   $("#engine-description").textContent=explain[s.engine]+
     (s.ringEnabled?" / Ring Mod ON":"")+(s.rationalEnabled?" / #24倍音配置 ON":"");
-  $("#engine-summary").textContent=names[s.engine];
+  $("#engine-summary").textContent=names[s.engine]+($("#engine-auto").checked?"（反転連動）":"");
   $("#engine-stats").textContent=
     "方式: "+names[s.engine]+" ｜FFT窓 "+q.fftSize+
     " ｜内部hop "+Math.round(q.fftSize/s.hopDiv)+
@@ -470,6 +479,7 @@ function updateParams(changed){
 // Value fields are the readout themselves. Editing one immediately moves its slider.
 const inline={
   "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",20,20000],
+  "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
   "low-value":["low",v=>scaleFromHz(v),"low",20,20000],
   "high-value":["high",v=>scaleFromHz(v),"high",20,20000],
@@ -484,7 +494,7 @@ const inline={
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   const field=$("#"+id);
-  const integer=range==="crusher-bits"||range==="crusher-hold";
+  const integer=range==="crusher-bits"||range==="crusher-hold"||range==="a-band";
   const normalized=value=>{
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
@@ -539,9 +549,19 @@ $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;dr
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
 });
-for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","mode","outside","quality","overlap","engine","a-min","a-reverb","ring-enabled","rational-enabled"]){
+for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{delete state.precise[name];updateParams(name);updateEngineInfo();});
 }
+// Native mobile selectors dispatch CHANGE; do not wait for a slider gesture.
+for(const name of ["mode","outside","zero-mode","quality","overlap","engine"]){
+  $("#"+name).addEventListener("change",()=>{updateParams(name);updateEngineInfo();});
+}
+$("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");updateEngineInfo();});
+$("#graph-log").addEventListener("input",drawCurve);
+$("#decimal-digits").addEventListener("change",()=>{
+  labels();drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
+  updateSineLabel();
+});
 $("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
 $("#slope-one").addEventListener("click",()=>{
   delete state.precise["axis-slope"];
@@ -732,14 +752,15 @@ dialog.addEventListener("click",event=>{
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
-    engine:"1",mode:"fold-h",outside:"pass",quality:"eco",
-    overlap:"4","zero-mode":"0"
+    engine:"1",mode:"blend",outside:"pass",quality:"eco",
+    overlap:"4","zero-mode":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1"
   };
   state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
+  $("#engine-auto").checked=false;
   $("#a-min").value="0";$("#a-reverb").value="0";
-  $("#a-min-value").value="20";$("#a-reverb-value").value="0";
+  $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="4";
   $("#crusher-bits-value").value="8";
