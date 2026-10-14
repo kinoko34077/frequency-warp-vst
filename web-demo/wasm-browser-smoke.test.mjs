@@ -490,6 +490,15 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(layout.leftPanel.right<=layout.rightPanel.x+3,"Controls must be LEFT of graph "+JSON.stringify(layout));
     assert.ok(Math.abs(layout.leftPanel.top-layout.rightPanel.top)<12,"Controls and graph must SHARE ROW "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
+    // Contextual help must remain on-screen when opened in the narrow graph column.
+    await page.click(".graph-scale .info-tip summary");
+    const popoverBounds=await page.$eval(".graph-scale .info-body",el=>{
+      const r=el.getBoundingClientRect();
+      return {left:r.left,right:r.right,width:r.width,screen:document.documentElement.clientWidth};
+    });
+    assert.ok(popoverBounds.left>=-1 && popoverBounds.right<=popoverBounds.screen+1,
+      "mobile help panel escaped viewport "+JSON.stringify(popoverBounds));
+    await page.click(".graph-scale .info-tip summary");
     assert.ok(layout.curve.width<=210,"Mobile graph should use freed space for sliders "+JSON.stringify(layout));
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);
