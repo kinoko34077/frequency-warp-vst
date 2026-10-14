@@ -188,12 +188,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         new RegExp("500Hz → "+expected+"Hz"),"signed slope geometry should reach shared Rust graph");
     }
     // Information is hidden until requested, available by pointer and keyboard.
-    const info=await page.$(".shape-control .info-tip summary");
-    assert.ok(info);
-    await info.click();
+    const contextHint=await page.$(".shape-control .info-tip summary");
+    assert.ok(contextHint);
+    await contextHint.click();
     assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
     assert.match(await page.$eval(".shape-control .info-body",el=>el.textContent),/反転/);
-    await info.press("Enter");
+    await contextHint.press("Enter");
     assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false);
     assert.equal(await page.$eval("#crusher-bits",el=>el.closest(".fx-item").textContent.includes("量子化")),true);
     assert.equal(await page.$eval("#crusher-hold",el=>el.closest(".fx-item").textContent.includes("打刻速度")),true);
