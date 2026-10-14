@@ -61,7 +61,20 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
     ctx.restore();ctx.fillStyle="#ffd37e";ctx.textAlign="center";
     ctx.fillText("起点",xx,top+5*ratio);
   }
-  const rows=graphSegments(settings,warp,translate,MAX);
+  // Pixel-uniform sampling is essential when the x axis is logarithmic.
+  // A linear 512-bin frequency grid gave almost no line detail below 100 Hz
+  // in the 20 kHz view despite spreading that range across much of the plot.
+  const inversePosition=t=>{
+    if(amount===0)return DISPLAY_MIN+(MAX-DISPLAY_MIN)*t;
+    if(amount===1)return DISPLAY_MIN*Math.pow(MAX/DISPLAY_MIN,t);
+    let lower=DISPLAY_MIN,upper=MAX;
+    for(let j=0;j<20;j++){
+      const mid=(lower+upper)/2;
+      if(position(mid)<t)lower=mid;else upper=mid;
+    }
+    return (lower+upper)/2;
+  };
+  const rows=graphSegments(settings,warp,translate,MAX,inversePosition);
   for(let channel=0;channel<(settings.ringEnabled?2:1);channel++){
     ctx.lineWidth=1.05*ratio;ctx.strokeStyle=channel===0?"#66e9ba":"#f0b97b";
     ctx.globalAlpha=Math.min(1,Math.max(0,settings.wet??1));
