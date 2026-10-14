@@ -1,6 +1,7 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
+import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
@@ -349,6 +350,7 @@ $("#wave").addEventListener("keydown",e=>{
   }
 });
 async function context(){
+  try{if(navigator.audioSession)navigator.audioSession.type="playback";}catch{}
   if(!state.ctx)state.ctx=new AudioContext();
   await state.ctx.resume();return state.ctx;
 }
@@ -442,14 +444,27 @@ async function mediaBridge(player){
   let node;
   try{
     node=state.ctx.createMediaStreamDestination();
-    player.master.connect(node);
+    player.bridgeRoute=state.ctx.createGain();
+    player.bridgeRoute.gain.value=0.0001;
+    player.master.connect(player.bridgeRoute);
+    player.bridgeRoute.connect(node);
     element.srcObject=node.stream;
+    const fallback=()=>{if(state.player===player)switchAudioRoute(player,state.ctx,false);};
+    element.onpause=fallback;
+    element.onwaiting=fallback;
+    element.onstalled=fallback;
+    element.onerror=fallback;
+    element.onplaying=()=>{
+      if(state.player===player)switchAudioRoute(player,state.ctx,true);
+    };
     await element.play();
     if(state.player!==player){element.pause();return;}
-    player.master.disconnect(state.ctx.destination);
+    if(!element.paused)switchAudioRoute(player,state.ctx,true);
     player.mediaBridge=node;
   }catch{
-    try{if(node)player.master.disconnect(node);}catch{}
+    switchAudioRoute(player,state.ctx,false);
+    try{player.bridgeRoute?.disconnect();}catch{}
+    player.bridgeRoute=null;
     try{element.pause();element.srcObject=null;}catch{}
   }
 }
@@ -459,7 +474,9 @@ async function stop(){
   state.seek=playPosition();
   state.player=null;
   try{p.source?.stop();}catch{}
-  try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();p.dry.disconnect();p.master.disconnect();}catch{}
+  try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();
+    p.dry.disconnect();p.master.disconnect();p.directRoute.disconnect();
+    p.bridgeRoute?.disconnect();}catch{}
   try{p.worklet.port.postMessage({type:"dispose"});}catch{}
   try{const el=$("#background-output");el.pause();el.srcObject=null;}catch{}
   mediaStatus(false);
@@ -488,10 +505,14 @@ async function play(mode="wet",offset=null){
     });
     const dry=ctx.createGain(),wet=ctx.createGain(),master=ctx.createGain();
     worklet.connect(wet,0);worklet.connect(dry,1);
-    dry.connect(master);wet.connect(master);master.connect(ctx.destination);
+    dry.connect(master);wet.connect(master);
+    const directRoute=ctx.createGain();
+    directRoute.gain.value=1;
+    master.connect(directRoute);directRoute.connect(ctx.destination);
     master.gain.value=1;
     const player={
-      worklet,dry,wet,master,buffer:makeBuffer(),source:null,
+      worklet,dry,wet,master,directRoute,bridgeRoute:null,outputRoute:"direct",
+      buffer:makeBuffer(),source:null,
       mode,quality:current.qualityIndex,engine:current.engine,hopDiv:current.hopDiv,at:ctx.currentTime,
       offset:0,appliedRevision:0
     };
