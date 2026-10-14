@@ -23,3 +23,7 @@ add_test(NAME fw_shell_delay_test COMMAND fw_shell_delay_test)
 add_executable(fw_shell_automation_test tests/automation_registry_test.cpp)
 target_compile_features(fw_shell_automation_test PRIVATE cxx_std_17)
 add_test(NAME fw_shell_automation_test COMMAND fw_shell_automation_test)
+
+add_executable(fw_swap_mailbox_test tests/swap/swap_test.cpp)
+target_compile_features(fw_swap_mailbox_test PRIVATE cxx_std_17)
+add_test(NAME fw_swap_mailbox_test COMMAND fw_swap_mailbox_test)
