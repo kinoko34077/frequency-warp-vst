@@ -74,6 +74,12 @@ test("sample-offset host automation uses fixed ParamID 64 and v1 layout",()=>{
   assert.ok(Math.abs(pcm[256+128]-.2)<1e-6);
   assert.notEqual(half.e.fw_process(half.handle,half.src,half.dst,256,half.ev,999),0);
   assert.notEqual(half.e.fw_process(half.handle,half.src,half.src,256,half.ev,0),0);
+  // VST3 may flush automation with zero frames. Event at sample 0 still sticks.
+  const events=new DataView(half.e.memory.buffer,half.ev);
+  events.setUint32(0,64,true);events.setUint32(4,0,true);
+  events.setFloat64(8,.75,true);
+  assert.equal(half.e.fw_process(half.handle,half.src,half.dst,0,half.ev,1),0);
+  assert.ok(Math.abs(render(half)[0]-.6)<1e-6);
   half.e.fw_destroy(half.handle);
 });
 process.on("exit",()=>rmSync(temp,{recursive:true,force:true}));
