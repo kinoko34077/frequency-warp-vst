@@ -68,3 +68,31 @@ editor never labels a new candidate as ACTIVE merely because sendMessage
 succeeded. These are S3c-B/S4 acceptance gaps. GUI attachment, file dialog,
 file drop, FL Studio automation clip and physical host playback still need
 manual Windows host testing, not inferred from Steinberg Validator alone.
+
+## S3c-B worker-confirmed request state and previous-engine Back
+
+Controller now serializes module binary submissions with a monotonically
+increasing nonzero request token. Processor passes that token to the non-RT
+Rust worker; the worker atomically records `request-id/succeeded` **only
+after verifying and preparing or rejecting** the candidate. A UI-thread
+`FrequencyWarp.QueryEngineV1` message polls status and receives
+`FrequencyWarp.EngineStatusV1` (completed request token, result, handled
+count, accepted generation, worker status). An ACK with an unrelated token
+cannot activate an editor candidate. Host deactivation cancels pending UI
+verification and allows retry after reactivation; worker Faulted/Stopped
+states are never shown as verified ACTIVE.
+
+During one editor session, only worker-confirmed package bytes enter the
+`VerifiedEngineHistory`: last valid package remains after malformed
+selection, and Back re-submits the *previous verified package bytes* rather
+than trusting a path that may have changed. A successful Back is committed
+only after the worker ACKs that request. C++ Release regression covers
+stale token, invalid package, verified Back, and cancellation. Native
+Linux/Windows Rust worker fixture now also proves distinct success/failure
+request IDs through actual Identity/Gain and bad ZIP.
+
+**Still open:** persist selected engine id/version/content hash and trusted
+library bytes across DAW project save/restore (S4), detailed per-module
+failure diagnostic text, production Frequency Warp spectral DSP/audio
+automation, and actual FL Studio/second-host GUI and file-drop tests (S5).
+No user-facing binary or installer has been published.
