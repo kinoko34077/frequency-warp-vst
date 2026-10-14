@@ -50,3 +50,35 @@ DAW automation of a linked input such as H/P or carrier/Fold requires consistent
 `sine-pitch`, `sine-cent`, `sine-hz`, `graph-log` and preview `sine-enabled` operate only in the browser's reference audio/display, not the Frequency Warp VST3 spectral effect. They are **not silently re-labelled as DSP controls**. If later added to the VST3 interface they must obtain their own persistent IDs and tests. Web #79 unit menu remains an independent display feature.
 
 Test commands: `fw_shell_automation_test` plus `fw_shell_delay_test`, Windows VST3 SDK Validator and, when the real DSP/GUI is present, manual FL Studio automation clip write/read, project reload and multi-instance checks. A test passing the registry does not mean the sound has already changed when editing a knob.
+
+
+## S4b1 — audible core Stream automation subset (pending host-physical validation)
+
+The real VST3 Processor sends the following confirmed fixed ParamIDs to the
+`org.kinotch.stream` package via off-audio-thread PCM mailbox events. Its
+normalized DAW values are converted using `parameter_registry.h` at the
+current host sample rate, then applied at their source-frame offset:
+
+| ParamID | Canonical module value | Host normalization |
+|---|---|---|
+| 2 Lower Frequency | Hz | existing logarithmic FrequencyBand |
+| 3 Upper Frequency | Hz | existing logarithmic FrequencyBand |
+| 4 Invert | fraction 0..1 | continuous |
+| 5 Curvature | fraction 0..1 | continuous |
+
+Every PCM packet carries the current 4-value snapshot at offset0. Further
+distinct param/sample changes are encoded in sample order. A 128-event limit
+causes the VST3 audio callback to **split the PCM packet first**, before
+consuming later host parameter points. Multiple updates of the same control
+at the same sample have one sample-effective final value. No heap/lock/WASM
+work is allowed on the audio callback. A worker checks its accepted manifest
+identity and strips these core-only events for unbound demo Identity/Gain
+modules rather than crashing an unrelated module.
+
+**Remaining:** Other IDs 6..33 are exposed and automatable in the host but
+their actual shared Stream binding is still pending independent S4b semantic
+mapping; registering a visible host knob alone is not audible DSP support.
+GUI beginEdit/performEdit/endEdit for frequency controls, CPU under dense
+automation, project module identity persistence and real FL Studio/REAPER
+automation clip playback require later gates. The unit-selector Web/UI
+development Issue #79 is separate.
