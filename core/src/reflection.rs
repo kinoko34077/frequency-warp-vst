@@ -22,7 +22,7 @@ pub fn distance(f:f64,signed_target:f64,s:Settings,rational:bool,
     pitch:f64,delta:f64,anchor:f64,pivot:f64,slope:f64,
     reference:f64,shift:f64)->f64{
     let negative=(-signed_target).max(0.0);
-    if !(f>=s.low&&f<=s.high){return negative;}
+    if !(f>=s.low&&f<=s.high)||slope==0.0||(s.invert==0.0&&slope>=0.0){return negative;}
     // Classify reflection in the FINAL physical mapping. Negative slope may
     // reverse an otherwise forward warp, or cancel a previous inversion.
     // Outside-band Pass never acquires this reflected amplitude.
