@@ -1,0 +1,39 @@
+name: S3a native .fwengine WASM runtime and fuel safety
+on:
+  pull_request:
+    paths:
+      - 'fwengine-runtime/**'
+      - 'fwengine-package/**'
+      - 'fwengine-demo/**'
+      - 'scripts/fwengine_pack.py'
+      - '.github/workflows/fwengine-s3a-runtime.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'fwengine-runtime/**'
+      - 'fwengine-package/**'
+      - 'fwengine-demo/**'
+      - 'scripts/fwengine_pack.py'
+      - '.github/workflows/fwengine-s3a-runtime.yml'
+permissions:
+  contents: read
+jobs:
+  native-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install wasm32 build target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build separate S1 WASM engines and package two ZIP modules
+        run: |
+          cargo build --manifest-path fwengine-demo/Cargo.toml --release --target wasm32-unknown-unknown
+          mkdir -p _s3a_fixture
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s3a_fixture/identity.wasm
+          cargo build --manifest-path fwengine-demo/Cargo.toml --release --target wasm32-unknown-unknown --features gain-half
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s3a_fixture/gain.wasm
+          python3 scripts/fwengine_pack.py _s3a_fixture/identity.wasm _s3a_fixture/identity.fwengine org.kinotch.identity
+          python3 scripts/fwengine_pack.py _s3a_fixture/gain.wasm _s3a_fixture/gain.fwengine org.kinotch.gainhalf
+      - name: Rust unit tests for native VM memory contracts
+        run: cargo test --manifest-path fwengine-runtime/Cargo.toml
+      - name: Run actual native Wasmi PCM, parameter automation and fault isolation
+        run: cargo run --release --manifest-path fwengine-runtime/Cargo.toml --bin fwengine-runtime-smoke -- _s3a_fixture/identity.fwengine _s3a_fixture/gain.fwengine

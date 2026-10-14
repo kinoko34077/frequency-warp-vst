@@ -1,0 +1,17 @@
+[package]
+name = "fwengine-runtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+fwengine-package = { path = "../fwengine-package" }
+wasmi = "=2.0.0"
+
+[lib]
+name = "fwengine_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fwengine-runtime-smoke"
+path = "src/main.rs"
