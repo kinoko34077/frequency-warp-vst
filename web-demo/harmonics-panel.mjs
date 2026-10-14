@@ -108,12 +108,12 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   if(!checkbox.checked){
     readout.textContent="";
   }else if(!valid){
-    readout.textContent="この補間には移動する折返し点がありません。手動 "+fmt(manualCarrier)+" Hzを使用";
+    readout.textContent="連動対象なし · 手動 "+fmt(manualCarrier)+" Hz";
   }else{
     const fold=foldPoint?.();
     readout.textContent=Number.isFinite(fold)?
-      "入力側の折返し点 = "+fmt(fold)+" Hzへ連動（Rust共通DSP）":
-      "折返し点を共通DSPから読込み中…";
+      "連動 "+fmt(fold)+" Hz":
+      "連動先を確認中…";
   }
   return z;
 }
