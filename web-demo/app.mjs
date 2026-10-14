@@ -118,7 +118,7 @@ function labels(id=""){
   const profile=[{count:6,floor:.09},{count:10,floor:.045},{count:18,floor:.025}][p.qualityIndex];
   const budget=profile.count+Math.floor(profile.count*3*p.aQuality/100);
   const floor=(profile.floor*(1-.9*p.aQuality/100)*100).toFixed(2);
-  $("#a-quality-info").textContent="品質 "+p.aQuality+"/100 · 最大ピーク "+budget+"本/窓（基準 "+profile.count+"本）・候補閾値 "+floor+"%（窓内最大値比）。算術演算量の上限は基準の約 "+(budget/profile.count).toFixed(1)+"倍。実CPU時間は再生中のステータスへ表示。ノイズ・アタックの完全復元を保証しません。";
+  $("#a-quality-info").textContent="品質 "+p.aQuality+"/100 · 最大ピーク "+budget+"本/窓（基準 "+profile.count+"本）・候補閾値 "+floor+"%（窓内最大値比）。算術演算量の上限は基準の約 "+(budget/profile.count).toFixed(1)+"倍。実CPU時間は再生中のステータスへ表示。残差補完 "+p.aQuality+"%（実験）を適用。フォルマント・過渡の完全復元は未検証です。";
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
   showNumber("crusher-hold-value",p.crusherHold);

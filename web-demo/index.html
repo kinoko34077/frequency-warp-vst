@@ -182,7 +182,7 @@
           <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
         </div>
         <p id="a-quality-info" class="setting-help" aria-live="polite">品質0: 基準ピーク数。品質を上げるとピーク候補が増え、CPU負荷も増え得ます。原音忠実度100%の保証ではありません。</p>
-        <p class="setting-help">Aのみ。精細度はピーク候補の上限・検出閾値を連動調節します。従来の抽出帯域幅はピーク間の距離を別に指定します。ノイズ・アタックの残差復元は研究中です。残響量は合成した音の尾を調整します。</p>
+        <p class="setting-help">Aのみ。精細度はピーク候補・検出閾値と、非ピーク成分を同じ変換曲線で補完する試験的な残差量を連動調節します。抽出帯域幅はピーク間の距離の別設定です。残差分離は近似で、フォルマントや過渡音の完全復元ではありません。高設定ではCPU負荷が増加します。</p>
       </div>
     </fieldset>
     <fieldset><legend>反転と帯域</legend>

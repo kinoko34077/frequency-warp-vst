@@ -318,3 +318,31 @@ or implement a full phase-locked vocoder, WSOLA or élastique.
 Those candidate quality improvements remain scientific work under
 Issue #50 and research owner #5; subjective iOS confirmation remains
 UNVERIFIED. The separate A detail/CPU slider is unaffected.
+
+## 2026-10-14 A quality slider mapped-residual experiment (#50, Stage 3)
+With nonzero A quality, the same Rust streaming engine now reconstructs
+part of the previously discarded **in-band residual spectrum** (not an
+unwarped copy of Dry): it excludes the selected peak and its immediate
+Hann mainlobe neighbours, applies the exact same warp / rational placement
+/ axis translation / 0-Hz policy as the tracked partial, applies absolute
+frame-start phase rotation to relocated residual FFT bins, then uses
+the same overlap-add output accumulation. Quality=0 remains the original
+peak-only mode; increasing quality increases peak tracking budget, lowers
+selection threshold AND increases residual reconstruction amount from
+0 to 100%. The FFT scratch and Boolean peak mask are allocated when
+the stream is constructed (no per-frame allocation). The overlap-add
+reference and latency compensation are unchanged for exported WAV.
+
+A deterministic direct Rust/WASM test at 12kHz, FFT1024, no warp/FX
+reported **normalized RMSE** baseline vs maximum quality: wideband
+noise 0.88242 → 0.11839, 440Hz+noise 0.34967 → 0.11139,
+gated 880Hz burst 0.87981 → 0.22621. Offline elapsed time
+varied with input/quality, not an iPhone real-time speed certification.
+A linked stereo + nonzero 480→504Hz test independently rejects
+unshifted ghost and distorted channel balance.
+
+This mask is approximate. In the *full non-linear* fold, where several
+source frequencies can map to one target frequency, spectral collision,
+variable formants, onset smearing and phase-locking remain unresolved.
+It is not a claim that #5's independent R2.2 research candidate, native
+VST3 or perceptual tuning are complete.

@@ -50,6 +50,7 @@ pub struct Stream {
     used:Vec<bool>,
     complement:Vec<Complex>,
     relocated:Vec<Complex>,
+    synthesized_peak_mask:Vec<bool>,
 }
 
 impl Stream {
@@ -98,6 +99,7 @@ impl Stream {
             used:vec![false;q.max_peaks*4],
             complement:vec![Complex::ZERO;q.n],
             relocated:vec![Complex::ZERO;q.n],
+            synthesized_peak_mask:vec![false;q.n/2+1],
         })
     }
     pub fn latency(&self)->usize{self.n-1} // all engines now use the shared warp stage
@@ -364,6 +366,7 @@ impl Stream {
         self.peaks.clear();
         for &k in self.candidates.iter().take(self.max_peaks){self.peaks.push(k);}
         self.peaks.sort_unstable();
+        self.synthesized_peak_mask.fill(false);
         self.used.fill(false);
         self.next_tracks.clear();
 
@@ -413,6 +416,12 @@ impl Stream {
                 }
             }
             self.next_tracks.push(Track{frequency,difference:diff,phase_shift:shift});
+            // Hann analysis spreads a locally sinusoidal partial into
+            // neighbouring bins. Exclude those bins from the residual to
+            // avoid double-counting the tracked oscillator and its lobes.
+            for skip in k.saturating_sub(1)..=(k+1).min(half){
+                self.synthesized_peak_mask[skip]=true;
+            }
 
             // At window centre, FFT-bin phase and carrier phase share a
             // common origin. Shared shift preserves L/R phase differences.
@@ -431,6 +440,54 @@ impl Stream {
                     self.output[c][slot]+=amplitude*cr*self.window_sq[i];
                     let new_r=cr*rot_r-ci*rot_i;
                     ci=cr*rot_i+ci*rot_r;cr=new_r;
+                }
+            }
+        }
+        // Experimental PARTIAL + RESIDUAL path. Reconstruct *only* in-band
+        // bins not assigned to a synthesized peak, using the SAME frequency
+        // mapping and absolute-frame phase correction as engine B. The
+        // residual is NOT simply unprocessed Dry: translated/warped bins
+        // follow the same target curve, avoiding a parallel old-frequency
+        // ghost. This is a bounded experiment, not an accepted R2.2 engine:
+        // the peak mask remains approximate and transients/formants are
+        // not specially modelled.
+        if self.a_quality_percent>0 {
+            let residual_gain=self.a_quality_percent as f64/100.0;
+            for c in 0..self.channels {
+                self.relocated.fill(Complex::ZERO);
+                for k in 1..half {
+                    if self.synthesized_peak_mask[k]{continue;}
+                    let f=k as f64*step;
+                    if f<self.settings.low.max(self.a_min_hz)||f>self.settings.high{continue;}
+                    let base=match map_frequency(f,self.settings){
+                        Ok(value)=>value,Err(_)=>continue
+                    };
+                    let staged=if self.rational_enabled{
+                        self.pitch_ratio*base+self.shift_hz
+                    }else{base};
+                    let target=if staged<=0.0{staged}else{
+                        translate_frequency_anchored(staged,source_anchor,
+                            self.axis_pivot,self.axis_slope,self.axis_reference,
+                            self.settings.curvature,self.axis_shift)
+                    };
+                    let (target,fade_gain)=match self.resolve_zero(target,step){
+                        Some(v)=>v,None=>continue
+                    };
+                    if target>=self.sample_rate/2.0{continue;}
+                    let dest=((target/step).round() as usize).max(1);
+                    if dest>=half{continue;}
+                    let phase=TAU*(dest as f64-k as f64)
+                        *(start%self.n) as f64/self.n as f64;
+                    let (sin,cos)=phase.sin_cos();
+                    let z=self.spectrum[c][k];
+                    let gain=fade_gain*residual_gain;
+                    self.relocated[dest].r+=(z.r*cos-z.i*sin)*gain;
+                    self.relocated[dest].i+=(z.r*sin+z.i*cos)*gain;
+                }
+                fft(&mut self.relocated,true);
+                for i in 0..self.n{
+                    let slot=(start+i)%(self.n*2);
+                    self.output[c][slot]+=2.0*self.relocated[i].r*self.window_sq[i].sqrt();
                 }
             }
         }
