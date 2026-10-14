@@ -14,12 +14,13 @@ test("Issue16 virtual-root arrival q=1,F=350,m=4 -> 437.5 downfold",()=>{
   assert.equal(v.H,87.5);assert.equal(v.foldShift,437.5);
   assert.deepEqual(v.rows.map(x=>x.reflected),[87.5,262.5,612.5,962.5,1312.5]);
 });
-test("graph is fixed 20-2000Hz and passes identity outside L/H",()=>{
+test("graph spans the 0-2000Hz origin and passes positive identity outside L/H",()=>{
   const opts={low:250,high:1200,curvature:1,invert:1,mode:"fold-h",
     outside:"pass",engine:0,pitchRatio:1,shiftHz:0,carrierHz:100,zeroMode:0};
   const rows=graphSegments(opts,mapFrequency);
-  assert.equal(rows[0].f,20);assert.equal(rows.at(-1).f,2000);
-  assert.deepEqual(rows[0].outputs,[20]);
+  assert.equal(rows[0].f,0);assert.equal(rows.at(-1).f,2000);
+  assert.deepEqual(rows[0].outputs,[],"physical DC is not an audible sine branch");
+  assert.ok(rows[1].outputs[0]>0,"outside Pass remains defined above DC");
   assert.deepEqual(rows.at(-1).outputs,[2000]);
   const centre=rows.find(p=>p.f>550&&p.f<560);
   assert.ok(centre.inside && Math.abs(centre.outputs[0]-centre.f)>100);
@@ -42,7 +43,7 @@ test("20 kHz view spans full range while retaining square-axis ideal map",()=>{
    axisPivot:0,axisSlope:2,axisReference:350,axisShift:0,sampleRate:48000};
  const twice=(f,pivot,curvature,shift,slope)=>pivot+slope*(f-pivot);
  const points=graphSegments(cfg,(f)=>f,twice,20000);
- assert.equal(points[0].f,20);
+ assert.equal(points[0].f,0);
  assert.equal(points.at(-1).f,20000);
  const at500=points.find(pt=>Math.abs(pt.f-500)<25);
  assert.ok(Math.abs(at500.outputs[0]-2*at500.f)<1e-9);
