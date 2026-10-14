@@ -421,3 +421,37 @@ Rust/WASM gain oracle for each sample rather than using a separate visual
 law; opacity reflects the effective amplitude, not a measured audio FFT.
 Both controls reach realtime AudioWorklet and WAV offline. Legacy native
 zero-reflection ABI callers retain their old behaviour (falloff=0).
+
+## Issue #59 S2 — True 0Hz crusher hold and physical spectral images
+
+The requested bitcrusher update frequency now spans 0Hz to the actual
+source sampling rate. Zero requests a frozen first processed sample, with
+no subsequent updates. A positive target R is implemented by the shared
+Rust integer hold N=round(Fs/R) up to 1e9 samples. The UI distinguishes
+requested R from the actual effective Fs/N. The offline WAV export uses
+the original file's Fs while AudioWorklet uses its current AudioContext
+sample rate; both run the SAME Rust streaming DSP.
+
+The main frequency graph now has a true 0Hz origin and a logarithmic
+display interpolation G_alpha(f)=(1-alpha)f/M +
+alpha*ln(1+f/20)/ln(1+M/20). It draws the actual effective update
+Nyquist mirror y=Fs/(2N) and additional half-integer reflected
+boundaries, never fake dotted alias lines. Solid colored lines represent
+selected sinusoidal spectral images after discrete N-sample zero-order
+hold. For a COMPLEX sine they occur at f+k*Fs/N (folded into hardware
+0..Fs/2) and their exact linear-stage magnitudes are
+abs(sin(pi*N*frequency/Fs)/(N*sin(pi*frequency/Fs))) at the signed
+image frequency. The baseband image and representative neighbouring
+images are drawn with the correct amplitude-dependent transparency.
+Ring Mod sidebands are each half the sinusoidal input amplitude;
+0Hz freeze produces DC rather than audible oscillations.
+
+Finite-bit quantization is nonlinear: extra harmonics depend on the
+amplitude and phase of the actual input. Therefore these lines are
+STRICTLY the analytical linear sample-hold response of a single
+sinusoid; they cannot be an exact complete FFT of an arbitrary uploaded
+song, nor can the extra quantization harmonics be deduced from input
+frequency alone. The original dashed diagonal is a reference only.
+The separate synthetic waveform example is retained, now with faint
+sample-update clock/history lines and horizontal quantizer-step levels,
+coarser and more visible at low update rates or bit depths.
