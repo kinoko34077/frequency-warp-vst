@@ -337,8 +337,35 @@ impl Stream {
                 self.relocated.fill(Complex::ZERO);
                 for k in 1..half {
                     let f=k as f64*step;
-                    let target=if f>=self.settings.low&&f<=self.settings.high {
-                        let base=map_frequency(f,self.settings).unwrap_or(f);
+                    if f<self.settings.low||f>self.settings.high{continue;}
+                    // The same off-bin sinusoid appears in several Hann FFT
+                    // bins. Mapping each of those bins independently can
+                    // collapse k,k+1 into one destination and their differing
+                    // phase rotations then beat at the FFT-bin spacing:
+                    // an artificial tremolo under non-unit warp slopes.
+                    //
+                    // Locally phase-lock the ±2-bin peak neighbourhood by
+                    // giving its lobes the SAME integer-bin DISPLACEMENT,
+                    // instead of assigning each lobe an independent target.
+                    // Stereo peak strength is shared across channels, and no
+                    // audio-thread heap buffer or unrelated processing path
+                    // is introduced.
+                    let mut anchor=k;
+                    let first=k.saturating_sub(2).max(1);
+                    let last=(k+2).min(half-1);
+                    for neighbor in first..=last{
+                        let near_f=neighbor as f64*step;
+                        if near_f<self.settings.low||near_f>self.settings.high{continue;}
+                        if self.mag[neighbor]>self.mag[anchor]{
+                            anchor=neighbor;
+                        }
+                    }
+                    if anchor!=k && self.mag[anchor]<self.mag[k]*1.1{
+                        anchor=k;
+                    }
+                    let anchor_f=anchor as f64*step;
+                    let target=if anchor_f>=self.settings.low&&anchor_f<=self.settings.high {
+                        let base=map_frequency(anchor_f,self.settings).unwrap_or(anchor_f);
                         let old=if self.rational_enabled {
                             self.pitch_ratio*base+self.shift_hz
                         }else{base};
@@ -355,10 +382,15 @@ impl Stream {
                         Some(v)=>v,None=>continue
                     };
                     if target>=self.sample_rate*0.5 {continue;}
-                    // No representable DC bin after a positive sub-bin shift:
-                    // bin 1 is the nearest audible FFT cell.
-                    let dest=((target/step).round() as usize).max(1);
-                    if dest>=half {continue;}
+                    // Preserve the source-window lobe's local spectral
+                    // offset around its dominant peak. The peak's mapped
+                    // bin is the anchor; every nearby lobe shares a constant
+                    // integer shift, including phase rotation.
+                    let target_anchor=((target/step).round() as isize).max(1);
+                    let delta=target_anchor-anchor as isize;
+                    let destination=k as isize+delta;
+                    if destination<=0||destination>=half as isize{continue;}
+                    let dest=destination as usize;
                     // FFT coefficients use local window time. A frequency
                     // shift by dest-k bins requires compensating its phase
                     // advance at the ABSOLUTE start of each analysis window.
