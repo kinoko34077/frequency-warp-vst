@@ -65,8 +65,8 @@ fn main()->Result<(),Box<dyn Error>>{
         let input=frame_input(block*F,F);
         let cut=if block==64{32}else{F};
         let events=if block==64{
-            vec![ParamEvent{id:4,offset:32,value:.72},
-                 ParamEvent{id:5,offset:32,value:.35}]
+            vec![ParamEvent{id:4,offset:32,value:0.72},
+                 ParamEvent{id:5,offset:32,value:0.35}]
         }else{vec![]};
         let actual=wasm.process(&input,F,&events)?;
         let expected=native_chunk(&mut native,&input,F,cut,&mut native_settings)?;
