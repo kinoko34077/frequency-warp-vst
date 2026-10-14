@@ -1,7 +1,7 @@
 name: Windows VST3 S2 fixed shell and Steinberg Validator
 on:
   pull_request:
-    paths: ['vst3/**','.github/workflows/vst3-s2-windows.yml']
+    paths: ['vst3/**','fwengine-runtime/**','fwengine-package/**','.github/workflows/vst3-s2-windows.yml']
   push:
     branches: [main]
     paths: ['vst3/**','.github/workflows/vst3-s2-windows.yml']
@@ -19,11 +19,17 @@ jobs:
           git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git _sdk/vst3sdk
           git -C _sdk/vst3sdk rev-parse HEAD
           test -f _sdk/vst3sdk/LICENSE.txt
+      - name: Build native Rust Wasmi staticlib for real Windows plugin
+        shell: bash
+        run: |
+          cargo build --release --lib --manifest-path fwengine-runtime/Cargo.toml
+          test -f fwengine-runtime/target/release/fwengine_runtime.lib
       - name: Configure genuine VST3 Windows x64
         shell: bash
         run: |
           cmake -S vst3 -B _build/vst3 -G "Visual Studio 17 2022" -A x64 \
             -DFW_VST3_SDK_DIR="$GITHUB_WORKSPACE/_sdk/vst3sdk" \
+            -DFW_NATIVE_ARCHIVE="$GITHUB_WORKSPACE/fwengine-runtime/target/release/fwengine_runtime.lib" \
             -DSMTG_CREATE_PLUGIN_LINK=OFF \
             -DSMTG_RUN_VST_VALIDATOR=ON
       - name: Build VST3 plugin with Steinberg Validator post-build
