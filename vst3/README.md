@@ -16,8 +16,11 @@ Issue: https://github.com/kinoko34077/frequency-warp-vst/issues/83
   for all modes, even bypass. Fixed-PDC Missing Engine fallback.
   Host parameter **automation and project-state values** are received but
   do NOT currently affect audio: no module engine is attached yet.
-- No native runtime, no .fwengine file loader in VST3, no module hot-swap,
-  no dedicated plugin editor/drag-and-drop. These are S3/S4 gates.
+- Standalone native .fwengine interpreter and C++ staticlib ABI exist in
+  `fwengine-runtime/`; they are NOT wired to the VST3 Processor yet.
+  A tested RT pointer handoff and off-thread retirement primitive exists at
+  `src/rt_swap_mailbox.h`, but no live module hot-swap or custom editor
+  Browse/Drop/Reload is integrated. These remain S3 gates.
 - Compile/Steinberg validator in Windows CI is not FL Studio validation,
   nor second DAW, physical listening or installer distribution.
 
@@ -28,6 +31,7 @@ Visual Studio 2022 and CMake 3.25+:
     cmake --build build/vst3 --config Release --target FrequencyWarpShell
     cmake --build build/vst3 --config Release --target fw_shell_delay_test
     cmake --build build/vst3 --config Release --target fw_shell_automation_test
+    cmake --build build/vst3 --config Release --target fw_swap_mailbox_test
     ctest --test-dir build/vst3 -C Release --output-on-failure
 
 This repository does not vendor the Steinberg SDK. SDK terms remain governed
