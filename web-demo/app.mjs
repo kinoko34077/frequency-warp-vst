@@ -1,6 +1,7 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
+import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
@@ -706,8 +707,7 @@ controls.render.addEventListener("click",()=>{
   if(!state.dry||state.offlineWorker)return;
   // Reject oversized export BEFORE constructing a Worker, so the button
   // remains usable for a subsequent shorter file after rejection.
-  const totalSamples=state.dry.reduce((n,c)=>n+c.length,0);
-  if(totalSamples>40_000_000){
+  if(!canExportChannels(state.dry)){
     message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
     return;
   }
