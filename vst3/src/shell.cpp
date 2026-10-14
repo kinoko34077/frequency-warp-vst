@@ -106,6 +106,24 @@ public:
     // invoked from the audio callback; it only queues bytes for the worker.
     tresult PLUGIN_API notify(IMessage* message) override {
         if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),"FrequencyWarp.QueryEngineV1")==0) {
+            // Request and response remain on the host's non-audio message path.
+            // Worker status is atomic; never send host messages from process().
+            IMessage* reply=allocateMessage();
+            if(!reply)return kResultFalse;
+            reply->setMessageID("FrequencyWarp.EngineStatusV1");
+            auto* result=reply->getAttributes();
+            const uint64_t done=worker_.lastCompletedWord();
+            const bool ok=result &&
+                result->setInt("request",static_cast<int64>(done>>1))==kResultTrue &&
+                result->setInt("succeeded",static_cast<int64>(done&1u))==kResultTrue &&
+                result->setInt("accepted",static_cast<int64>(worker_.acceptedVersion()))==kResultTrue &&
+                result->setInt("handled",static_cast<int64>(worker_.handledRequests()))==kResultTrue &&
+                result->setInt("status",static_cast<int64>(worker_.status()))==kResultTrue;
+            const auto response=ok?sendMessage(reply):kResultFalse;
+            reply->release();
+            return response;
+        }
         if(std::strcmp(message->getMessageID(),"FrequencyWarp.LoadFwengineV1")!=0)
             return AudioEffect::notify(message);
         auto* attrs=message->getAttributes();
@@ -114,6 +132,9 @@ public:
         uint32 size=0;
         if(attrs->getBinary("package",bytes,size)!=kResultTrue ||
            !bytes||size==0||size>8*1024*1024)return kResultFalse;
+        int64 requestId=0;
+        if(attrs->getInt("request",requestId)!=kResultTrue||requestId<=0)
+            return kResultFalse;
         // Rejection never replaces the last valid engine. Unsupported mono/
         // stereo arrangement is refused earlier by setBusArrangements.
         const uint32 channels=hostChannels_;
@@ -123,7 +144,8 @@ public:
             copy.assign(first,first+size);
         }catch(...) { return kResultFalse; }
         return worker_.postPackage(std::move(copy),hostSampleRate_,
-                                  channels,AsyncPcmMailbox::kMaxFrames)
+                                  channels,AsyncPcmMailbox::kMaxFrames,
+                                  static_cast<uint64_t>(requestId))
             ? kResultOk:kResultFalse;
     }
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
