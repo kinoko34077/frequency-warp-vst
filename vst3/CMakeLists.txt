@@ -53,3 +53,7 @@ add_test(NAME fw_async_pcm_test COMMAND fw_async_pcm_test)
 add_executable(fw_verified_engine_history_test tests/verified_engine_history_test.cpp)
 target_compile_features(fw_verified_engine_history_test PRIVATE cxx_std_17)
 add_test(NAME fw_verified_engine_history_test COMMAND fw_verified_engine_history_test)
+
+add_executable(fw_stream_host_events_test tests/stream_host_events_test.cpp)
+target_compile_features(fw_stream_host_events_test PRIVATE cxx_std_17)
+add_test(NAME fw_stream_host_events_test COMMAND fw_stream_host_events_test)
