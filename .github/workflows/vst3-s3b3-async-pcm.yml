@@ -1,0 +1,30 @@
+name: S3b3 nonblocking PCM worker/deadline regression
+on:
+  pull_request:
+    paths:
+      - 'vst3/src/async_pcm_mailbox.h'
+      - 'vst3/tests/async/**'
+      - '.github/workflows/vst3-s3b3-async-pcm.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'vst3/src/async_pcm_mailbox.h'
+      - 'vst3/tests/async/**'
+      - '.github/workflows/vst3-s3b3-async-pcm.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    runs-on: "${{ matrix.os }}"
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SDK-independent SPSC C++ unit tests
+        run: cmake -S vst3/tests/async -B _async_build -DCMAKE_BUILD_TYPE=Release
+      - name: Compile
+        run: cmake --build _async_build --config Release
+      - name: Test always-on PCM/latency invariants
+        run: ctest --test-dir _async_build --build-config Release --output-on-failure
