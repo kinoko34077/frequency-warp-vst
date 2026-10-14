@@ -471,11 +471,11 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .info-tip .info-body .slider-formula{font-size:10px;margin-top:6px}
 .fx-item{position:relative}
 .fx-item>.info-tip{margin-left:6px}
-.fx-item>.info-tip .info-body{left:auto;right:0}
+.fx-item>.info-tip .info-body{left:0;right:auto}
 .control-heading>.info-tip{margin-right:auto}
 .quick-panel .bounds-heading>.info-tip{margin:0 5px}
-.graph-scale>.info-tip .info-body{left:0}
-.help-inline{margin:5px 0;color:#abd1c9;font-size:11px}
+.graph-scale>.info-tip .info-body{left:auto;right:0;width:min(215px,62vw)}
+.help-inline,.settings-body details.help-inline{margin:5px 0;color:#abd1c9;font-size:11px}
 .help-inline>summary{display:inline-block;padding:4px 0;cursor:pointer;list-style:none;color:#8ee2ca}
 .help-inline>summary::-webkit-details-marker{display:none}
 .help-inline[open]>p{margin:6px 0 0;line-height:1.5}
