@@ -216,11 +216,25 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#engine-auto-result",el=>el.textContent),/A /);
     assert.equal(await page.$eval("#engine",el=>el.hidden),true);
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
-    // Killing negative targets removes the visible descending output.
-    await page.select("#zero-mode","1");
+    // Zero-gain negative destinations drop out of the audible graph,
+    // while half gain must reflect them with visibly reduced opacity.
+    assert.equal(await page.$eval("#zero-mode",el=>el.type),"hidden");
+    const reflectionGraph=async percent=>{
+      await page.$eval("#zero-reflect",(el,v)=>{
+        el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));
+      },percent);
+      return page.$eval("#curve",el=>el.toDataURL());
+    };
+    const fullReflect=await reflectionGraph(100);
+    const halfReflect=await reflectionGraph(50);
+    assert.equal(await page.$eval("#zero-reflect-value",el=>Number(el.value)),50);
+    assert.match(await page.$eval("#zero-reflect-description",el=>el.textContent),/50.*%/);
+    assert.notEqual(halfReflect,fullReflect,"reflection opacity must change the actual graph");
+    const killReflect=await reflectionGraph(0);
+    assert.notEqual(killReflect,halfReflect,"zero reflection removes negative branch");
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),true);
-    await page.select("#zero-mode","0");
+    await reflectionGraph(100);
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^A /);
     await page.click("#engine-auto");
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
