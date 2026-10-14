@@ -102,42 +102,50 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       timeout:30000
     });
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
-    // Inspect real downloadable PCM, not merely Rust helper outputs. At Wet
-    // 50%, the first 800 frames are pre-STFT latency. They must be silent
-    // because BOTH processed and dry branches share the same timeline.
-    await page.$eval("#wet",el=>{
-      el.value=".5";el.dispatchEvent(new Event("input",{bubbles:true}));
-    });
+    // The Rust offline renderer has ALREADY removed stream lookahead and
+    // flushed the tail. The saved WAV must therefore mix Dry and processed
+    // samplewise, unlike the latency-compensated *realtime* AudioWorklet.
     await page.click(".offline-tool summary");
     await page.click("#render");
     await page.waitForFunction(()=>
       !document.querySelector("#download").disabled,{timeout:30000});
     await page.evaluate(()=>{
-      window.__capturedWav=null;
+      window.__capturedWavs=[];
       const native=URL.createObjectURL.bind(URL);
       URL.createObjectURL=blob=>{
-        window.__capturedWav=blob;return native(blob);
+        window.__capturedWavs.push(blob);return native(blob);
       };
     });
-    await page.click("#download");
+    for(const wet of [0,.5,1]){
+      await page.$eval("#wet",(el,v)=>{
+        el.value=String(v);el.dispatchEvent(new Event("input",{bubbles:true}));
+      },wet);
+      await page.click("#download");
+    }
     const rendered=await page.evaluate(async()=>{
-      const blob=window.__capturedWav;
-      if(!blob)return {hasBlob:false};
-      const data=new DataView(await blob.arrayBuffer());
-      const first=800,windowStart=2048,windowEnd=Math.min(5500,(data.byteLength-44)/2);
-      let startupPeak=0,laterPeak=0;
-      for(let i=0;i<first;i++)startupPeak=Math.max(startupPeak,
-        Math.abs(data.getInt16(44+2*i,true)));
-      for(let i=windowStart;i<windowEnd;i++)laterPeak=Math.max(laterPeak,
-        Math.abs(data.getInt16(44+2*i,true)));
-      return {hasBlob:true,startupPeak,laterPeak,frames:(data.byteLength-44)/2};
+      const blobs=window.__capturedWavs;
+      const views=await Promise.all(blobs.map(async blob=>new DataView(await blob.arrayBuffer())));
+      if(views.length!==3)return {exports:views.length};
+      const rate=views[0].getUint32(24,true);
+      const frames=(views[0].byteLength-44)/2;
+      let error=0,distinct=false,nonzero=0;
+      for(let i=0;i<frames;i++){
+        const offset=44+i*2;
+        const dry=views[0].getInt16(offset,true),mid=views[1].getInt16(offset,true),
+          wet=views[2].getInt16(offset,true);
+        error=Math.max(error,Math.abs(mid-(dry+wet)/2));
+        if(Math.abs(dry-wet)>100)distinct=true;
+        nonzero=Math.max(nonzero,Math.abs(mid));
+      }
+      return {exports:views.length,rate,frames,error,distinct,nonzero};
     });
-    assert.ok(rendered.hasBlob&&rendered.frames===16000,
-      "actual WAV export must produce the full selected clip: "+JSON.stringify(rendered));
-    assert.ok(rendered.startupPeak<500,
-      "offline 50%-Wet dry/wet timing mismatch leaked undelayed original at file start: "+JSON.stringify(rendered));
-    assert.ok(rendered.laterPeak>100,
-      "actual WAV output must retain audible signal after latency: "+JSON.stringify(rendered));
+    assert.equal(rendered.exports,3,"Wet 0, 50 and 100% must each export a WAV");
+    assert.equal(rendered.frames,rendered.rate,
+      "one-second WAV length must follow the decoded AudioContext rate: "+JSON.stringify(rendered));
+    assert.ok(rendered.error<=3,
+      "actual WAV Wet 50% is not an aligned samplewise mix: "+JSON.stringify(rendered));
+    assert.ok(rendered.distinct&&rendered.nonzero>100,
+      "real dry and wet outputs must not be trivial silence: "+JSON.stringify(rendered));
     assert.deepEqual(errors,[],"No missing module/asset or JavaScript runtime errors");
     if(!liveUrl){
       // Deliberately fail a large module import. Independent entry-controls.js
