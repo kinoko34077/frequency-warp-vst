@@ -277,3 +277,23 @@ and live HTTP/browser checks do not constitute a physical iPhone test.
   valid WAV → too-short WAV → valid WAV, plus real offline WAV 0/50/100
   byte-level tests and the existing Rust/WASM live streaming tests. Physical
   iPhone hardware and subjective sound differences remain UNVERIFIED.
+
+## 2026-10-14 A fidelity / CPU budget knob — staged Issue #50
+Settings has an independent Engine A "再合成精細度" slider 0–100.
+It changes the **actual common Rust/WASM** maximum selected peaks per STFT frame
+and peak acceptance magnitude floor, both live and in WAV export. Quality=0
+preserves the prior N=1024/2048/4096 limit 6/10/18 and threshold
+9/4.5/2.5% of strongest frame component. Quality=100 allows 24/40/72
+partial tracks and threshold 0.9/0.45/0.25% respectively. The retained
+"抽出帯域幅" 1–8 slider still controls local FFT-bin peak isolation
+*independently*. Processing-state vector capacities are reserved when
+the audio stream is created; slider changes do not allocate new buffers
+on the real-time processing thread.
+
+The UI shows actual budget and threshold and the already existing
+AudioWorklet averaged block render cost and overbudget count.
+**A larger peak budget is more detailed tracking, NOT guaranteed higher
+fidelity, formant preservation or residual/noise recovery.** High settings
+can seriously overload slower phones. A's no-op quality defect #48
+and residual-only scientific work #5 remain independent unresolved goals.
+Do not confuse this control with a perceptually accepted fidelity metric.
