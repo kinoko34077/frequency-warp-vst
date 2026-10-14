@@ -10,7 +10,7 @@ mod stream;
 const TAU: f64 = PI * 2.0;
 
 #[derive(Clone, Copy, Debug)]
-pub enum Progression { FoldHigh, Blend, FoldLow }
+pub enum Progression { FoldHigh, Blend, FoldLow, Reciprocal }
 
 #[derive(Clone, Copy, Debug)]
 pub struct Settings {
@@ -131,6 +131,14 @@ pub fn map_frequency(f: f64, s: Settings) -> Result<f64, &'static str> {
     let result = match s.mode {
         Progression::Blend => (1.0 - s.invert) * f +
             s.invert * inverse_coordinate(d - x, s.low, s.curvature),
+        // Multiplicative interpolation between the source and full
+        // coordinate inversion. For p=0, I(f)=LH/f; at a=.5 every
+        // source converges on sqrt(LH), unlike translated Fold L/H.
+        // Endpoints are the SAME identity/full inversion as old modes.
+        Progression::Reciprocal => {
+            let inverted=inverse_coordinate(d-x,s.low,s.curvature);
+            ((1.0-s.invert)*f.ln()+s.invert*inverted.ln()).exp()
+        },
         Progression::FoldHigh | Progression::FoldLow => {
             let offset = if matches!(s.mode, Progression::FoldLow) { -s.invert } else { s.invert };
             let v = (x + offset * d).rem_euclid(2.0 * d);
@@ -150,17 +158,31 @@ pub fn fold_frequency(s:Settings)->Option<f64>{
     let location=match s.mode{
         Progression::FoldHigh=>(1.0-s.invert)*x,
         Progression::FoldLow=>s.invert*x,
-        Progression::Blend=>return None,
+        Progression::Blend | Progression::Reciprocal=>return None,
     };
     Some(inverse_coordinate(location,s.low,s.curvature).clamp(s.low,s.high))
 }
 #[no_mangle]
 pub extern "C" fn warp_fold_frequency(low:f64,high:f64,p:f64,invert:f64,mode:u32)->f64{
     let s=Settings{low,high,curvature:p,invert,
-        mode:match mode{1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},
+        mode:match mode{1=>Progression::Blend,2=>Progression::FoldLow,3=>Progression::Reciprocal,_=>Progression::FoldHigh},
         quality:0};
     fold_frequency(s).unwrap_or(f64::NAN)
 }
+/// Input reference for the invert slider: Fold kink for two Fold modes;
+/// coordinate inversion fixed point C^-1(D/2) for reciprocal interpolation.
+/// Linear Blend has no unique fold/fixed marker within the slider's meaning.
+#[no_mangle]
+pub extern "C" fn warp_invert_reference_frequency(low:f64,high:f64,p:f64,a:f64,mode:u32)->f64{
+    if !(low>0.0&&high>low&&p.is_finite()&&(0.0..=1.0).contains(&p)
+        &&a.is_finite()&&(0.0..=1.0).contains(&a)){return f64::NAN;}
+    if mode==3{
+        let d=coordinate(high,low,p);
+        return inverse_coordinate(d*0.5,low,p);
+    }
+    warp_fold_frequency(low,high,p,a,mode)
+}
+
 
 /// In-place radix-2 DFT over complex samples.
 fn fft(samples: &mut [Complex], inverse: bool) {
@@ -383,7 +405,7 @@ fn interpolated_frequency(k:usize,magnitude:&[f64],bin_width:f64)->f64 {
 #[no_mangle]
 pub extern "C" fn warp_map_frequency(f:f64,low:f64,high:f64,p:f64,amount:f64,mode:u32)->f64 {
     map_frequency(f,Settings{low,high,curvature:p,invert:amount,
-        mode:match mode {1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},quality:1})
+        mode:match mode {1=>Progression::Blend,2=>Progression::FoldLow,3=>Progression::Reciprocal,_=>Progression::FoldHigh},quality:1})
         .unwrap_or(f64::NAN)
 }
 #[no_mangle]
@@ -431,7 +453,7 @@ pub unsafe extern "C" fn warp_process_f32_ex(
         input[c*len..(c+1)*len].to_vec()
     }).collect::<Vec<_>>();
     let settings=Settings{low,high,curvature,invert,
-        mode:match mode {1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh},
+        mode:match mode {1=>Progression::Blend,2=>Progression::FoldLow,3=>Progression::Reciprocal,_=>Progression::FoldHigh},
         quality:quality_index};
     match process_with_outside(&channels_in,sample_rate,settings,outside) {
         Err(_)=>-2,
@@ -487,7 +509,7 @@ mod tests {
     fn h_and_l_folds_have_same_endpoints_but_different_midpoint() {
         let s=config();
         let value=200.0;
-        for mode in [Progression::FoldHigh, Progression::FoldLow, Progression::Blend] {
+        for mode in [Progression::FoldHigh, Progression::FoldLow, Progression::Blend, Progression::Reciprocal] {
             let initial=map_frequency(value,Settings{mode,invert:0.0,..s}).unwrap();
             let full=map_frequency(value,Settings{mode,invert:1.0,..s}).unwrap();
             assert!((initial-value).abs()<1e-7);
@@ -497,6 +519,29 @@ mod tests {
         let hi=map_frequency(value,at_half).unwrap();
         let lo=map_frequency(value,Settings{mode:Progression::FoldLow,..at_half}).unwrap();
         assert!((hi-lo).abs()>100.0);
+    }
+    #[test]
+    fn reciprocal_mapping_interpolates_geometrically_without_changing_full_inverse(){
+        let low=100.0;let high=1600.0;
+        for p in [0.0,0.25,0.5,1.0]{
+            for f in [100.0,160.0,400.0,800.0,1600.0]{
+                let s=Settings{low,high,curvature:p,invert:0.0,
+                    mode:Progression::Reciprocal,quality:0};
+                let initial=map_frequency(f,s).unwrap();
+                let inverted=map_frequency(f,Settings{invert:1.0,..s}).unwrap();
+                let midpoint=map_frequency(f,Settings{invert:0.5,..s}).unwrap();
+                assert!((initial-f).abs()<1e-9);
+                let old_full=map_frequency(f,Settings{mode:Progression::Blend,invert:1.0,..s}).unwrap();
+                assert!((inverted-old_full).abs()<1e-6);
+                assert!((midpoint-(f*inverted).sqrt()).abs()<1e-6);
+            }
+            let marker=warp_invert_reference_frequency(low,high,p,0.35,3);
+            assert!(marker>low&&marker<high);
+            assert!((map_frequency(marker,Settings{low,high,curvature:p,
+                    invert:1.0,mode:Progression::Reciprocal,quality:0}).unwrap()-marker).abs()<1e-6);
+            assert!(warp_invert_reference_frequency(low,high,p,0.35,1).is_nan());
+        }
+        assert!((warp_invert_reference_frequency(low,high,0.0,.5,3)-400.0).abs()<1e-9);
     }
     #[test]
     fn outside_pass_preserves_a_high_outside_tone_while_kill_removes_it() {
