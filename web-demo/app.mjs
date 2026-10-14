@@ -155,8 +155,8 @@ function updateListeningGuide(){
   const input=500,point=mapAtFrequency(input,p,warp,translate);
   const output=point.outputs[0];
   const diff=Number.isFinite(output)?12*Math.log2(output/input):NaN;
-  const hz=n=>Number.isFinite(n)?(Math.round(n*10)/10)+"Hz":"—";
-  const effect=Number.isFinite(diff)?(diff>=0?"+":"")+diff.toFixed(1)+"半音":"範囲外";
+  const hz=n=>Number.isFinite(n)?displayNumber(n)+"Hz":"—";
+  const effect=Number.isFinite(diff)?(diff>=0?"+":"")+displayNumber(diff)+"半音":"範囲外";
   $("#listening-guide").textContent=point.outputs.length?
     "500Hz → "+hz(output)+"  ·  "+effect:"500Hz → "+point.reason;
   const warpPivot=warp(pivot,p.low,p.high,p.curvature,p.invert,p.mode);
