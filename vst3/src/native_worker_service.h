@@ -69,7 +69,7 @@ public:
             pending_=Request{};commandPending_=false;
         }
         // No worker or audio callback remains; all pending PCM is discarded.
-        mailbox_.resetStopped();
+        mailbox_.detachWorkerWhenStopped();
         status_.store(Status::Stopped,std::memory_order_release);
     }
 private:
