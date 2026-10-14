@@ -120,10 +120,10 @@ function labels(id=""){
   showNumber("zero-reflect-value",100*p.zeroReflectGain);
   showNumber("zero-decay-value",100*p.zeroReflectDecay);
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
-    "% / 減衰 "+displayNumber(100*p.zeroReflectDecay)+"%";
-  $("#zero-reflect-formula").textContent="反射量="+displayNumber(100*p.zeroReflectGain)+
+    "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
+  $("#zero-reflect-formula").textContent="反射成分の音量="+displayNumber(100*p.zeroReflectGain)+
     "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(|負周波数|/"+
-    displayNumber(p.axisReference)+"Hz)。距離基準="+displayNumber(p.axisReference)+"Hz。正周波数は不変。";
+    displayNumber(p.axisReference)+"Hz)。折返しの基準は0HzまたはL/H折返し点。距離基準="+displayNumber(p.axisReference)+"Hz。反転・折返し側の成分だけ適用。";
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
