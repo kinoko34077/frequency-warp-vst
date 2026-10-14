@@ -324,8 +324,20 @@ impl Stream {
                     // bin 1 is the nearest audible FFT cell.
                     let dest=((target/step).round() as usize).max(1);
                     if dest>=half {continue;}
-                    self.relocated[dest].r+=self.spectrum[c][k].r*_gain;
-                    self.relocated[dest].i+=self.spectrum[c][k].i*_gain;
+                    // FFT coefficients use local window time. A frequency
+                    // shift by dest-k bins requires compensating its phase
+                    // advance at the ABSOLUTE start of each analysis window.
+                    // Otherwise overlapping frames cancel, especially at
+                    // hop N/8 where a 3-bin shift can almost vanish.
+                    // This fixes *integer-bin temporal coherence* only:
+                    // noninteger quantization, merged-bin cancellation,
+                    // transient smearing and formants remain open research.
+                    let phase=TAU*(dest as f64-k as f64)
+                        *(start%self.n) as f64/self.n as f64;
+                    let (sin,cos)=phase.sin_cos();
+                    let source=self.spectrum[c][k];
+                    self.relocated[dest].r+=(source.r*cos-source.i*sin)*_gain;
+                    self.relocated[dest].i+=(source.r*sin+source.i*cos)*_gain;
                 }
                 fft(&mut self.relocated,true);
                 for i in 0..self.n {

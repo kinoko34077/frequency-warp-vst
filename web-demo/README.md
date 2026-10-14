@@ -297,3 +297,24 @@ fidelity, formant preservation or residual/noise recovery.** High settings
 can seriously overload slower phones. A's no-op quality defect #48
 and residual-only scientific work #5 remain independent unresolved goals.
 Do not confuse this control with a perceptually accepted fidelity metric.
+
+## 2026-10-14 Engine B interframe-phase coherence — staged Issue #50
+The existing FFT-bin relocation previously moved local-frame complex
+coefficients without the extra global-time phase rotation needed when
+the carrier moved to another integer FFT bin. Consecutive overlapped
+frames therefore could *cancel* for nonzero frequency offsets, even
+when the move was exactly representable on the FFT bin grid.
+The shared Rust B branch now rotates each relocated complex coefficient
+by `2π(dest−source)·(start modulo FFT_N)/FFT_N` before IFFT and weighted
+overlap-add. This has identical behavior for identity (`dest=source`)
+and zero-reassignment cases. Tests compare real shared Rust/WASM PCM
+against exact ±3-bin/0-bin shifted sine waves under both 4× and 8×
+overlap and fail on the old phase-cancelling implementation.
+
+This is specifically a frame-to-frame phase-continuity correction for
+integer-bin movement. It **does not** preserve formants, resolve
+non-integer-bin quantization or folded many-to-one spectral collisions,
+or implement a full phase-locked vocoder, WSOLA or élastique.
+Those candidate quality improvements remain scientific work under
+Issue #50 and research owner #5; subjective iOS confirmation remains
+UNVERIFIED. The separate A detail/CPU slider is unaffected.
