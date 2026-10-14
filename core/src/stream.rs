@@ -26,6 +26,7 @@ pub struct Stream {
     crusher_bits:u32,
     crusher_hold:u32,
     crusher_counter:u64,
+    crusher_frozen:bool,
     crusher_value:Vec<f32>,
     a_min_hz:f64,
     a_peak_band_bins:usize,
@@ -77,7 +78,7 @@ impl Stream {
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_enabled:engine==2,axis_shift:0.0,
-            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
+            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,crusher_frozen:false,
             crusher_value:vec![0.0;channels],
             a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
@@ -203,9 +204,15 @@ impl Stream {
         self.zero_mode=3;
         Ok(())
     }
+    /// hold=0 is an actual 0Hz sample update rate: capture one sample on
+    /// transition, then latch it forever until params/restart change.
+    /// Finite rates hold exactly N samples, 1 <= N <= 2^20.
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
-        if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
+        if (bits!=0 && !(2..=16).contains(&bits)) || hold>1_048_576 {
             return Err("invalid bit-crusher settings");
+        }
+        if hold==0 && (self.crusher_hold!=0 || self.crusher_bits!=bits){
+            self.crusher_frozen=false;
         }
         self.crusher_bits=bits;self.crusher_hold=hold;Ok(())
     }
@@ -232,13 +239,19 @@ impl Stream {
                         +tail/3.0*self.a_reverb_amount;
                 }
                  output[idx]=if self.crusher_bits==0{sample}else{
-                    if self.crusher_counter%(self.crusher_hold as u64)==0 {
+                    if self.crusher_hold==0{
+                        if !self.crusher_frozen{
+                            self.crusher_value[c]=
+                                (sample.clamp(-1.0,1.0)*levels).round()/levels;
+                        }
+                    }else if self.crusher_counter%(self.crusher_hold as u64)==0{
                         self.crusher_value[c]=
                             (sample.clamp(-1.0,1.0)*levels).round()/levels;
                     }
                     self.crusher_value[c]
                 };
             }
+            if self.crusher_bits>0 && self.crusher_hold==0 {self.crusher_frozen=true;}
             self.crusher_counter+=1;
             if self.engine==0 && self.a_reverb_amount>0.0{
                 for j in 0..3{
@@ -251,6 +264,7 @@ impl Stream {
     pub fn reset(&mut self){
         self.received=0;
         self.crusher_counter=0;
+        self.crusher_frozen=false;
         self.crusher_value.fill(0.0);self.a_reverb_pos=[0;3];
         for channel in &mut self.a_reverb_delays{
             for delay in channel{delay.fill(0.0);}
@@ -719,6 +733,9 @@ pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_crusher(bits,hold){Ok(())=>0,Err(_)=>-2}
 }
+#[no_mangle]
+pub extern "C" fn warp_crusher_max_hold()->u32{1_048_576}
+
 
 #[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_transform(ptr:*mut Stream,shift:f64,
@@ -1068,6 +1085,31 @@ mod tests{
             assert_eq!(warp_stream_set_zero_reflect_gain(ptr,2.0),-2);
             warp_stream_free(ptr);
         }
+    }
+    #[test]
+    fn crusher_zero_hz_latches_first_sample_and_never_divides_by_zero(){
+        let mut st=Stream::new_extended(8192.0,2,settings(),1,1,1.0,0.0,0.0,0,4).unwrap();
+        assert_eq!(st.set_crusher(8,1_048_576),Ok(()));
+        assert!(st.set_crusher(8,1_048_577).is_err());
+        st.set_crusher(3,0).unwrap();
+        let mut block=[0.12f32,-0.17,0.9,0.75,-0.4,0.56,0.6,0.33];
+        st.post_process(&mut block,4);
+        assert_eq!(block[..4],[0.0,0.0,0.0,0.0],"channel0 first hold quantizes .12 to 0");
+        assert_eq!(block[4..],[0.0,0.0,0.0,0.0],"channel1 first hold quantizes -.4 to 0");
+        // The post_process buffer is planar. Changing input in later blocks
+        // MUST NOT modify the latched output until stream restart/set change.
+        let mut later=[0.95f32,-0.8,0.7,0.0,0.5,-0.1,0.7,-0.6];
+        st.post_process(&mut later,4);
+        assert!(later.iter().all(|v|*v==0.0));
+        assert!(st.crusher_frozen);
+        st.set_crusher(3,2).unwrap();
+        st.set_crusher(3,0).unwrap();
+        let mut new=[0.9f32,0.3,0.1,0.0,0.7,0.2,0.8,0.0];
+        st.post_process(&mut new,4);
+        assert_eq!(new[0],1.0);
+        assert_eq!(new[4],0.75);
+        st.reset();assert!(!st.crusher_frozen);
+        assert_eq!(warp_crusher_max_hold(),1_048_576);
     }
     #[test]
     fn crusher_live_settings_and_sample_hold_are_effective(){
