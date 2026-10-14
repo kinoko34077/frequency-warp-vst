@@ -11,7 +11,8 @@ set(vst3sdk_SOURCE_DIR "${FW_VST3_SDK_DIR}")
 add_subdirectory("${vst3sdk_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/sdk")
 smtg_enable_vst3_sdk()
 smtg_add_vst3plugin(FrequencyWarpShell
-    src/shell.cpp src/delay.h src/parameter_registry.h)
+    src/shell.cpp src/delay.h src/parameter_registry.h
+    src/win32_engine_editor.h)
 # Official Rust Wasmi engine is linked once into installed fixed shell.
 # User-provided .fwengine remains an isolated WASM package, never a native DLL.
 if(NOT DEFINED FW_NATIVE_ARCHIVE OR NOT EXISTS "${FW_NATIVE_ARCHIVE}")
@@ -22,7 +23,7 @@ set_target_properties(FrequencyWarpNativeRuntime PROPERTIES
   IMPORTED_LOCATION "${FW_NATIVE_ARCHIVE}")
 target_link_libraries(FrequencyWarpShell PRIVATE sdk FrequencyWarpNativeRuntime)
 if(WIN32)
-  target_link_libraries(FrequencyWarpShell PRIVATE ws2_32 bcrypt userenv ntdll advapi32)
+  target_link_libraries(FrequencyWarpShell PRIVATE ws2_32 bcrypt userenv ntdll advapi32 user32 gdi32 comctl32 comdlg32 shell32)
 elseif(UNIX)
   target_link_libraries(FrequencyWarpShell PRIVATE pthread dl m)
 endif()
