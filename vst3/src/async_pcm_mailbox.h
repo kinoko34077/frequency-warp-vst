@@ -186,6 +186,16 @@ public:
         nextInputTime_=0;haveCurrent_=currentStarted_=false;
         current_=Output{};
     }
+    // Stronger teardown boundary: BOTH audio and worker have stopped.
+    // Unlike resetStopped(), this also releases the callback/context and
+    // clears readiness. An ordinary host transport-reset can retain a
+    // prepared module safely and must not silently disable processing.
+    void detachWorkerWhenStopped() noexcept {
+        resetStopped();
+        workerProcess_=nullptr;workerContext_=nullptr;workerLatency_=0;
+        workerGeneration_=1;activeGeneration_.store(1,std::memory_order_relaxed);
+        workerReady_.store(false,std::memory_order_release);
+    }
 private:
     SpscPackets<Input,kQueueSize> input_{};
     SpscPackets<Output,kQueueSize> output_{};
