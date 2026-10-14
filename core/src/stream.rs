@@ -33,7 +33,8 @@ pub struct Stream {
     a_reverb_amount:f32,
     a_reverb_delays:Vec<Vec<Vec<f32>>>,
     a_reverb_pos:[usize;3],
-    zero_mode:u32, // 0=reflect,1=kill,2=fade
+    zero_mode:u32, // 0=reflect,1=kill,2=legacy narrow fade for ABI compatibility
+    zero_reflect_gain:Option<f64>, // None=legacy modes; Some(0..1)=continuous reflect amplitude
     received:u64,
     input:Vec<Vec<f64>>,
     output:Vec<Vec<f64>>,
@@ -81,7 +82,7 @@ impl Stream {
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
-            a_reverb_pos:[0;3],zero_mode,received:0,
+            a_reverb_pos:[0;3],zero_mode,zero_reflect_gain:None,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
             weights:vec![0.0;q.n*2],
@@ -176,6 +177,15 @@ impl Stream {
         self.max_peaks=base.max_peaks+(base.max_peaks*3*percent as usize/100);
         self.floor=base.floor*(1.0-0.9*(percent as f64/100.0));
         Ok(())
+    }
+    /// 0.0 removes negative-frequency arrivals, 1.0 reflects with full
+    /// magnitude, and intermediate values scale the reflected component.
+    /// Positive-frequency arrivals and out-of-band Pass are unchanged.
+    pub fn set_zero_reflect_gain(&mut self,gain:f64)->Result<(),&'static str>{
+        if !gain.is_finite()||!(0.0..=1.0).contains(&gain){
+            return Err("invalid zero reflect gain");
+        }
+        self.zero_reflect_gain=Some(gain);Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
@@ -557,7 +567,10 @@ impl Stream {
     fn resolve_zero(&self,target:f64,step:f64)->Option<(f64,f64)>{
         if !target.is_finite(){return None;}
         let (frequency,gain)=if target<0.0 {
-            match self.zero_mode {
+            if let Some(gain)=self.zero_reflect_gain{
+                if gain==0.0{return None;}
+                (-target,gain)
+            }else{match self.zero_mode {
                 0=>(-target,1.0), // Reflect
                 1=>return None, // Kill
                 _=>{
@@ -565,7 +578,7 @@ impl Stream {
                     if negative>=step{return None;}
                     (negative,(1.0-negative/step).clamp(0.0,1.0))
                 }
-            }
+            }}
         }else{(target,1.0)};
         if frequency<=0.0||frequency>=self.sample_rate*0.5 {None}
         else{Some((frequency,gain))}
@@ -657,6 +670,11 @@ pub unsafe extern "C" fn warp_stream_set_ext(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_zero_reflect_gain(ptr:*mut Stream,gain:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_zero_reflect_gain(gain){Ok(())=>0,Err(_)=>-2}
+}
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u32)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_crusher(bits,hold){Ok(())=>0,Err(_)=>-2}
@@ -738,6 +756,23 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
     a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,
 )->i32{
+    warp_stream_render_f32_controls_ext(input,output,frames,channels,rate,
+        low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,shift_hz,
+        carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,axis_shift,
+        axis_reference,ring,rational,axis_pivot,axis_slope,
+        a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,-1.0)
+}
+/// Complete browser controls (including continuous signed-0 reflection gain).
+/// Legacy ABI remains available, delegating with a -1.0 legacy-only sentinel.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_controls_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:f64,
+)->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
     let settings=params(low,high,p,amount,mode,quality_id);
@@ -750,7 +785,10 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
        st.set_geometry(axis_pivot,axis_slope).is_err()||
        st.set_a_options(a_min_hz,a_reverb).is_err()||
        st.set_a_peak_band(a_peak_band_bins).is_err()||
-       st.set_a_quality(a_quality_percent).is_err(){return -2;}
+       st.set_a_quality(a_quality_percent).is_err()||
+       (zero_reflect_gain!=-1.0&&st.set_zero_reflect_gain(zero_reflect_gain).is_err()){
+        return -2;
+    }
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -969,6 +1007,27 @@ mod tests{
         assert!(aa[0]<bb[0]);
         a.reset();assert_eq!(a.a_reverb_pos,[0;3]);
         assert!(a.a_reverb_delays[0][0].iter().all(|v|*v==0.0));
+    }
+    #[test]
+    fn continuous_zero_reflect_gain_controls_negative_targets_only_and_preserves_legacy(){
+        let stg=Settings{low:100.0,high:1000.0,curvature:1.0,
+            invert:0.0,mode:Progression::Blend,quality:0};
+        let mut st=Stream::new_extended(8192.0,1,stg,1,1,1.0,0.0,0.0,0,4).unwrap();
+        assert_eq!(st.resolve_zero(-200.0,8.0),Some((200.0,1.0)));
+        assert_eq!(st.set_zero_reflect_gain(-.1),Err("invalid zero reflect gain"));
+        assert_eq!(st.set_zero_reflect_gain(1.1),Err("invalid zero reflect gain"));
+        for (gain,expected) in [(0.0,None),(0.25,Some((200.0,0.25))),
+            (0.5,Some((200.0,0.5))),(1.0,Some((200.0,1.0)))]{
+            assert!(st.set_zero_reflect_gain(gain).is_ok());
+            assert_eq!(st.resolve_zero(-200.0,8.0),expected);
+            assert_eq!(st.resolve_zero(200.0,8.0),Some((200.0,1.0)));
+        }
+        let ptr=Box::into_raw(Box::new(st));
+        unsafe{
+            assert_eq!(warp_stream_set_zero_reflect_gain(ptr,0.35),0);
+            assert_eq!((*ptr).resolve_zero(-200.0,8.0),Some((200.0,0.35)));
+            warp_stream_free(ptr);
+        }
     }
     #[test]
     fn a_peak_band_is_configurable_without_changing_engine_b(){
