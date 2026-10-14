@@ -105,8 +105,9 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   const checkbox=$("#carrier-link"),readout=$("#carrier-linked-value");
   const valid=["fold-l","fold-h"].includes($("#mode").value);
   for(const node of [$("#carrier"),$("#carrier-range")])node.disabled=checkbox.checked&&valid;
+  readout.hidden=!checkbox.checked;
   if(!checkbox.checked){
-    readout.textContent="オフ：手動 "+fmt(manualCarrier)+" Hz";
+    readout.textContent="";
   }else if(!valid){
     readout.textContent="この補間には移動する折返し点がありません。手動 "+fmt(manualCarrier)+" Hzを使用";
   }else{
