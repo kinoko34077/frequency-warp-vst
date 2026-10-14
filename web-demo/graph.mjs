@@ -3,7 +3,7 @@ import {DISPLAY_MIN,DISPLAY_MAX,graphSegments} from "./harmonics.mjs";
 // function warp_map_frequency used by native streaming DSP.
 
 /** Equal-scale 20..2000 Hz full-field plot; no DSP performed in JavaScript. */
-export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_MAX) {
+export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_MAX,logAmount=0) {
   const ratio=Math.min(globalThis.devicePixelRatio||1,2);
   const MAX=maxHz;
   const size=Math.max(250,Math.round(canvas.getBoundingClientRect().width*ratio));
@@ -14,8 +14,10 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   const side=size-52*ratio,left=38*ratio,top=12*ratio;
   const right=left+side,bottom=top+side;
   const width=side,height=side;
-  const x=f=>left+(f-DISPLAY_MIN)/(MAX-DISPLAY_MIN)*width;
-  const y=f=>bottom-(f-DISPLAY_MIN)/(MAX-DISPLAY_MIN)*height;
+  const amount=Math.min(1,Math.max(0,logAmount));
+  const position=f=>(1-amount)*(f-DISPLAY_MIN)/(MAX-DISPLAY_MIN)+amount*Math.log(Math.max(f,1)/DISPLAY_MIN)/Math.log(MAX/DISPLAY_MIN);
+  const x=f=>left+position(f)*width;
+  const y=f=>bottom-position(f)*height;
   ctx.clearRect(0,0,size,size);
   ctx.fillStyle="#081a1f";ctx.fillRect(left,top,width,height);
   {
