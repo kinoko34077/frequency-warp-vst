@@ -14,3 +14,4 @@ fwengine-package = { path = "../fwengine-package" }
 
 [dev-dependencies]
 wat = "1.228.0"
+frequency-warp-core = { path = "../core" }
