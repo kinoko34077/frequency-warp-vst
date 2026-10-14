@@ -1,4 +1,4 @@
-import {QUALITY,mixWet,latencyForQuality} from "./dsp.mjs";
+import {QUALITY,mixWet} from "./dsp.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
@@ -735,7 +735,7 @@ controls.render.addEventListener("click",()=>{
     if(state.offlineWorker!==worker)return;
     if(data.type==="progress")$("#progress").value=Math.round(data.value*100);
     else if(data.type==="done"){
-      state.offline={channels:data.channels,latencyFrames:latencyForQuality(renderSettings.qualityIndex)};
+      state.offline=data.channels;
       controls.download.disabled=false;
       controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
       $("#progress").value=100;
@@ -774,8 +774,7 @@ function makeWav(channels,rate){
 }
 controls.download.addEventListener("click",()=>{
   if(!state.offline)return;
-  const {channels,latencyFrames}=state.offline;
-  const mixed=channels.map((ch,i)=>mixWet(state.dry[i],ch,settings().wet,latencyFrames));
+  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,settings().wet));
   const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
   const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
   document.body.append(el);el.click();el.remove();
