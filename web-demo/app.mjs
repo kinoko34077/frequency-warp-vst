@@ -103,8 +103,7 @@ function settings(){
     // Ring sidebands are additional effects, not the base warp direction.
     // The green underlying transformed curve is the automatic A/B criterion.
     const coreCurve={...value,ringEnabled:false,
-      reflectionAmplitude:distance=>state.mathCore.warp_zero_reflection_amplitude(
-        distance,value.zeroReflectGain,value.zeroReflectDecay,value.axisReference)};
+      allReflectionGain:allReflectionFor(value)};
     const {warp,translate}=mathCallbacksFor(coreCurve);
     value.engine=engineForInbandCurve(coreCurve,f=>
       mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
@@ -223,8 +222,7 @@ function drawCurve(){
   }
   const p=settings();
   const shown={...p,carrierHz:resolvedCarrierHz(foldPoint),
-    reflectionAmplitude:distance=>state.mathCore.warp_zero_reflection_amplitude(
-      distance,p.zeroReflectGain,p.zeroReflectDecay,p.axisReference)};
+    allReflectionGain:allReflectionFor(p)};
   const {warp,translate}=mathCallbacks();
   const alpha=Number($("#graph-log").value)/100;
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
@@ -251,7 +249,9 @@ async function ensureSharedCore(){
         typeof core.warp_map_frequency!=="function"||
         typeof core.warp_translate_frequency_anchored!=="function"||
         typeof core.warp_invert_reference_frequency!=="function"||
-        typeof core.warp_zero_reflection_amplitude!=="function")throw Error("共通数式APIがありません");
+        typeof core.warp_zero_reflection_amplitude!=="function"||
+        typeof core.warp_all_reflection_distance!=="function"||
+        typeof core.warp_all_reflection_gain!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
       if($("#engine-auto").checked){updateEngineInfo();updateParams("engine-auto");}
