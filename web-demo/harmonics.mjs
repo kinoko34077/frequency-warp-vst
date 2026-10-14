@@ -30,7 +30,7 @@ function settingsZeroMode(mode,f){
 export function mapAtFrequency(f,
   {low,high,curvature,invert,mode,outside,pitchRatio=1,shiftHz=0,
    carrierHz=0,zeroMode=0,axisShift=0,axisReference=350,axisPivot=axisReference,
-   axisSlope=1,ringEnabled=false,rationalEnabled=false,sampleRate=48000},
+   axisSlope=1,ringEnabled=false,rationalEnabled=false,sampleRate=48000,qualityIndex=0},
   warp,translate=(f)=>f) {
   const inside=f>=low&&f<=high;
   if(!inside&&outside!=="pass")return {f,inside,outputs:[],reason:"帯域外を除去"};
@@ -42,12 +42,15 @@ export function mapAtFrequency(f,
     const pivotInside=axisPivot>=low&&axisPivot<=high;
     const pivotBase=pivotInside?warp(axisPivot,low,high,curvature,invert,mode):axisPivot;
     const sourceAnchor=pivotBase;
-    transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
+    // Rust stream.rs skips axis translation when the optional rational stage
+    // already crossed zero; both engines then apply the signed zero policy.
+    if(transformed>0)transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
   }
   if(!Number.isFinite(transformed))return {f,inside,outputs:[],reason:"座標計算不能"};
   if(transformed<0){
     if(zeroMode===1)return {f,inside,outputs:[],reason:"0Hz未満を除去"};
-    if(zeroMode===2 && -transformed>=sampleRate/1024)return {f,inside,outputs:[],reason:"0Hz未満を減衰除去"};
+    const fftWindow=[1024,2048,4096][qualityIndex]||1024;
+    if(zeroMode===2 && -transformed>=sampleRate/fftWindow)return {f,inside,outputs:[],reason:"0Hz未満を減衰除去"};
     transformed=-transformed;
   }
   if(transformed===0)return {f,inside,outputs:[],reason:"0Hzへ到達"};
@@ -56,11 +59,11 @@ export function mapAtFrequency(f,
   return {f,inside,outputs,reason:outputs.length?"": "再生周波数範囲外（0Hz／ナイキスト）",
     raw:transformed};
 }
-export function graphSegments(settings,warp,translate=(f)=>f,maxHz=DISPLAY_MAX){
+export function graphSegments(settings,warp,translate=(f)=>f,maxHz=DISPLAY_MAX,sampleAt=null){
   const values=[];
   const f0=DISPLAY_MIN,f1=maxHz;
   for(let i=0;i<=512;i++){
-    const f=f0+(f1-f0)*i/512;
+    const f=sampleAt?sampleAt(i/512):f0+(f1-f0)*i/512;
     const point=mapAtFrequency(f,settings,warp,translate);
     values.push({...point,outputs:point.outputs.map(y=>y>=f0&&y<=f1?y:undefined)});
   }

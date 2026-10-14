@@ -191,12 +191,44 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
     assert.equal(await page.$eval("#engine-auto",el=>el.checked),false);
+    // Graph-negative even WITHOUT raw invert: physical shift -700Hz and
+    // target-0 Reflect turn the audible low band into a descending curve.
+    // The manual B dropdown must be replaced by the true effective A label.
+    await page.click("#settings-reset");
     await page.click("#engine-auto");
-    await page.$eval("#invert",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    for(const [id,value] of [["low-value","100"],["high-value","500"],
+                              ["axis-pivot-value","350"],["axis-shift-value","-2"]]){
+      await page.$eval("#"+id,(el,v)=>{
+        el.value=v;el.dispatchEvent(new Event("change",{bubbles:true}));
+      },value);
+    }
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^A /);
-    await page.$eval("#invert",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.match(await page.$eval("#engine-auto-result",el=>el.textContent),/A /);
+    assert.equal(await page.$eval("#engine",el=>el.hidden),true);
+    assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
+    // Killing negative targets removes the visible descending output.
+    await page.select("#zero-mode","1");
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
+    assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),true);
+    await page.select("#zero-mode","0");
+    assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^A /);
     await page.click("#engine-auto");
+    assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
+    assert.equal(await page.$eval("#engine",el=>el.hidden),false);
+    // Restore the existing Ring/Rational integration scenario for the next
+    // playback tests, without leaking the auto-curve probe into it.
+    await page.select("#mode","fold-h");
+    for(const id of ["ring-enabled","rational-enabled"]){
+      await page.$eval("#"+id,el=>{
+        el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+    }
+    for(const [id,v] of [["low-value","20"],["high-value","16000"],
+                         ["axis-shift-value",".25"],["invert-value","45"]]){
+      await page.$eval("#"+id,(el,value)=>{
+        el.value=value;el.dispatchEvent(new Event("change",{bubbles:true}));
+      },v);
+    }
 
     // Instrument old offline Worker: any attempt while clicking play would be a regression.
     await page.evaluate(()=>{

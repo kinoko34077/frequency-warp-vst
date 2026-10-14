@@ -1,6 +1,7 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
+import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
 
@@ -65,19 +66,17 @@ function bounds(changed=""){
 function settings(){
   const {low,high}=bounds();
   const qualityIndex=({eco:0,standard:1,high:2}[$("#quality").value]);
-  return {
+  const harmonic=harmonicParameters();
+  const value={
     low,high,curvature:scalar("curvature",()=>Number($("#curvature").value)),
     invert:scalar("invert",()=>Number($("#invert").value)),
     mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
-    engine:$("#engine-auto").checked?engineForInbandCurve({low,high,
-      curvature:scalar("curvature",()=>Number($("#curvature").value)),
-      invert:scalar("invert",()=>Number($("#invert").value)),mode:$("#mode").value},state.mathCore):
-      Number($("#engine").value),hopDiv:Number($("#overlap").value),
-    pitchRatio:harmonicParameters().r,
-    shiftHz:harmonicParameters().n*harmonicParameters().r*harmonicParameters().F/harmonicParameters().m,
-    carrierHz:harmonicParameters().c,zeroMode:harmonicParameters().zeroMode,
+    engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
+    pitchRatio:harmonic.r,
+    shiftHz:harmonic.n*harmonic.r*harmonic.F/harmonic.m,
+    carrierHz:harmonic.c,zeroMode:harmonic.zeroMode,
     axisShift:scalar("axis-shift",()=>Number($("#axis-shift").value)),
-    axisReference:harmonicParameters().r*harmonicParameters().F,
+    axisReference:harmonic.r*harmonic.F,
     axisPivot:scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value)),
     axisSlope:scalar("axis-slope",()=>Number($("#axis-slope").value)),
     sampleRate:state.ctx?.sampleRate||state.decoded?.sampleRate||48000,
@@ -90,6 +89,18 @@ function settings(){
     aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100),
     aBandBins:Number($("#a-band").value)
   };
+  // Evaluate the effective curve that is drawn, not just the raw invert
+  // mapping. Signed 0-Hz Reflect can reverse the displayed slope even when
+  // Invert=0; the auto engine must agree with that change.
+  if($("#engine-auto").checked && state.mathCore){
+    // Ring sidebands are additional effects, not the base warp direction.
+    // The green underlying transformed curve is the automatic A/B criterion.
+    const coreCurve={...value,ringEnabled:false};
+    const {warp,translate}=mathCallbacksFor(coreCurve);
+    value.engine=engineForInbandCurve(coreCurve,f=>
+      mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
+  }
+  return value;
 }
 function labels(id=""){
   bounds(id);
@@ -127,8 +138,8 @@ function axisMarker(f){
   const result=mapAtFrequency(f,p,warp,translate);
   return result.raw??NaN;
 }
-function mathCallbacks(){
-  const core=state.mathCore,reference=settings().axisReference;
+function mathCallbacksFor(p){
+  const core=state.mathCore,reference=p.axisReference;
   return {
     warp:(f,l,h,curvature,invert,mode)=>
       core.warp_map_frequency(f,l,h,curvature,invert,mode==="blend"?1:mode==="fold-l"?2:0),
@@ -136,6 +147,7 @@ function mathCallbacks(){
       core.warp_translate_frequency_anchored(f,anchor,pivot,slope,reference,curvature,shift)
   };
 }
+function mathCallbacks(){return mathCallbacksFor(settings());}
 function updateListeningGuide(){
   if(!state.mathCore)return;
   const p=settings(),{warp,translate}=mathCallbacks();
@@ -143,8 +155,8 @@ function updateListeningGuide(){
   const input=500,point=mapAtFrequency(input,p,warp,translate);
   const output=point.outputs[0];
   const diff=Number.isFinite(output)?12*Math.log2(output/input):NaN;
-  const hz=n=>Number.isFinite(n)?(Math.round(n*10)/10)+"Hz":"—";
-  const effect=Number.isFinite(diff)?(diff>=0?"+":"")+diff.toFixed(1)+"半音":"範囲外";
+  const hz=n=>Number.isFinite(n)?displayNumber(n)+"Hz":"—";
+  const effect=Number.isFinite(diff)?(diff>=0?"+":"")+displayNumber(diff)+"半音":"範囲外";
   $("#listening-guide").textContent=point.outputs.length?
     "500Hz → "+hz(output)+"  ·  "+effect:"500Hz → "+point.reason;
   const warpPivot=warp(pivot,p.low,p.high,p.curvature,p.invert,p.mode);
@@ -200,8 +212,13 @@ function updateEngineInfo(){
     "部分音追跡と発振器による実験的な再合成方式です。残差や過渡音は完全に復元されません。",
     "FFTビン再配置による実験的な再合成方式です。位相・離散格子誤差に注意してください。"
   ];
-  $("#engine").disabled=$("#engine-auto").checked;
-  $("#engine-a-settings").hidden=s.engine!==0&&!$("#engine-auto").checked;
+  const automatic=$("#engine-auto").checked;
+  $("#engine").disabled=automatic;
+  $("#engine").hidden=automatic;
+  $("#engine-manual-label").hidden=automatic;
+  $("#engine-auto-result").hidden=!automatic;
+  $("#engine-auto-result").textContent="自動選択："+names[s.engine];
+  $("#engine-a-settings").hidden=s.engine!==0;
   $("#engine-description").textContent=explain[s.engine]+
     (s.ringEnabled?" / Ring Mod ON":"")+(s.rationalEnabled?" / #24倍音配置 ON":"");
   $("#engine-summary").textContent=names[s.engine]+($("#engine-auto").checked?"（反転連動）":"");
@@ -454,6 +471,14 @@ async function play(mode="wet",offset=null){
 function updateParams(changed){
   labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   state.offline=null;controls.download.disabled=true;
+  // Export runs on a separate worker with a frozen parameter snapshot. Never
+  // let a completed render from old controls be presented as current output.
+  if(state.offlineWorker){
+    state.offlineWorker.terminate();state.offlineWorker=null;
+    controls.render.disabled=!state.dry;
+    $("#progress").value=0;
+    message("設定を変更したため、前のWAV変換を中止しました。");
+  }
   const p=state.player;
   if(!p)return;
   const current=settings();
@@ -470,6 +495,9 @@ function updateParams(changed){
     indicator("設定を反映するため音声処理を切替中…");
     return;
   }
+  // A rapid switch A→B→A (or FFT selection rollback) must not leave a
+  // pending rebuild after the current processor already matches settings.
+  if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
   const revision=++state.settingsRevision;
   p.worklet.port.postMessage({
     type:"params",settings:current,activeQualityIndex:p.quality,revision
@@ -677,6 +705,12 @@ drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("hover
 // WAV export deliberately stays OFFLINE; not required by live playback.
 controls.render.addEventListener("click",()=>{
   if(!state.dry||state.offlineWorker)return;
+  // Reject oversized export BEFORE constructing a Worker, so the button
+  // remains usable for a subsequent shorter file after rejection.
+  if(!canExportChannels(state.dry)){
+    message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
+    return;
+  }
   state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;message("WAV書出し用オフライン処理中（試聴とは独立）…");
   const worker=new Worker(new URL("./processor.worker.mjs",import.meta.url),{type:"module"});
@@ -699,14 +733,6 @@ controls.render.addEventListener("click",()=>{
     controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
     message("オフライン処理失敗: "+e.message,"error");
   };
-  // Browser-WASM export allocates whole input+output; do not silently OOM
-  // for a long stereo 600s file. Live preview has no such full WASM buffer.
-  const totalSamples=state.dry.reduce((n,c)=>n+c.length,0);
-  if(totalSamples>40_000_000){
-    controls.render.disabled=false;
-    message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
-    return;
-  }
   const copies=state.dry.map(c=>new Float32Array(c));
   worker.postMessage({
     type:"process",channels:copies,sampleRate:state.decoded.sampleRate,settings

@@ -262,7 +262,6 @@ impl Stream {
         let half=self.n/2;
         let step=self.sample_rate/self.n as f64;
         let source_anchor=self.source_pivot_anchor();
-        let source_anchor=self.source_pivot_anchor();
         for c in 0..self.channels{
             for i in 0..self.n{
                 let ring=(start+i)%self.n;

@@ -165,14 +165,15 @@
   <div class="settings-head"><div><p class="eyebrow">PREFERENCES</p><h2 id="settings-title">設定</h2><p>変更内容は再生中にも反映されます。</p></div><button id="settings-close" type="button" aria-label="設定を閉じる">×</button></div>
   <div class="settings-body">
     <fieldset><legend>音声処理方式</legend>
-      <label for="engine">エンジン</label><select id="engine">
+      <label id="engine-manual-label" for="engine">エンジン（手動）</label><select id="engine">
         <option value="0">A · 部分音再合成（実験）</option>
         <option value="1" selected>B · STFT変換</option>
         <option disabled>候補 · 解析信号による線形反転（未実装）</option>
         <option disabled>候補 · 部分音＋残差（研究中）</option>
         <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
       </select>
-      <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><p class="setting-help">チェック中は変換範囲内の曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p>
+      <output id="engine-auto-result" class="engine-auto-result" role="status" aria-live="polite" hidden></output>
+      <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
           <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
