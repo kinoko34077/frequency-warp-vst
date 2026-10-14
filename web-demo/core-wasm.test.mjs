@@ -522,3 +522,57 @@ test("Engine A neutral transform: actual PCM fidelity vs engine B across tonal/n
     e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);
   }
 });
+
+test("Engine A quality slider controls true native/WASM peak budget and real offline audio",async()=>{
+  const e=await load();
+  assert.equal(typeof e.warp_stream_set_a_quality,"function");
+  assert.equal(typeof e.warp_stream_render_f32_a_quality_ext,"function");
+  const fs=12000,n=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  let state=0x34077;const next=()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/0x80000000-1;};
+  try {
+    new Float32Array(e.memory.buffer,src,n).set(Float32Array.from({length:n},next));
+    const timings=[];
+    const render=quality=>{
+      const before=performance.now();
+      const status=e.warp_stream_render_f32_a_quality_ext(
+        src,dst,n,1,fs,20,5500,1,0,1,0,1,0,1,0,0,0,4,0,1,
+        0,350,0,0,350,1,20,0,1,quality);
+      assert.equal(status,0,"offline A quality "+quality);
+      timings.push(Number((performance.now()-before).toFixed(3)));
+      return Float32Array.from(new Float32Array(e.memory.buffer,dst,n));
+    };
+    const zero=render(0),middle=render(50),full=render(100);
+    const delta=(x,y)=>x.slice(2048).reduce((sum,v,i)=>sum+Math.abs(v-y[i+2048]),0)/(n-2048);
+    assert.ok(delta(zero,middle)>1e-4,"quality 50 must change actual native A audio");
+    assert.ok(delta(middle,full)>1e-4,"quality 100 must change actual native A audio");
+    assert.ok([zero,middle,full].every(x=>x.every(Number.isFinite)),"finite output across all settings");
+    const bad=e.warp_stream_render_f32_a_quality_ext(
+      src,dst,n,1,fs,20,5500,1,0,1,0,1,0,1,0,0,0,4,0,1,
+      0,350,0,0,350,1,20,0,1,101);
+    assert.equal(bad,-2);
+    const stream=e.warp_stream_create_ext(fs,1,20,5500,1,0,1,0,1,0,1,0,0,0,4);
+    assert.ok(stream);
+    try {
+      for(const q of [0,50,100])assert.equal(e.warp_stream_set_a_quality(stream,q),0);
+      assert.equal(e.warp_stream_set_a_quality(stream,101),-2);
+    }finally{e.warp_stream_free(stream);}
+    const original=new Float32Array(e.memory.buffer,src,n);
+    const metrics=out=>{
+      let inputPower=0,outputPower=0,loss=0,correlation=0;
+      for(let i=2048;i<n;i++){
+        const a=original[i],b=out[i];inputPower+=a*a;outputPower+=b*b;
+        loss+=(a-b)*(a-b);correlation+=a*b;
+      }
+      return {rmsRatio:Number(Math.sqrt(outputPower/inputPower).toFixed(5)),
+        normalizedRMSE:Number(Math.sqrt(loss/inputPower).toFixed(5)),
+        correlation:Number((correlation/Math.sqrt(inputPower*outputPower||1)).toFixed(5))};
+    };
+    console.log("A_QUALITY_PCM_ACTUAL "+JSON.stringify({
+      quality:[0,50,100],meanDelta0To50:delta(zero,middle),
+      meanDelta50To100:delta(middle,full),
+      results:[zero,middle,full].map((x,i)=>({quality:[0,50,100][i],elapsedMs:timings[i],...metrics(x)})),
+      warning:"WASM offline elapsedMs are environment-specific not real-time CPU; higher quality is not guaranteed to improve full signal fidelity",
+      test:"actual common Rust/WASM"
+    }));
+  }finally {e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});

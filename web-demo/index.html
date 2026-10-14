@@ -177,10 +177,12 @@
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
           <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
+          <div><label for="a-quality">A · 再合成精細度（品質と処理負荷） <input class="inline-value" id="a-quality-value" type="number" min="0" max="100" step="1" value="0"></label><input id="a-quality" type="range" min="0" max="100" step="1" value="0"></div>
           <div><label for="a-band">A · 抽出帯域幅 <input class="inline-value" id="a-band-value" type="number" min="1" max="8" step="1" value="1"></label><input id="a-band" type="range" min="1" max="8" step="1" value="1"></div>
           <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
         </div>
-        <p class="setting-help">Aのみ。最低抽出周波数は低い成分の除外位置。抽出帯域幅は隣接する音の山を別々に拾う距離（FFTビン1〜8）。大きくすると細かいシャワつきを抑え得ますが、近い倍音も消える場合があります。残響量は合成した音の尾を調整します。</p>
+        <p id="a-quality-info" class="setting-help" aria-live="polite">品質0: 基準ピーク数。品質を上げるとピーク候補が増え、CPU負荷も増え得ます。原音忠実度100%の保証ではありません。</p>
+        <p class="setting-help">Aのみ。精細度はピーク候補の上限・検出閾値を連動調節します。従来の抽出帯域幅はピーク間の距離を別に指定します。ノイズ・アタックの残差復元は研究中です。残響量は合成した音の尾を調整します。</p>
       </div>
     </fieldset>
     <fieldset><legend>反転と帯域</legend>

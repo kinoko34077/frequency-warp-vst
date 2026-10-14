@@ -30,6 +30,7 @@ pub struct Stream {
     crusher_value:Vec<f32>,
     a_min_hz:f64,
     a_peak_band_bins:usize,
+    a_quality_percent:u32,
     a_reverb_amount:f32,
     a_reverb_delays:Vec<Vec<Vec<f32>>>,
     a_reverb_pos:[usize;3],
@@ -76,7 +77,7 @@ impl Stream {
             ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],
-            a_min_hz:20.0,a_peak_band_bins:1,a_reverb_amount:0.0,
+            a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
@@ -91,10 +92,10 @@ impl Stream {
             previous:vec![vec![Complex::ZERO;q.n];channels],
             mag:vec![0.0;q.n/2+1],
             candidates:Vec::with_capacity(q.n/2),
-            peaks:Vec::with_capacity(q.max_peaks),
-            tracks:Vec::with_capacity(q.max_peaks),
-            next_tracks:Vec::with_capacity(q.max_peaks),
-            used:vec![false;q.max_peaks],
+            peaks:Vec::with_capacity(q.max_peaks*4),
+            tracks:Vec::with_capacity(q.max_peaks*4),
+            next_tracks:Vec::with_capacity(q.max_peaks*4),
+            used:vec![false;q.max_peaks*4],
             complement:vec![Complex::ZERO;q.n],
             relocated:vec![Complex::ZERO;q.n],
         })
@@ -160,6 +161,19 @@ impl Stream {
     pub fn set_a_peak_band(&mut self,bins:u32)->Result<(),&'static str>{
         if !(1..=8).contains(&bins){return Err("invalid A peak band");}
         self.a_peak_band_bins=bins as usize;
+        Ok(())
+    }
+    /// Engine A fine-grained fidelity-vs-CPU experiment, independently of
+    /// the peak-neighbourhood width. The maximum working vector capacities
+    /// are reserved at construction (not the audio callback). The selection
+    /// budget and relative threshold change while playback continues.
+    /// This does not promise full-band residual or transparent output.
+    pub fn set_a_quality(&mut self,percent:u32)->Result<(),&'static str>{
+        if percent>100{return Err("invalid A quality");}
+        let base=quality(self.settings.quality).ok_or("invalid quality profile")?;
+        self.a_quality_percent=percent;
+        self.max_peaks=base.max_peaks+(base.max_peaks*3*percent as usize/100);
+        self.floor=base.floor*(1.0-0.9*(percent as f64/100.0));
         Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
@@ -576,6 +590,11 @@ pub unsafe extern "C" fn warp_stream_set_a_band(ptr:*mut Stream,bins:u32)->i32{
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_a_quality(ptr:*mut Stream,percent:u32)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_a_quality(percent){Ok(())=>0,Err(_)=>-2}
+}
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slope:f64)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_geometry(pivot,slope){Ok(())=>0,Err(_)=>-2}
@@ -609,6 +628,22 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_band_ext(
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
     a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,
 )->i32{
+    warp_stream_render_f32_a_quality_ext(input,output,frames,channels,rate,
+        low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,shift_hz,
+        carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,axis_shift,
+        axis_reference,ring,rational,axis_pivot,axis_slope,
+        a_min_hz,a_reverb,a_peak_band_bins,0)
+}
+/// Adjustable engine-A fidelity budget for the SAME native/WASM offline stream.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,
+)->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
     let settings=params(low,high,p,amount,mode,quality_id);
@@ -620,7 +655,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_band_ext(
        st.set_transform(axis_shift,axis_reference,ring,rational).is_err()||
        st.set_geometry(axis_pivot,axis_slope).is_err()||
        st.set_a_options(a_min_hz,a_reverb).is_err()||
-       st.set_a_peak_band(a_peak_band_bins).is_err(){return -2;}
+       st.set_a_peak_band(a_peak_band_bins).is_err()||
+       st.set_a_quality(a_quality_percent).is_err(){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -852,6 +888,27 @@ mod tests{
         unsafe {assert_eq!(warp_stream_set_a_band(ptr,7),0);
             assert_eq!((*ptr).a_peak_band_bins,7);
             warp_stream_free(ptr);}
+    }
+    #[test]
+    fn a_quality_budget_is_live_bounded_and_no_audio_callback_allocation_needed(){
+        for quality_id in 0..=2 {
+            let mut settings=settings();
+            settings.quality=quality_id;
+            let mut a=Stream::new(12000.0,1,settings,1).unwrap();
+            let base=quality(quality_id).unwrap();
+            assert_eq!(a.max_peaks,base.max_peaks);
+            assert_eq!(a.floor,base.floor);
+            assert_eq!(a.set_a_quality(101),Err("invalid A quality"));
+            assert!(a.set_a_quality(100).is_ok());
+            assert_eq!(a.max_peaks,base.max_peaks*4);
+            assert!((a.floor-base.floor*0.1).abs()<1e-9);
+            assert_eq!(a.used.len(),base.max_peaks*4);
+            assert!(a.peaks.capacity()>=a.max_peaks);
+            assert!(a.tracks.capacity()>=a.max_peaks);
+            assert!(a.next_tracks.capacity()>=a.max_peaks);
+            assert!(a.set_a_quality(0).is_ok());
+            assert_eq!(a.max_peaks,base.max_peaks);
+        }
     }
     #[test]
     fn physical_slope_zero_pivot_is_uniform_pitch_in_both_engines(){
