@@ -241,6 +241,27 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
 
     await page.click("#tab-map");
+    // Emulate a Touch PointerEvent at iPhone 390px; verify a lower thumb
+    // can be swiped without moving the upper synthesis value or overflow.
+    await page.$eval("#reflection-dual",el=>{
+      el.scrollIntoView({block:"center"});
+      const inner=el.querySelector("[data-dual-inner]");
+      const r=inner.getBoundingClientRect(),y=r.y+r.height-10;
+      const fire=(type,fraction)=>el.dispatchEvent(new PointerEvent(type,{
+        bubbles:true,pointerType:"touch",pointerId:91,isPrimary:true,
+        clientX:r.x+fraction*r.width,clientY:y
+      }));
+      fire("pointerdown",0);fire("pointermove",.58);fire("pointerup",.58);
+    });
+    assert.ok(Math.abs(Number(await page.$eval("#zero-decay",e=>e.value))-58)<=2);
+    assert.equal(await page.$eval("#zero-reflect",e=>e.value),"100");
+    const mobileRail=await page.$eval("#reflection-dual",el=>{
+      const b=el.getBoundingClientRect(),parent=el.closest(".quick-panel").getBoundingClientRect();
+      return {x:b.x,right:b.right,parentRight:parent.right,height:b.height};
+    });
+    assert.ok(mobileRail.right<=mobileRail.parentRight+2 && mobileRail.height>=42,
+      "iOS-sized dual-thumb must fit in controls "+JSON.stringify(mobileRail));
+    await page.$eval("#zero-decay",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
@@ -356,6 +377,18 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
     }
     const before=await page.$eval("#elapsed",n=>n.textContent);
+    // Dragging the actual reflected-rate thumb during live AudioWorklet
+    // playback must go through the SAME Rust setter as the old range.
+    await dragDual("reflection-dual",1,0,.36);
+    assert.ok(Math.abs(Number(await page.$eval("#zero-decay",n=>n.value))-36)<=2);
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{
+      timeout:15000
+    });
+    await page.$eval("#zero-decay",n=>{n.value="0";n.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{
+      timeout:15000
+    });
+
     await page.$eval("#invert",node=>{
       node.value=".42";node.dispatchEvent(new Event("input",{bubbles:true}));
     });
