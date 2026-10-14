@@ -17,7 +17,6 @@ pub struct Stream {
     pitch_ratio:f64,
     shift_hz:f64,
     carrier_hz:f64,
-    ring_phase:f64,
     ring_enabled:bool,
     axis_shift:f64,
     axis_reference:f64,
@@ -75,7 +74,7 @@ impl Stream {
         Ok(Self{
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
-            ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
+            ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],
             a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
@@ -188,16 +187,10 @@ impl Stream {
         // All engines share source L/H, Invert and Curvature mapping first.
         // Ring mode post-multiplies the *warped* signal and yields both
         // sum/difference sidebands; pitch+Hz creates one translated series.
-        let carrier=if self.carrier_hz==-1.0 {
-            fold_frequency(self.settings).unwrap_or(0.0)
-        }else{self.carrier_hz};
-        let inc=TAU*carrier/self.sample_rate;
         let levels=(1u32<<self.crusher_bits.saturating_sub(1)) as f32;
         let feedback=[0.48f32,0.55,0.61];
         for i in 0..frames{
-            let modulator=if self.ring_enabled {self.ring_phase.cos() as f32}else{1.0};
-            if self.ring_enabled{self.ring_phase=(self.ring_phase+inc).rem_euclid(TAU);}
-            for c in 0..self.channels{
+             for c in 0..self.channels{
                 let idx=c*frames+i;
                 let mut sample=output[idx];
                 if self.engine==0 && self.a_reverb_amount>0.0{
@@ -212,8 +205,7 @@ impl Stream {
                     sample=sample*(1.0-self.a_reverb_amount)
                         +tail/3.0*self.a_reverb_amount;
                 }
-                sample*=modulator;
-                output[idx]=if self.crusher_bits==0{sample}else{
+                 output[idx]=if self.crusher_bits==0{sample}else{
                     if self.crusher_counter%(self.crusher_hold as u64)==0 {
                         self.crusher_value[c]=
                             (sample.clamp(-1.0,1.0)*levels).round()/levels;
@@ -232,7 +224,6 @@ impl Stream {
     }
     pub fn reset(&mut self){
         self.received=0;
-        self.ring_phase=0.0;
         self.crusher_counter=0;
         self.crusher_value.fill(0.0);self.a_reverb_pos=[0;3];
         for channel in &mut self.a_reverb_delays{
@@ -273,6 +264,16 @@ impl Stream {
         }
         self.post_process(output,frames);
         Ok(())
+    }
+    // Apply Ring Mod to ONLY mapped [L,H] components before mixing the
+    // separately reconstructed out-of-band Pass signal. Each overlapping
+    // analysis window uses the same absolute source-frame phase.
+    fn ring_at(&self,frame:usize)->f64{
+        if !self.ring_enabled{return 1.0;}
+        let carrier=if self.carrier_hz==-1.0{
+            fold_frequency(self.settings).unwrap_or(0.0)
+        }else{self.carrier_hz};
+        (TAU*((frame as f64*carrier/self.sample_rate).rem_euclid(1.0))).cos()
     }
     fn process_frame(&mut self,start:usize){
         let half=self.n/2;
@@ -344,7 +345,8 @@ impl Stream {
                 fft(&mut self.relocated,true);
                 for i in 0..self.n {
                     let slot=(start+i)%(self.n*2);
-                    self.output[c][slot]+=2.0*self.relocated[i].r*self.window_sq[i].sqrt();
+                    self.output[c][slot]+=2.0*self.relocated[i].r*
+                        self.window_sq[i].sqrt()*self.ring_at(start+i);
                 }
             }
             for i in 0..self.n {let slot=(start+i)%(self.n*2);self.weights[slot]+=self.window_sq[i];}
@@ -437,7 +439,7 @@ impl Stream {
                 let mut ci=start_phase.sin();
                 for i in 0..self.n{
                     let slot=(start+i)%(self.n*2);
-                    self.output[c][slot]+=amplitude*cr*self.window_sq[i];
+                    self.output[c][slot]+=amplitude*cr*self.window_sq[i]*self.ring_at(start+i);
                     let new_r=cr*rot_r-ci*rot_i;
                     ci=cr*rot_i+ci*rot_r;cr=new_r;
                 }
@@ -487,7 +489,8 @@ impl Stream {
                 fft(&mut self.relocated,true);
                 for i in 0..self.n{
                     let slot=(start+i)%(self.n*2);
-                    self.output[c][slot]+=2.0*self.relocated[i].r*self.window_sq[i].sqrt();
+                    self.output[c][slot]+=2.0*self.relocated[i].r*
+                        self.window_sq[i].sqrt()*self.ring_at(start+i);
                 }
             }
         }
