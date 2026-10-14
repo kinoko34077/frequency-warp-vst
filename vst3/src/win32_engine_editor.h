@@ -68,7 +68,7 @@ public:
             WS_CHILD|WS_VISIBLE|SS_LEFT,16,102,525,28,hwnd_,nullptr,
             GetModuleHandleW(nullptr),nullptr);
         status_=CreateWindowExW(0,L"STATIC",
-            L"No engine selected. Audio remains latency-compensated Dry.",
+            L"Engine activation status not yet available. Browse to select.",
             WS_CHILD|WS_VISIBLE|SS_LEFT,16,151,525,44,hwnd_,nullptr,
             GetModuleHandleW(nullptr),nullptr);
         DragAcceptFiles(hwnd_,TRUE);
@@ -104,8 +104,11 @@ private:
         if(msg==WM_DROPFILES){
             const HDROP drop=reinterpret_cast<HDROP>(w);
             wchar_t path[32768]{};
-            if(DragQueryFileW(drop,0,path,32768)>0)
+            const UINT length=DragQueryFileW(drop,0,nullptr,0);
+            if(length>0 && length<32768 &&
+               DragQueryFileW(drop,0,path,32768)==length)
                 view->load(path);
+            else view->setStatus(L"Dropped filename exceeds supported path size.");
             DragFinish(drop);
             return 0;
         }
