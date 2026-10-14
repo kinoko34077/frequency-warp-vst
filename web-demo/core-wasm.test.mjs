@@ -659,3 +659,44 @@ test("Experimental A mapped residual: neutral fidelity gain across broadband, mi
     console.log("A_MAPPED_RESIDUAL_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("A mapped residual preserves stereo level ratio and does not duplicate unshifted tonal ghost",async()=>{
+  const e=await load();const rate=8192,n=8192,count=n*2;
+  const src=e.warp_alloc_f32(count),dst=e.warp_alloc_f32(count);
+  assert.ok(src&&dst);
+  let seed=47201;
+  const noise=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/0x80000000-1;};
+  try{
+    const inData=new Float32Array(e.memory.buffer,src,count);
+    for(let i=0;i<n;i++){
+      const sample=.35*Math.cos(2*Math.PI*480*i/rate)+.04*noise();
+      inData[i]=sample;inData[n+i]=.6*sample;
+    }
+    const status=e.warp_stream_render_f32_a_quality_ext(
+      src,dst,n,2,rate,20,3000,1,0,1,0,1,0,1,24,0,0,4,
+      0,1,0,350,0,1,350,1,20,0,1,100);
+    assert.equal(status,0);
+    const output=new Float32Array(e.memory.buffer,dst,count);
+    let leftSq=0,rightSq=0,ratioError=0,oldCos=0,oldSin=0,newCos=0,newSin=0;
+    for(let i=2400;i<7300;i++){
+      const l=output[i],r=output[n+i];
+      assert.ok(Number.isFinite(l)&&Number.isFinite(r));
+      leftSq+=l*l;rightSq+=r*r;ratioError+=(r-.6*l)**2;
+      oldCos+=l*Math.cos(2*Math.PI*480*i/rate);
+      oldSin+=l*Math.sin(2*Math.PI*480*i/rate);
+      newCos+=l*Math.cos(2*Math.PI*504*i/rate);
+      newSin+=l*Math.sin(2*Math.PI*504*i/rate);
+    }
+    const ild=Math.sqrt(rightSq/leftSq),stereoError=Math.sqrt(ratioError/leftSq);
+    const originalMag=Math.hypot(oldCos,oldSin);
+    const shiftedMag=Math.hypot(newCos,newSin);
+    console.log("A_RESIDUAL_STEREO_SHIFT_ACTUAL "+JSON.stringify({
+      shiftedMag,originalMag,ratio:shiftedMag/originalMag,
+      ild,stereoError,noiseMapped:true
+    }));
+    assert.ok(Math.abs(ild-.6)<.03&&stereoError<.04,
+      "linked stereo noise and tone level ratio should survive partial+residual synthesis");
+    assert.ok(shiftedMag>originalMag*5,
+      "A mapped residual must not leave substantial original unshifted 480Hz ghost");
+  }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
+});
