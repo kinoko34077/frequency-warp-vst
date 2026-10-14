@@ -173,6 +173,11 @@ private:
         if(!poll_)return;
         const auto state=poll_();
         if(!state.known)return;
+        if(awaiting_ && state.state==0 && state.completedId!=awaited_){
+            awaiting_=false;candidate_=Verified{};
+            setStatus(L"Host worker stopped before engine activation.");
+            return;
+        }
         if(awaiting_ && state.completedId==awaited_){
             awaiting_=false;
             if(state.succeeded){
@@ -189,7 +194,7 @@ private:
             // No identity is inferred from a Controller reopening an old view.
             if(state.state==6)
                 setStatus(L"Engine faulted; latency-compensated Dry fallback.");
-            else if(state.state==3 && state.accepted>0 && current_.bytes.empty())
+            else if(state.state==4 && state.accepted>0 && current_.bytes.empty())
                 setStatus(L"Worker reports active engine (file identity unavailable).");
         }
     }
