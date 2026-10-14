@@ -315,7 +315,7 @@ impl Stream {
                                 self.axis_pivot,self.axis_slope,
                                 self.axis_reference,self.settings.curvature,self.axis_shift)
                         }
-                    }else if self.outside==1 {f} else {continue};
+                    }else{continue}; // Outside Pass is mixed AFTER in-band Ring Mod.
                     // Exact same signed/DC policy used by the peak-resynthesis
                     // engine. Previously FFT-bin mode *always killed* negative
                     // targets (and clamped pre-shift negatives to 1e-7).
@@ -345,8 +345,28 @@ impl Stream {
                 fft(&mut self.relocated,true);
                 for i in 0..self.n {
                     let slot=(start+i)%(self.n*2);
+                    let ring=self.ring_at(start+i);
                     self.output[c][slot]+=2.0*self.relocated[i].r*
-                        self.window_sq[i].sqrt()*self.ring_at(start+i);
+                        self.window_sq[i].sqrt()*ring;
+                }
+                // Add untouched spectral complement only after Ring Mod,
+                // matching engine A and the independent L/H Pass policy.
+                if self.outside==1{
+                    self.complement.fill(Complex::ZERO);
+                    for k in 0..=half{
+                        let freq=k as f64*step;
+                        if freq<self.settings.low||freq>self.settings.high{
+                            self.complement[k]=self.spectrum[c][k];
+                            if k>0&&k<half{
+                                self.complement[self.n-k]=self.spectrum[c][self.n-k];
+                            }
+                        }
+                    }
+                    fft(&mut self.complement,true);
+                    for i in 0..self.n{
+                        let slot=(start+i)%(self.n*2);
+                        self.output[c][slot]+=self.complement[i].r*self.window_sq[i].sqrt();
+                    }
                 }
             }
             for i in 0..self.n {let slot=(start+i)%(self.n*2);self.weights[slot]+=self.window_sq[i];}
@@ -439,7 +459,8 @@ impl Stream {
                 let mut ci=start_phase.sin();
                 for i in 0..self.n{
                     let slot=(start+i)%(self.n*2);
-                    self.output[c][slot]+=amplitude*cr*self.window_sq[i]*self.ring_at(start+i);
+                    let ring=self.ring_at(start+i);
+                    self.output[c][slot]+=amplitude*cr*self.window_sq[i]*ring;
                     let new_r=cr*rot_r-ci*rot_i;
                     ci=cr*rot_i+ci*rot_r;cr=new_r;
                 }
@@ -489,8 +510,9 @@ impl Stream {
                 fft(&mut self.relocated,true);
                 for i in 0..self.n{
                     let slot=(start+i)%(self.n*2);
+                    let ring=self.ring_at(start+i);
                     self.output[c][slot]+=2.0*self.relocated[i].r*
-                        self.window_sq[i].sqrt()*self.ring_at(start+i);
+                        self.window_sq[i].sqrt()*ring;
                 }
             }
         }
