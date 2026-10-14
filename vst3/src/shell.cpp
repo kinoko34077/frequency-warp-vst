@@ -212,6 +212,8 @@ public:
 };
 } // namespace fw
 
+using namespace Steinberg;
+using namespace Steinberg::Vst;
 #define FW_VERSION "0.2.0"
 BEGIN_FACTORY_DEF("KiNoTch.", "https://github.com/kinoko34077/frequency-warp-vst", "")
   DEF_CLASS2(INLINE_UID_FROM_FUID(fw::kProcessorCID),
