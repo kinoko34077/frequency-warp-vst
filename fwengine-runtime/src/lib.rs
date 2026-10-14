@@ -5,6 +5,7 @@ use wasmi::{Config, Engine, Instance, Linker, Memory, Module, Store, StoreLimits
 
 const FUEL_PREP: u64=15_000_000;
 const FUEL_BLOCK: u64=10_000_000;
+#[repr(C)]
 #[derive(Clone,Copy)]
 pub struct ParamEvent {pub id:u32,pub offset:u32,pub value:f64}
 type ProcessFn=TypedFunc<(i32,i32,i32,i32,i32,i32),i32>;
@@ -76,8 +77,16 @@ impl Runtime{
             input,output,event,capacity:capacity as usize,faulted:false})
     }
     pub fn faulted(&self)->bool{self.faulted}
-    /// This reference path allocates Vec and may block: NEVER call from audio callback.
+    /// Test/offline convenience function. Allocates a Vec; not for audio callbacks.
     pub fn process(&mut self,pcm:&[f32],frames:usize,events:&[ParamEvent])->Result<Vec<f32>>{
+        let mut output=vec![0.0;pcm.len()];
+        self.process_into(pcm,&mut output,frames,events)?;
+        Ok(output)
+    }
+    /// Caller-owned buffers, no host Vec or lock on the successful process path.
+    /// RT acceptance additionally requires proving interpreter internals and latency.
+    pub fn process_into(&mut self,pcm:&[f32],output:&mut[f32],frames:usize,events:&[ParamEvent])->Result<()>{
+        ensure!(output.len()==pcm.len(),"output shape mismatch");
         ensure!(!self.faulted,"disabled WASM instance");
         ensure!(frames<=self.max_frames&&pcm.len()==self.channels*frames,"invalid PCM shape");
         ensure!(events.len()<=self.capacity,"event capacity exceeded");
@@ -120,16 +129,17 @@ impl Runtime{
         }
         section(self.output,pcm.len()*4,limit,4)?;
         let mem=self.memory.data(&self.store);
-        let mut result=Vec::with_capacity(pcm.len());
-        for i in 0..pcm.len(){
+        for (i,out) in output.iter_mut().enumerate(){
             let pos=self.output+4*i;
             let v=f32::from_le_bytes(mem[pos..pos+4].try_into()?);
             if !v.is_finite(){self.faulted=true;bail!("nonfinite WASM output")}
-            result.push(v);
+            *out=v;
         }
-        Ok(result)
+        Ok(())
     }
 }
+
+pub mod ffi;
 #[cfg(test)]
 mod tests{
     use super::*;
