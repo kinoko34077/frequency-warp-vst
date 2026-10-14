@@ -1,6 +1,7 @@
 // Windows VST3 S2 FIXED SHELL: delayed identity only. Swappable WASM runtime is S3.
 #include "delay.h"
 #include "parameter_registry.h"
+#include "native_engine_abi.h"
 #include "base/source/fstring.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "public.sdk/source/vst/vsteditcontroller.h"
@@ -53,6 +54,8 @@ public:
     tresult PLUGIN_API initialize(FUnknown* context) override {
         auto r=AudioEffect::initialize(context);
         if(r!=kResultOk)return r;
+        // Non-audio host lifecycle handshake, forcing real static Wasmi linkage.
+        if(fw_native_abi_major()!=1u)return kResultFalse;
         addAudioInput(STR16("Audio In"),SpeakerArr::kStereo);
         addAudioOutput(STR16("Audio Out"),SpeakerArr::kStereo);
         return kResultOk;
