@@ -392,3 +392,21 @@ reciprocal inverse fixed point in Hz for this mode and percent-only
 for linear Blend, which has no unique breakpoint.
 Rust is the sole production mapping implementation via WASM. The separate
 JavaScript oracle is TEST ONLY; no duplicated audio/DSP.
+
+## 2026-10-14 Signed-zero reflection gain — Issue #54 U3
+The old 0Hz target Reflect/Kill/Fade dropdown was replaced by one always-visible
+front-panel slider: 0%=Kill all strictly negative target frequencies, 100%=
+reflect them at full amplitude, and the intermediate continuous gain scales
+ONLY the reflected component. A target at exactly 0Hz remains unrenderable.
+This is a gain `g` (not an arbitrary reflection frequency or a wet/dry blend):
+output is `abs(f')` and amplitude is `g` when raw `f'<0`. Positive
+components and out-of-band Pass stay unchanged. The graph draws reflected
+segments as dashed paths whose opacity scales with the same gain as Rust.
+This is a theoretical transfer diagram, not a measured spectral envelope.
+Common native/WASM `warp_stream_set_zero_reflect_gain` updates realtime without
+recreating stream; new `warp_stream_render_f32_controls_ext` is used for exported
+WAV. Older `warp_stream_render_f32_a_quality_ext` and traditional 0/1/2
+modes remain callable for ABI backward compatibility, but are no longer
+visible selectable options in the Web settings. Numeric 0/50/100 validation
+uses actual shared Rust/WASM audio and separately tests untouched positive
+frequency outputs.
