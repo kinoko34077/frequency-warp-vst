@@ -4,6 +4,7 @@
 #include "async_pcm_mailbox.h"
 #include "native_engine_abi.h"
 #include "native_worker_service.h"
+#include "win32_engine_editor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
 #include <vector>
@@ -342,8 +343,31 @@ public:
         for(ParamID id=0;id<kParamCount;id++)setParamNormalized(id,v[id]);
         return kResultOk;
     }
-    // S3 is responsible for dedicated file drop / Browse / Reload.
-    IPlugView* PLUGIN_API createView(const char*) override {return nullptr;}
+    // Actual engine GUI actions use host-mediated Controller->Processor message
+    // transport. No WASM work, ZIP parsing, or file I/O occurs in process().
+    bool sendPackageToProcessor(const std::vector<uint8_t>& bytes){
+        if(bytes.empty()||bytes.size()>8*1024*1024)return false;
+        auto* msg=allocateMessage();
+        if(!msg)return false;
+        msg->setMessageID("FrequencyWarp.LoadFwengineV1");
+        auto* attrs=msg->getAttributes();
+        const bool ok=attrs&&attrs->setBinary("package",bytes.data(),
+            static_cast<uint32>(bytes.size()))==kResultTrue;
+        const auto sent=ok?sendMessage(msg):kResultFalse;
+        msg->release();
+        return sent==kResultTrue;
+    }
+    IPlugView* PLUGIN_API createView(FIDString type) override {
+#ifdef _WIN32
+        if(!type||std::strcmp(type,ViewType::kEditor)!=0)return nullptr;
+        return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
+            return sendPackageToProcessor(bytes);
+        });
+#else
+        (void)type;
+        return nullptr;
+#endif
+    }
 };
 } // namespace fw
 
