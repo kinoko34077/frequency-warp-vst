@@ -115,9 +115,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#zero-decay",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     // L/H is the other meaningful same-scale value pair. Reuse the same
     // drag/pointercapture contract without duplicating source logic.
+    await page.$eval("#dual-range",el=>{
+      window.__dualMoveTrace=[];
+      for(const type of ["pointerdown","pointermove","pointerup","lostpointercapture"])
+        el.addEventListener(type,event=>window.__dualMoveTrace.push({
+          type,x:event.clientX,y:event.clientY,target:event.target.id,
+          low:document.querySelector("#low").value,high:document.querySelector("#high").value
+        }));
+    });
     await dragDual("#dual-range",0,.32,"upper");
-    assert.ok(await page.$eval("#low",el=>Number(el.value))>=305);
-    assert.ok(await page.$eval("#high",el=>Number(el.value))>900);
+    const bandDrag=await page.evaluate(()=>({
+      low:Number(document.querySelector("#low").value),
+      high:Number(document.querySelector("#high").value),
+      trace:window.__dualMoveTrace,
+      box:(()=>{const r=document.querySelector("#dual-range").getBoundingClientRect();
+        return {x:r.x,y:r.y,w:r.width,h:r.height};})()
+    }));
+    assert.ok(bandDrag.low>=305,"L/H upper drag must set low >=305: "+JSON.stringify(bandDrag));
+    assert.ok(bandDrag.high>900,"L/H lower thumb must stay put: "+JSON.stringify(bandDrag));
     await page.$eval("#low",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
 
 
