@@ -82,6 +82,51 @@ fn main()->Result<(),Box<dyn Error>>{
     assert!(power>1e-6,"shared Stream emitted no audio");
     assert!(after_diff>0.1,"L/H/Invert/Curvature event produced no audible PCM difference");
     assert!(biggest<0.008,"WASM/native canonical spectral PCM diverged: max={biggest}");
+    // A DAW is free to automate L and H independently. Even though each
+    // canonical value fits its own range, their combination can be invalid.
+    // The module must retain its previous working configuration (not TRAP
+    // or mark Wasmi broken) and recover once a later packet supplies a
+    // valid combined snapshot.
+    let crossing=frame_input(BLOCKS*F,F);
+    let invalid_pair=[
+        ParamEvent{id:2,offset:0,value:18000.0},
+        ParamEvent{id:3,offset:0,value:500.0}
+    ];
+    let retained=wasm.process(&crossing,F,&invalid_pair)?;
+    let mut native_retained=vec![0f32;2*F];
+    native.process(&crossing,&mut native_retained,F)?;
+    assert!(!wasm.faulted(),"ordinary L>=H automation must not fault the module");
+    assert!(retained.iter().zip(native_retained.iter())
+        .all(|(x,y)|(x-y).abs()<0.008),
+        "bad host pair must preserve last valid native spectral settings");
+
+    let recovered_input=frame_input((BLOCKS+1)*F,F);
+    let valid_pair=[
+        ParamEvent{id:2,offset:0,value:500.0},
+        ParamEvent{id:3,offset:0,value:8000.0}
+    ];
+    native_settings.low=500.0;native_settings.high=8000.0;
+    native.configure(native_settings,0)?;
+    let recovered=wasm.process(&recovered_input,F,&valid_pair)?;
+    let mut native_recovered=vec![0f32;2*F];
+    native.process(&recovered_input,&mut native_recovered,F)?;
+    assert!(!wasm.faulted(),"valid host pair must recover rejected automation");
+    assert!(recovered.iter().zip(native_recovered.iter())
+        .all(|(x,y)|(x-y).abs()<0.008),
+        "recovered valid pair must match canonical native Stream");
+
+    // At sample rates below 32 kHz, fixed host-default Upper=16000 Hz
+    // exceeds Nyquist. The VST3 may restore that stored host value; it must
+    // not permanently fault a valid 8k module whose initial H is 3600 Hz.
+    let mut low_rate=Runtime::prepare(&actual,8000.0,2,F)?;
+    let low_input=frame_input(0,F);
+    let low_events=[
+        ParamEvent{id:2,offset:0,value:20.0},
+        ParamEvent{id:3,offset:0,value:16000.0}
+    ];
+    let low_output=low_rate.process(&low_input,F,&low_events)?;
+    assert!(!low_rate.faulted()&&low_output.iter().all(|v|v.is_finite()),
+        "host default above low-rate Nyquist must retain valid 8k DSP");
     // Unsupported host param (e.g. Gain ID64) MUST fail on actual Stream,
     // while demo Identity/Gain native regression still accepts ID64.
     let buf=frame_input(16384,F);
