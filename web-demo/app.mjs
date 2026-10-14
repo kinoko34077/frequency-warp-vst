@@ -137,7 +137,10 @@ function labels(id=""){
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
   showNumber("crusher-hold-value",p.crusherRateHz);
-  $("#crusher-rate-explainer").textContent="指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
+  $("#crusher-rate-explainer").textContent=p.crusherHold===0?
+    "0 Hz：最初の処理サンプルを保持（更新停止）"+(p.crusherBits?" · "+p.crusherBits+"bit":" · 加工OFF"):
+    "指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+
+    " Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+"bit 量子化":" · 加工OFF");
   drawCrusherPreview($("#crusher-preview"),{bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate});
   const u=p.axisShift,ref=p.axisReference;
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
@@ -212,11 +215,19 @@ function drawCurve(){
   const {warp,translate}=mathCallbacks();
   const alpha=Number($("#graph-log").value)/100;
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
-  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×(f−20)/("+graphMax+"−20)+α×ln(f/20)/ln("+graphMax+"/20)。x/y共通の表示尺度（音声DSPに影響しません）。";
-  const isCrushed=p.crusherBits>0&&p.crusherHold>1;
+  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×f/"+graphMax+
+    "+α×ln(1+f/20)/ln(1+"+graphMax+"/20)（x/yは0Hzから表示、対数寄りでも0を定義）。";
+  const isCrushed=p.crusherBits>0;
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=!isCrushed;
-  if(isCrushed)$("#crusher-alias-note").textContent="実効サンプル周波数 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz · 破線は標本化の折返し位置の理論図（実際の音量スペクトルではありません）";
+  $("#crusher-nyquist-note").hidden=!isCrushed;
+  if(isCrushed){
+    const eff=p.crusherHold?p.sampleRate/p.crusherHold:0;
+    $("#crusher-alias-note").textContent="実線は共通DSPの変換先から計算した、標本保持の主な周波数像と個別振幅の理論値。多数の弱い像は省略。量子化の非線形倍音や実録音全体のFFT実測ではありません。";
+    $("#crusher-nyquist-note").textContent=p.crusherHold===0?
+      "y=0Hz（サンプル更新停止：固定値の直流成分。実際の振幅は保持値によります）":
+      "鏡線 y="+displayNumber(eff/2)+" Hz（更新周波数="+displayNumber(eff)+" Hz）。折返しの高次像も実線で表示。";
+  }
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
 }
@@ -562,11 +573,11 @@ const inline={
   "axis-slope-value":["axis-slope",v=>v,"axis-slope",0.1,4],
   "wet-value":["wet",v=>v/100,"wet",0,100],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
-  "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",1,96000]
+  "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,96000]
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   const field=$("#"+id);
-  const integer=range==="crusher-bits"||range==="crusher-hold"||range==="a-band"||range==="a-quality";
+  const integer=range==="crusher-bits"||range==="a-band"||range==="a-quality";
   const normalized=value=>{
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
@@ -651,7 +662,7 @@ for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
   $("#"+id).addEventListener("input",()=>{
     delete state.precise[id];
     $("#crusher-bits-value").value=$("#crusher-bits").value;
-    $("#crusher-hold-value").value=String(Math.round(frequencyFromSlider($("#crusher-hold").value,state.ctx?.sampleRate||state.decoded?.sampleRate||48000)));
+    $("#crusher-hold-value").value=String(round3(frequencyFromSlider($("#crusher-hold").value,state.ctx?.sampleRate||state.decoded?.sampleRate||48000)));
     updateParams(id);updateEngineInfo();
   });
 }
@@ -840,7 +851,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#a-min").value="0";$("#a-reverb").value="0";
   $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
-  $("#crusher-bits").value="8";$("#crusher-hold").value="600";
+  $("#crusher-bits").value="8";$("#crusher-hold").value="900";
   $("#crusher-bits-value").value="8";
   $("#crusher-hold-value").value="12000";
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
