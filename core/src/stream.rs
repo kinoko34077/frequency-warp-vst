@@ -761,10 +761,10 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
     a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,
 )->i32{
-    warp_stream_render_f32_zero_gain_ext(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
+    render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,f64::NAN)
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None)
 }
 
 /// Unified native/WASM offline export with controllable negative-target
@@ -777,6 +777,21 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_gain_ext(
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
     a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:f64,
+)->i32{
+    if !zero_reflect_gain.is_finite() || !(0.0..=1.0).contains(&zero_reflect_gain){return -2;}
+    render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
+        outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
+        crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain))
+}
+
+unsafe fn render_zero_gain_internal(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -791,10 +806,10 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_gain_ext(
        st.set_a_options(a_min_hz,a_reverb).is_err()||
        st.set_a_peak_band(a_peak_band_bins).is_err()||
        st.set_a_quality(a_quality_percent).is_err()||
-       // NAN is an internal sentinel from the legacy ABI wrapper only:
-       // never override historical reflect/kill/fade semantics for old callers.
-       (!zero_reflect_gain.is_nan()&&
-        st.set_zero_reflect_gain(zero_reflect_gain).is_err()){return -2;}
+       // Internal optional gain: no gain keeps the exact legacy 0/1/2
+       // policy; Some(0..1) activates variable-amplitude reflection.
+       zero_reflect_gain.is_some_and(|gain|
+           st.set_zero_reflect_gain(gain).is_err()){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
