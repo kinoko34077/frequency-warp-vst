@@ -419,6 +419,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#crusher-hold",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const slow=Number(await page.$eval("#crusher-hold-value",el=>el.value));
     assert.equal(slow,0,"crusher update-rate slider reaches 0Hz");
+    assert.match(await page.$eval("#crusher-nyquist-note",el=>el.textContent),/y=0Hz/);
     const heldCanvas=await page.$eval("#curve",el=>el.toDataURL());
     const heldPreview=await page.$eval("#crusher-preview",el=>el.toDataURL());
     await page.$eval("#crusher-hold",el=>{el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));});
@@ -427,6 +428,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.notEqual(heldPreview,await page.$eval("#crusher-preview",el=>el.toDataURL()));
     assert.ok(fast>slow*20,"crusher Hz slider must INCREASE toward the right");
     assert.match(await page.$eval("#crusher-rate-explainer",el=>el.textContent),/実効.*Hz/);
+    assert.match(await page.$eval("#crusher-nyquist-note",el=>el.textContent),/鏡線 y=/);
     const shape=await page.$eval("#crusher-preview",el=>({w:el.width,h:el.height}));
     assert.ok(shape.w>180&&shape.h>=80,"crusher visual must render at mobile size");
     await page.$eval("#crusher-hold",el=>{el.value="600";el.dispatchEvent(new Event("input",{bubbles:true}));});
