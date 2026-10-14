@@ -743,3 +743,30 @@ test("Ring Mod affects only source L/H and preserves actual out-of-band Pass on 
       "Kill must also suppress outside source "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("Reciprocal interpolation and invert-Hz marker use common Rust/WASM geometry",async()=>{
+  const e=await load();
+  assert.equal(typeof e.warp_invert_reference_frequency,"function");
+  for(const p of [0,.15,.5,1]){
+    const l=100,h=1600,anchor=e.warp_invert_reference_frequency(l,h,p,.3,3);
+    assert.ok(anchor>l&&anchor<h);
+    if(p===0)assert.ok(Math.abs(anchor-400)<1e-7);
+    for(const f of [100,150,400,720,1600]){
+      const raw=e.warp_map_frequency(f,l,h,p,0,3);
+      const full=e.warp_map_frequency(f,l,h,p,1,3);
+      const half=e.warp_map_frequency(f,l,h,p,.5,3);
+      assert.ok(Math.abs(raw-f)<1e-7);
+      assert.ok(Math.abs(full-e.warp_map_frequency(f,l,h,p,1,1))<1e-7,
+        "reciprocal full inversion must have same endpoints as blend");
+      assert.ok(Math.abs(half-Math.sqrt(f*full))<1e-7);
+    }
+    assert.ok(Math.abs(e.warp_map_frequency(anchor,l,h,p,.65,3)-anchor)<1e-6);
+    assert.ok(Number.isNaN(e.warp_invert_reference_frequency(l,h,p,.5,1)),
+      "linear blend should not invent an Hz fold marker");
+  }
+  const l=100,h=1600,p=.65,amount=.37;
+  assert.ok(Math.abs(e.warp_invert_reference_frequency(l,h,p,amount,0)-
+    e.warp_fold_frequency(l,h,p,amount,0))<1e-9);
+  assert.ok(Math.abs(e.warp_invert_reference_frequency(l,h,p,amount,2)-
+    e.warp_fold_frequency(l,h,p,amount,2))<1e-9);
+});

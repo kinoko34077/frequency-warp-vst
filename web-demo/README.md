@@ -369,3 +369,26 @@ the crusher is ON and the reduced sample rate can cause aliasing. Their
 amplitude is **not estimated**. A separate small synthetic 4.3-cycle waveform
 shows original sine in gray and sample-held amplitude-quantized signal in
 orange; it is an explanatory model, never the waveform of the loaded file.
+
+## 2026-10-14 Inversion coordinate equations and geometric reciprocal interpolation — Issue #54 U2
+The frequency graph axis slider changes DISPLAY coordinates only. Position
+on each axis is `Gα(f)=(1−α)(f−20)/(M−20)+α·ln(f/20)/ln(M/20)` with
+`α=slider/100`, `M=2000` or `20000`. It does not change audio.
+The separate Warp movement-scale slider chooses mathematical frequency
+coordinate `S₀(f;L)=ln(f/L)` at `p=0`,
+`Sₚ(f;L)=((f/L)^p−1)/p` at `p>0`, and the movement endpoints
+`f×exp(u)` (p0) vs `f+uR` (p1), subject to independently selected
+anchor/pivot/slope and nonlinear inversion.
+
+A new invert progression `reciprocal` interpolates geometrically between
+the original `f` and full existing inverse `Iₚ(f)`:
+`f'=exp((1-a)ln(f)+a ln(Iₚ(f)))`, `a=invert`, valid positive [L,H].
+It equals identity at a=0 and the same full inversion at a=1.
+For p0, I=LH/f and fixed reference is sqrt(LH). At a=.5 p0 all
+positive input frequencies meet at the fixed reference (an inherent
+many-to-one mapping, NOT transparent audio).
+The invert slider shows input-side Fold breakpoint in Hz for FoldL/H,
+reciprocal inverse fixed point in Hz for this mode and percent-only
+for linear Blend, which has no unique breakpoint.
+Rust is the sole production mapping implementation via WASM. The separate
+JavaScript oracle is TEST ONLY; no duplicated audio/DSP.

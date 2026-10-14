@@ -581,7 +581,7 @@ impl Stream {
 }
 
 fn mode_from_number(mode:u32)->Progression{
-    match mode{1=>Progression::Blend,2=>Progression::FoldLow,_=>Progression::FoldHigh}
+    match mode{1=>Progression::Blend,2=>Progression::FoldLow,3=>Progression::Reciprocal,_=>Progression::FoldHigh}
 }
 fn params(low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32)->Settings{
     Settings{low,high,curvature:p,invert:amount,mode:mode_from_number(mode),quality:quality_id}

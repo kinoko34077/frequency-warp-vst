@@ -186,6 +186,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#invert",el=>{el.value=".45";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const linked2=await page.$eval("#carrier-linked-value",el=>el.textContent);
     assert.notEqual(linked1,linked2,"Fold location must change with invert parameter");
+    assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/Hz/);
+    await page.select("#mode","reciprocal");
+    assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/反転固定点.*Hz/);
+    assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/折返し点がありません/);
+    await page.select("#mode","blend");
+    assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/補間率.*%/);
+    await page.select("#mode","fold-h");
+    assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
+    assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
+
     await page.click("#tab-map");
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");

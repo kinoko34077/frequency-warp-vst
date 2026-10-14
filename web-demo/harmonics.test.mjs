@@ -88,3 +88,25 @@ test("Fade near zero follows the selected Rust FFT window, not a fixed 1024",()=
  assert.equal(one.outputs[0],13);
  assert.equal(three.outputs.length,0);
 });
+
+test("reciprocal interpolation is distinct from linear blend and preserves full invert endpoints",()=>{
+  const l=100,h=1600;
+  for(const p of [0,.25,.5,1]){
+    for(const f of [100,200,400,800,1600]){
+      const start=mapFrequency(f,l,h,p,0,"reciprocal");
+      const end=mapFrequency(f,l,h,p,1,"reciprocal");
+      const half=mapFrequency(f,l,h,p,.5,"reciprocal");
+      assert.ok(Math.abs(start-f)<1e-9);
+      assert.ok(Math.abs(end-mapFrequency(f,l,h,p,1,"blend"))<1e-8);
+      assert.ok(Math.abs(half-Math.sqrt(f*end))<1e-7);
+    }
+  }
+  assert.ok(Math.abs(mapFrequency(200,l,h,1,.5,"reciprocal")-
+    mapFrequency(200,l,h,1,.5,"blend"))>5);
+});
+test("Ring Mod graph only shows sidebands inside source L/H",()=>{
+  const params={low:200,high:900,curvature:1,invert:0,mode:"blend",outside:"pass",
+    carrierHz:256,ringEnabled:true,sampleRate:8192,zeroMode:0};
+  assert.deepEqual(mapAtFrequency(1600,params,x=>x).outputs,[1600]);
+  assert.deepEqual(mapAtFrequency(400,params,x=>x).outputs,[656,144]);
+});

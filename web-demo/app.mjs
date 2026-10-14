@@ -130,6 +130,13 @@ function labels(id=""){
   drawCrusherPreview($("#crusher-preview"),{bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate});
   const u=p.axisShift,ref=p.axisReference;
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
+  const modeCode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
+  const hz=state.mathCore?.warp_invert_reference_frequency?.(p.low,p.high,p.curvature,p.invert,modeCode);
+  $("#invert-reference-hz").textContent=p.mode==="blend"?"補間率 "+displayNumber(p.invert*100)+"%":
+    (p.mode==="reciprocal"?"反転固定点 ":p.mode==="fold-l"?"L側折返し ":"H側折返し ")+
+    (Number.isFinite(hz)?displayNumber(hz)+" Hz":"計算中");
+  const pText=displayNumber(p.curvature);
+  $("#curvature-log-formula").textContent="p="+pText+" · S₀(f)=ln(f/L)、Sₚ(f)=((f/L)ᵖ−1)/p (p>0)。移動量は p=0: f×eᵘ、p=1: f+uR Hz（他の傾き/起点設定は別）。";
   $("#axis-explainer").textContent=p.curvature===0?
     "移動倍率 ×"+displayNumber(Math.exp(u)):p.curvature===1?
     "移動 "+displayNumber(u*ref)+" Hz":"移動 "+displayNumber(u)+"（中間尺度）";
@@ -139,8 +146,9 @@ function foldPoint(){
   const core=state.mathCore;
   if(!core)return NaN;
   const p=settings();
+  if(p.mode!=="fold-l"&&p.mode!=="fold-h")return NaN;
   return core.warp_fold_frequency(p.low,p.high,p.curvature,p.invert,
-    p.mode==="blend"?1:p.mode==="fold-l"?2:0);
+    p.mode==="fold-l"?2:0);
 }
 function axisMarker(f){
   const core=state.mathCore;
@@ -154,7 +162,7 @@ function mathCallbacksFor(p){
   const core=state.mathCore,reference=p.axisReference;
   return {
     warp:(f,l,h,curvature,invert,mode)=>
-      core.warp_map_frequency(f,l,h,curvature,invert,mode==="blend"?1:mode==="fold-l"?2:0),
+      core.warp_map_frequency(f,l,h,curvature,invert,mode==="blend"?1:mode==="fold-l"?2:mode==="reciprocal"?3:0),
     translate:(f,pivot,curvature,shift,slope,anchor)=>
       core.warp_translate_frequency_anchored(f,anchor,pivot,slope,reference,curvature,shift)
   };
@@ -189,7 +197,9 @@ function drawCurve(){
   const p=settings();
   const shown={...p,carrierHz:resolvedCarrierHz(foldPoint)};
   const {warp,translate}=mathCallbacks();
-  drawFrequencyGraph(canvas,shown,warp,translate,graphMax,Number($("#graph-log").value)/100);
+  const alpha=Number($("#graph-log").value)/100;
+  drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
+  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×(f−20)/("+graphMax+"−20)+α×ln(f/20)/ln("+graphMax+"/20)。x/y共通の表示尺度（音声DSPに影響しません）。";
   const isCrushed=p.crusherBits>0&&p.crusherHold>1;
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=!isCrushed;
@@ -207,7 +217,8 @@ async function ensureSharedCore(){
       const core=instance.exports;
       if(typeof core.warp_fold_frequency!=="function"||
         typeof core.warp_map_frequency!=="function"||
-        typeof core.warp_translate_frequency_anchored!=="function")throw Error("共通数式APIがありません");
+        typeof core.warp_translate_frequency_anchored!=="function"||
+        typeof core.warp_invert_reference_frequency!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
       if($("#engine-auto").checked){updateEngineInfo();updateParams("engine-auto");}
