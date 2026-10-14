@@ -947,6 +947,36 @@ mod tests{
         assert_eq!(st.carrier_hz,-1.0);
     }
     #[test]
+    fn variable_negative_reflection_is_strictly_bounded_and_legacy_modes_unchanged(){
+        let mut st=Stream::new_extended(8192.0,2,settings(),1,1,1.0,0.0,0.0,0,4).unwrap();
+        assert_eq!(st.resolve_zero(-320.0,8.0),Some((320.0,1.0)));
+        assert!(st.set_zero_reflect_gain(f64::NAN).is_err());
+        assert!(st.set_zero_reflect_gain(-0.1).is_err());
+        assert!(st.set_zero_reflect_gain(1.01).is_err());
+        assert_eq!(st.zero_mode,0,"invalid gain must not change old policy");
+        assert!(st.set_zero_reflect_gain(0.0).is_ok());
+        assert_eq!(st.resolve_zero(-320.0,8.0),None);
+        assert_eq!(st.resolve_zero(250.0,8.0),Some((250.0,1.0)),
+            "positive targets must not be attenuated");
+        for gain in [0.25,0.5,1.0]{
+            st.set_zero_reflect_gain(gain).unwrap();
+            assert_eq!(st.resolve_zero(-320.0,8.0),Some((320.0,gain)));
+            assert_eq!(st.resolve_zero(250.0,8.0),Some((250.0,1.0)));
+        }
+        st.configure_extended(settings(),1,1,1.0,0.0,0.0,2).unwrap();
+        assert!(st.resolve_zero(-320.0,8.0).is_none(),
+            "legacy fade path remains different from the new gain mode");
+        st.configure_extended(settings(),1,1,1.0,0.0,0.0,1).unwrap();
+        assert_eq!(st.resolve_zero(-320.0,8.0),None);
+        let ptr=Box::into_raw(Box::new(st));
+        unsafe{
+            assert_eq!(warp_stream_set_zero_reflect_gain(ptr,0.6),0);
+            assert_eq!((*ptr).resolve_zero(-320.0,8.0),Some((320.0,0.6)));
+            assert_eq!(warp_stream_set_zero_reflect_gain(ptr,2.0),-2);
+            warp_stream_free(ptr);
+        }
+    }
+    #[test]
     fn crusher_live_settings_and_sample_hold_are_effective(){
         let mut st=Stream::new_extended(8192.0,1,settings(),1,0,1.0,0.0,0.0,0,4).unwrap();
         assert!(st.set_crusher(1,1).is_err());
