@@ -14,6 +14,7 @@
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
