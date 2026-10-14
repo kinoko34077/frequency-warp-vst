@@ -21,7 +21,7 @@ function sineWav(seconds=12) {
 test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at waveform click",async()=>{
   const temp=await mkdtemp(path.join(os.tmpdir(),"warp-realtime-"));
   const server=spawn("python3",["-m","http.server","8765","--bind","127.0.0.1"],
-    {cwd:path.resolve("web-demo"),stdio:"ignore"});
+    {cwd:path.resolve(process.env.WARP_WEB_ROOT||"web-demo"),stdio:"ignore"});
   let browser;
   try{
     const wavPath=path.join(temp,"twelve.wav");await writeFile(wavPath,sineWav());

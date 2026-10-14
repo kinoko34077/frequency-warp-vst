@@ -694,9 +694,13 @@ async function load(file){
 
 $("#audio-file").addEventListener("change",e=>{const file=e.target.files[0];e.target.value="";void load(file);});
 const drop=$("#drop");
-drop.addEventListener("click",e=>{if(e.target.id!=="audio-file")$("#audio-file").click();});
+// The full-surface native file input opens via an actual tap. Do not
+// programmatically click it from a delegated handler: iOS/WebKit can
+// reject synthetic picker activation, especially when modules load late.
 drop.addEventListener("keydown",e=>{
-  if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#audio-file").click();}
+  if(e.target.id!=="audio-file"&&(e.key==="Enter"||e.key===" ")){
+    e.preventDefault();$("#audio-file").click();
+  }
 });
 drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("hover");});
 drop.addEventListener("dragleave",()=>drop.classList.remove("hover"));
@@ -765,16 +769,8 @@ controls.download.addEventListener("click",()=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 // Settings are part of the same live parameter model as the front-panel knobs.
-const dialog=$("#settings-dialog"),opener=$("#settings-open");
-const showSettings=()=>{if(!dialog.open)dialog.showModal();};
-const closeSettings=()=>{if(dialog.open)dialog.close();opener.focus();};
-opener.addEventListener("click",showSettings);
-$("#settings-inline").addEventListener("click",showSettings);
-$("#settings-close").addEventListener("click",closeSettings);
-$("#settings-done").addEventListener("click",closeSettings);
-dialog.addEventListener("click",event=>{
-  if(event.target===dialog)closeSettings();
-});
+// Modal entry/exit lives in the minimal, separately loaded entry-controls.js.
+// It remains available even when a Rust/DSP module import fails.
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
@@ -879,3 +875,5 @@ updateSineLabel();
 attachHarmonicPanel(id=>{updateParams(id);updateEngineInfo();},foldPoint,axisMarker,settings);
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});
+// Set only after all interactive controls have registered successfully.
+document.documentElement.dataset.fwBoot="ready";

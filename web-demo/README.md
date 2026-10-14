@@ -223,3 +223,30 @@ check to be considered independently verified.
 - Defaults: `mode=blend`, detailed harmonic rows 5, displayed numeric precision up to 3 decimals. 2/3 display digits are selectable without truncating the stored 0.001-precision typed DSP values. Integer controls remain integers.
 - The settings dialog scrolls within a flex-sized body on mobile and desktop, with a compact per-control explanation. Native selector `change` events update the shared Rust DSP without touching any other slider.
 - The PR #42 implementation passed native Rust, WASM, headless Chrome and Python reference CI, with a formal exact-head review. See Issue #41 for the release/deployment evidence and acceptance status. Physical iPhone behavior and subjective engine-A quality remain unverified.
+
+
+## 2026-10-14 public-entry deployment repair (Issue #43 / PR #45)
+
+The previous GitHub Pages deployment manually copied a fixed list of
+`web-demo/*.mjs` files. It omitted `engine-policy.mjs` and then
+`export-policy.mjs`, each required by top-level `app.mjs` imports. The
+live page therefore could fail to initialize **all** JavaScript event
+handlers despite locally successful Rust/Chrome tests and a green Pages
+deployment job. This affected both opening Settings and activating the
+audio file picker.
+
+Publication now stages the transitive literal same-origin static resource
+graph from the HTML entry using `web-demo/stage-pages.mjs`. Missing
+dependencies fail the build. The regular CI tests against this **same
+staged artifact**, with mobile Settings, actual browser FileChooser and
+sample WAV decoding in `entry-smoke.test.mjs`. The Pages workflow
+additionally runs the browser entry test against the **public deployed
+URL after deployment**. A mere green build/deploy is not sufficient to
+claim the UI works.
+
+The visible audio-file drop area is itself a native file-input target;
+no programmatic proxy click is required on iOS. Settings open/close lives
+in a small independent `entry-controls.js` script, and remains available
+even when the DSP module graph cannot initialize. An explicit error is
+displayed if the main application never boots. Chrome touch simulation
+and live HTTP/browser checks do not constitute a physical iPhone test.

@@ -22,11 +22,11 @@
     <div class="workspace-left">
       <section class="panel player" aria-labelledby="player-title">
         <div class="section-header"><div><p class="eyebrow">AUDIO SOURCE</p><h2 id="player-title">音を聴きながら調整</h2></div><span class="micro-hint">先頭600秒まで</span></div>
-        <div id="drop" class="drop" role="button" tabindex="0" aria-label="音声を読み込む">
+        <label id="drop" class="drop" for="audio-file" role="button" tabindex="0" aria-label="音声ファイルを選ぶ">
           <span aria-hidden="true">♫</span><strong>ここを押して音声を選ぶ</strong>
           <small>WAV / MP3 / M4A など · 75MBまで · ドロップ可</small>
-          <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac">
-        </div>
+          <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" aria-label="音声ファイルを選ぶ">
+        </label>
         <p id="file-meta" class="meta">音声未選択</p>
         <div class="wave-wrap"><canvas id="wave" role="button" tabindex="0" aria-label="波形を押すとその位置から再生"></canvas><div id="playhead" class="playhead"></div></div>
         <div class="transport"><span id="elapsed">0:00.0</span><span>波形を押して移動</span><span id="duration">0:00.0</span></div>
@@ -208,6 +208,7 @@
   </div>
   <div class="settings-foot"><button id="settings-done" type="button" class="primary">閉じて音を聴く</button></div>
 </dialog>
+<script defer src="./entry-controls.js"></script>
 <script type="module" src="./app.mjs"></script>
 </body>
 </html>
