@@ -214,3 +214,12 @@ automated Chrome test deliberately hangs the first decoder on a fresh
 page and checks that a single file selection recovers. This is Chrome
 evidence; hardware iOS codec/OS-specific behavior still needs an iPhone
 check to be considered independently verified.
+
+
+## 2026-10-14 settings and engine-A peak selection (#41 candidate)
+- A/B options omit a subjective “standard” tag. An optional **反転で切り替え** checkbox samples the in-band nonlinear map through the shared Rust/WASM `warp_map_frequency` export and chooses A when its whole-band least-squares slope is negative, B otherwise. Disabling returns to manually selected A/B. This is not an audio-quality ranking and a local fold may contain slopes of both signs.
+- Engine A adds 1–8 FFT-bin **peak neighborhood / isolation** control (default 1 preserves the former candidate selector). A larger value excludes neighboring weak peaks and may reduce high-frequency flutter, but may also remove close partials; it does **not** reconstruct residual/noise and must not be reported as R2.2 research acceptance. Both AudioWorklet and WAV export call the same Rust setter/engine, retaining the old streaming/offline ABI entries.
+- The graph has a display-only 0–100% linear/log frequency-axis slider, applied identically to both square x/y axes; it does not change sound or the engine policy. 20 kHz view now shows low-frequency details through logarithmic spacing.
+- Defaults: `mode=blend`, detailed harmonic rows 5, displayed numeric precision up to 3 decimals. 2/3 display digits are selectable without truncating the stored 0.001-precision typed DSP values. Integer controls remain integers.
+- The settings dialog scrolls within a flex-sized body on mobile and desktop, with a compact per-control explanation. Native selector `change` events update the shared Rust DSP without touching any other slider.
+- These are candidate code changes until required native/WASM/Chrome CI and review are accepted. Physical iPhone behavior and subjective engine-A quality remain unverified.
