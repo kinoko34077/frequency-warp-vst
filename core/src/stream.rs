@@ -1203,7 +1203,9 @@ mod tests{
         assert!(a.set_a_options(900.0,0.4).is_ok());
         assert_eq!(a.a_min_hz,900.0);
         assert!((a.a_reverb_amount-0.4).abs()<0.00001);
-        assert!(a.set_a_options(2.0,1.0).is_err());
+        assert!(a.set_a_options(0.0001,1.0).is_err());
+        assert!(a.set_a_options(0.001,0.4).is_ok());
+        assert!(a.set_a_options(2.0,0.4).is_ok());
         b.set_a_options(900.0,1.0).unwrap();
         let mut aa=vec![0.0f32;128];aa[0]=0.7;
         let mut bb=aa.clone();
