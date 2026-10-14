@@ -11,7 +11,7 @@ async function core() {
       const bytes=await response.arrayBuffer();
       const {instance}=await WebAssembly.instantiate(bytes,{});
       const e=instance.exports;
-      for(const name of ["memory","warp_alloc_f32","warp_free_f32","warp_stream_render_f32_a_quality_ext"]){
+      for(const name of ["memory","warp_alloc_f32","warp_free_f32","warp_stream_render_f32_controls_ext"]){
         if(!e[name])throw new Error("WASM ABI不一致: "+name);
       }
       return e;
@@ -47,13 +47,13 @@ self.onmessage=async ({data})=>{
       Math.max(1,Math.min(32,Math.round(data.sampleRate/options.crusherRateHz))):
       options.crusherHold;
     const start=performance.now();
-    const result=exports.warp_stream_render_f32_a_quality_ext(src,dst,frames,channels.length,
+    const result=exports.warp_stream_render_f32_controls_ext(src,dst,frames,channels.length,
       data.sampleRate,options.low,options.high,options.curvature,options.invert,
       options.mode==="blend"?1:options.mode==="fold-l"?2:options.mode==="reciprocal"?3:0,options.qualityIndex,
       options.outside==="pass"?1:0,options.engine,options.pitchRatio,options.shiftHz,
       options.carrierHz,options.zeroMode,options.hopDiv,options.crusherBits,hold,
       options.axisShift,options.axisReference,options.ringEnabled?1:0,options.rationalEnabled?1:0,
-      options.axisPivot,options.axisSlope,options.aMinHz,options.aReverb,options.aBandBins,options.aQuality);
+      options.axisPivot,options.axisSlope,options.aMinHz,options.aReverb,options.aBandBins,options.aQuality,options.zeroReflect);
     if(result!==0)throw new Error("共通DSPの処理に失敗: status "+result);
     const output=new Float32Array(exports.memory.buffer,dst,count);
     const rendered=channels.map((_,c)=>new Float32Array(output.slice(c*frames,(c+1)*frames)));
