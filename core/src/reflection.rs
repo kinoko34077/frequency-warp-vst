@@ -17,3 +17,30 @@ pub fn gain(distance:f64,synthesis:f64,reflection:f64,reference:f64)->f64{
     if reflection>=1.0{return 0.0;}
     synthesis*(1.0-reflection).powf(distance/reference)
 }
+
+pub fn distance(f:f64,signed_target:f64,s:Settings,rational:bool,
+    pitch:f64,delta:f64,anchor:f64,pivot:f64,slope:f64,
+    reference:f64,shift:f64)->f64{
+    let negative=(-signed_target).max(0.0);
+    if !(f>=s.low&&f<=s.high&&s.invert>0.0){return negative;}
+    let epsilon=((s.high-s.low)*0.00001).max(0.001);
+    let lower=(f-epsilon).max(s.low);
+    let upper=(f+epsilon).min(s.high);
+    if upper<=lower{return negative;}
+    let fa=match map_frequency(lower,s){Ok(v)=>v,Err(_)=>return negative};
+    let fb=match map_frequency(upper,s){Ok(v)=>v,Err(_)=>return negative};
+    if fb>=fa-1e-9{return negative;}
+    let fold=fold_frequency(s).unwrap_or_else(||{
+        warp_invert_reference_frequency(s.low,s.high,s.curvature,s.invert,3)
+    });
+    let mirror=match mapped_target(fold,s,rational,pitch,delta,
+        anchor,pivot,slope,reference,shift){
+        Some(x)=>x,None=>return negative
+    };
+    negative+(signed_target-mirror).abs()
+}
+fn settings(low:f64,high:f64,p:f64,invert:f64,mode:u32)->Settings{
+    Settings{low,high,curvature:p,invert,quality:0,mode:match mode{
+        1=>Progression::Blend,2=>Progression::FoldLow,
+        3=>Progression::Reciprocal,_=>Progression::FoldHigh}}
+}
