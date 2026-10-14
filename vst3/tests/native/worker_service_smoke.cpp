@@ -32,10 +32,13 @@ static void proveWet(fw::NativeWorkerService& svc,float level,std::uint64_t due)
     ensure(svc.mailbox().rtSubmit(inputs,2,128),"audio PCM was not submitted");
     // Test clock deliberately pauses before the playback deadline; the
     // worker has up to fixed-4095-sample PDC to execute real native WASM.
-    std::this_thread::sleep_for(std::chrono::milliseconds(70));
     float wet[2]{};
     ensure(!svc.mailbox().rtReadWet(due-1,2,wet),"early wet leaked");
-    for(std::uint64_t t=due;t<due+128;t++){
+    ensure(waitUntil([&]{return svc.mailbox().rtReadWet(due,2,wet);}),
+           "worker did not return wet before simulated deadline");
+    ensure(std::abs(wet[0]-level)<1.e-5f&&std::abs(wet[1]-level)<1.e-5f,
+           "first PCM sample mismatch");
+    for(std::uint64_t t=due+1;t<due+128;t++){
         ensure(svc.mailbox().rtReadWet(t,2,wet),"wet missing at expected deadline");
         ensure(std::abs(wet[0]-level)<1.e-5f&&std::abs(wet[1]-level)<1.e-5f,
                "wrong native WASM PCM from configured module");
@@ -49,10 +52,9 @@ int main(int argc,char** argv) {
         ensure(!service.mailbox().rtHasPreparedWorker(),"no module initially");
         ensure(service.start(),"worker failed to start");
         ensure(service.postPackage(a,48000.,2,128),"unable to request Identity");
-        ensure(waitUntil([&]{return service.acceptedVersion()==1;}),
+        ensure(waitUntil([&]{return service.acceptedVersion()==1&&
+            service.status()==fw::NativeWorkerService::Status::Ready;}),
                "Identity was not prepared by worker");
-        ensure(service.status()==fw::NativeWorkerService::Status::Ready,
-               "native worker did not publish ready status");
         proveWet(service,.8f,4095);
 
         // Valid package replacement only, no rebuilding native C ABI.
@@ -62,11 +64,11 @@ int main(int argc,char** argv) {
         proveWet(service,.4f,4095+128);
 
         const auto prior=service.acceptedVersion();
+        const auto before=service.handledRequests();
         ensure(service.postPackage(std::vector<uint8_t>{'b','a','d'},48000.,2,128),
                "invalid fixture must reach verifier");
-        ensure(waitUntil([&]{return service.status()!=fw::NativeWorkerService::Status::Preparing;}),
-               "worker stuck preparing invalid package");
-        std::this_thread::sleep_for(std::chrono::milliseconds(70));
+        ensure(waitUntil([&]{return service.handledRequests()==before+1;}),
+               "worker did not finish rejecting invalid package");
         ensure(service.acceptedVersion()==prior,"rejected module replaced valid module");
         proveWet(service,.4f,4095+256);
 
