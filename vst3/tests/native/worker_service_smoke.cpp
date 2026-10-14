@@ -53,7 +53,8 @@ int main(int argc,char** argv) {
         ensure(service.start(),"worker failed to start");
         ensure(service.postPackage(a,48000.,2,128,17),"unable to request Identity");
         ensure(waitUntil([&]{return service.acceptedVersion()==1&&
-            service.status()==fw::NativeWorkerService::Status::Ready;}),
+            service.status()==fw::NativeWorkerService::Status::Ready&&
+            service.lastCompletedId()==17;}),
                "Identity was not prepared by worker");
         ensure(service.lastCompletedId()==17&&service.lastCompletedSucceeded(),
                "verified Identity request outcome not correlated");
@@ -61,7 +62,7 @@ int main(int argc,char** argv) {
 
         // Valid package replacement only, no rebuilding native C ABI.
         ensure(service.postPackage(b,48000.,2,128,18),"unable to request Gain");
-        ensure(waitUntil([&]{return service.acceptedVersion()==2;}),
+        ensure(waitUntil([&]{return service.acceptedVersion()==2&&service.lastCompletedId()==18;}),
                "Gain was not accepted");
         ensure(service.lastCompletedId()==18&&service.lastCompletedSucceeded(),
                "verified Gain request outcome not correlated");
@@ -87,7 +88,7 @@ int main(int argc,char** argv) {
                "stopped plugin retained stale source timeline");
         ensure(service.start(),"worker restart failed");
         ensure(service.postPackage(a,48000.,2,128,20),"restart package refused");
-        ensure(waitUntil([&]{return service.acceptedVersion()==prior+1;}),
+        ensure(waitUntil([&]{return service.acceptedVersion()==prior+1&&service.lastCompletedId()==20;}),
                "restarted worker failed to prepare fresh instance");
         ensure(service.lastCompletedId()==20&&service.lastCompletedSucceeded(),
                "restart request token was not acknowledged");
