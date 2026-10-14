@@ -62,3 +62,17 @@ pub extern "C" fn warp_all_reflection_gain(
         rational,pitch,delta,anchor,pivot,slope,reference,shift);
     gain(d,synthesis,reflection,reference)
 }
+
+#[cfg(test)]
+mod tests{
+ use super::*;
+ #[test]fn reflected_positive_fold(){
+  let s=Settings{low:100.0,high:1000.0,curvature:1.0,
+    invert:0.5,mode:Progression::FoldHigh,quality:0};
+  let t=mapped_target(800.0,s,false,1.0,0.0,350.0,350.0,1.0,350.0,0.0).unwrap();
+  assert!(t>0.0);
+  let d=distance(800.0,t,s,false,1.0,0.0,350.0,350.0,1.0,350.0,0.0);
+  assert!(d>100.0);
+  assert!((gain(d,0.5,0.0,350.0)-0.5).abs()<1e-9);
+ }
+}
