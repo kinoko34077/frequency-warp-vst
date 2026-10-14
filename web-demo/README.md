@@ -250,3 +250,29 @@ in a small independent `entry-controls.js` script, and remains available
 even when the DSP module graph cannot initialize. An explicit error is
 displayed if the main application never boots. Chrome touch simulation
 and live HTTP/browser checks do not constitute a physical iPhone test.
+
+## 2026-10-14 independent audio timeline and replacement recovery audit (#46)
+
+- Live shared Rust `Stream::latency()` is `fftSize - 1` for all quality
+  profiles; the browser AudioWorklet delays Dry by the same count. Prior
+  offline WAV save instead mixed the *undelayed* source into a delayed
+  transformed stream, causing a false timing/phasing difference at partial
+  Wet. The WAV mix now delays Dry into the processed timeline only for
+  partial Wet, using the quality-indexed 1023/2047/4095 frame latency
+  tested against actual Rust/WASM `warp_stream_latency`. Fully Dry (0%)
+  intentionally remains bit-identical to the original; fully Wet (100%)
+  remains unmodified processed output. Partial-Wet WAV has the same
+  shared-DSP startup lookahead as live playback. Does not claim zero-latency
+  offline trim or latency-free output.
+- File replacement now validates the next audio file *before* discarding
+  the previously loaded/played track, current seek, and previously rendered
+  WAV. A bad/too-short/unsupported import displays an error while the
+  previous file remains available, rather than resetting to no audio.
+  Concurrent file decode attempts use the latest load token to avoid an
+  older result replacing newer input. A successful import commits the
+  new audio and clears the old render/seek together.
+- Acceptance uses unit samples for Wet 0%, 50%, 100% and delay boundaries,
+  live Rust/WASM latency parity, and actual staged/public mobile Chrome
+  file-picker flow: valid → invalid-too-short → valid. Device-specific
+  iPhone file decoding and subjective phase/quality remain separately
+  unverified until hardware evidence.
