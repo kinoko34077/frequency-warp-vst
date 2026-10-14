@@ -27,7 +27,8 @@ Issue: https://github.com/kinoko34077/frequency-warp-vst/issues/83
 Build using official Steinberg VST3 SDK 3.8.x recursively checked out,
 Visual Studio 2022 and CMake 3.25+:
 
-    cmake -S vst3 -B build/vst3 -G "Visual Studio 17 2022" -A x64 -DFW_VST3_SDK_DIR=C:/dev/vst3sdk -DSMTG_CREATE_PLUGIN_LINK=OFF -DSMTG_RUN_VST_VALIDATOR=ON
+    cargo build --release --lib --manifest-path fwengine-runtime/Cargo.toml
+    cmake -S vst3 -B build/vst3 -G "Visual Studio 17 2022" -A x64 -DFW_VST3_SDK_DIR=C:/dev/vst3sdk -DSMTG_CREATE_PLUGIN_LINK=OFF -DSMTG_RUN_VST_VALIDATOR=ON -DFW_NATIVE_ARCHIVE=C:/repo/fwengine-runtime/target/release/fwengine_runtime.lib
     cmake --build build/vst3 --config Release --target FrequencyWarpShell
     cmake --build build/vst3 --config Release --target fw_shell_delay_test
     cmake --build build/vst3 --config Release --target fw_shell_automation_test
@@ -36,3 +37,5 @@ Visual Studio 2022 and CMake 3.25+:
 
 This repository does not vendor the Steinberg SDK. SDK terms remain governed
 by the upstream MIT license; no installer/binary has been published.
+
+S3b4a ABI link evidence: see [Issue #100](https://github.com/kinoko34077/frequency-warp-vst/issues/100). Native Rust and Steinberg SDK binaries are statically combined only at shell build time; exchanging `.fwengine` does not replace native code. Successful validator is not proof of file Browse/Drop or audible spectral processing.
