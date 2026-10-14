@@ -52,7 +52,7 @@ static void proveWet(fw::NativeWorkerService& svc,float level,std::uint64_t due,
 }
 int main(int argc,char** argv) {
     try {
-        ensure(argc==3,"need Identity.fwengine GainHalf.fwengine");
+        ensure(argc==3||argc==4,"need Identity.fwengine GainHalf.fwengine [Stream.fwengine]");
         auto a=read(argv[1]),b=read(argv[2]);
         fw::NativeWorkerService service;
         ensure(!service.mailbox().rtHasPreparedWorker(),"no module initially");
@@ -118,7 +118,54 @@ int main(int argc,char** argv) {
                "restart request token was not acknowledged");
         proveWet(service,.8f,4095);
         service.stop();
-        std::cout<<"PASS native worker: 2-module file replacement, rejection rollback, PDC, stop/restart\n";
+        if(argc==4){
+            // Real S4 shared Stream package through native VST3 worker filter,
+            // not just Wasmi's direct Rust test path. 24 x128f of stereo PCM
+            // exercise FFT warmup, geometry event at exact offset40, PDC-1023
+            // timestamps, and non-faulting valid package execution.
+            auto spectral=read(argv[3]);
+            ensure(service.start(),"spectral worker restart failed");
+            const auto priorVersion=service.acceptedVersion();
+            ensure(service.postPackage(std::move(spectral),48000.,2,128,21),
+                   "spectral .fwengine worker request rejected");
+            ensure(waitUntil([&]{return service.acceptedVersion()==priorVersion+1 &&
+                 service.lastCompletedId()==21 && service.lastCompletedSucceeded();}),
+                   "spectral module failed validation/ABI prepare");
+            double energy=0.;
+            for(std::uint64_t block=0;block<24;block++){
+                std::array<float,128> spectralL{},spectralR{};
+                for(std::size_t i=0;i<128;i++){
+                    const double phase=6.283185307179586*330.*(block*128+i)/48000.;
+                    spectralL[i]=static_cast<float>(.55*std::sin(phase));
+                    spectralR[i]=static_cast<float>(.44*std::sin(phase));
+                }
+                const float* src[]={spectralL.data(),spectralR.data()};
+                // Simulate seven DAW controls being automated at sample40.
+                // The host sends physical units, never the normalized rail.
+                FWNativeEvent geometry[]={
+                    {6,40,0.4},{7,40,500.0},{8,40,-0.6},
+                    {9,40,0.65},{10,40,1.0},{13,40,0.4},{18,40,1.0}
+                };
+                const bool change=block==8;
+                ensure(service.mailbox().rtSubmit(src,2,128,
+                    change?geometry:nullptr,change?7:0),
+                    "spectral native PCM ingress rejected");
+                const std::uint64_t due=block*128+fw::AsyncPcmMailbox::kHostPdc-1023;
+                float wet[2]{};
+                ensure(waitUntil([&]{return service.mailbox().rtReadWet(due,2,wet);}),
+                       "spectral worker PCM missing at compensated deadline");
+                for(std::uint64_t i=0;i<128;i++){
+                    if(i>0)ensure(service.mailbox().rtReadWet(due+i,2,wet),
+                                  "spectral worker returned incomplete PCM");
+                    if(block>=9)energy+=std::abs(wet[0])+std::abs(wet[1]);
+                }
+            }
+            ensure(energy>0.01,"spectral .fwengine emitted no wet audio");
+            ensure(service.mailbox().stats().workerFailures==0,
+                   "valid geometry host events faulted the Rust interpreter");
+            service.stop();
+        }
+        std::cout<<"PASS native worker: validated file swap, rollback, PDC, geometry controls, stop/restart\n";
         return 0;
     }catch(const std::exception& err){
         std::cerr<<"FAIL native worker: "<<err.what()<<"\n";return 1;
