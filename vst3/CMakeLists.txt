@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(FrequencyWarpShell VERSION 0.2.0 LANGUAGES CXX)
+project(FrequencyWarpShell VERSION 0.2.0 LANGUAGES C CXX)
 if(NOT DEFINED FW_VST3_SDK_DIR OR NOT EXISTS "${FW_VST3_SDK_DIR}/CMakeLists.txt")
   message(FATAL_ERROR "Specify FW_VST3_SDK_DIR as official recursive Steinberg VST3 SDK checkout")
 endif()
