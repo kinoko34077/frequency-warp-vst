@@ -101,8 +101,20 @@ private:
         // Explicit semantic guard: generic Identity/Gain module has slot64
         // only, so never forward unrelated spectral host parameter events.
         const bool spectral=fw_native_supports_stream_controls(native);
+        // Keep BOTH contracts valid: core Stream IDs2..5 and demo Gain ID64.
+        // Filtering is on this off-RT thread; no heap allocations or host
+        // parameter semantic aliasing are introduced.
+        if(count>AsyncPcmMailbox::kMaxEvents)return -1;
+        std::array<FWNativeEvent,AsyncPcmMailbox::kMaxEvents> filtered{};
+        uint32_t used=0;
+        for(uint32_t i=0;i<count;i++) {
+            const bool bound=spectral
+                ? (events[i].id>=2&&events[i].id<=5)
+                : events[i].id==64;
+            if(bound)filtered[used++]=events[i];
+        }
         return fw_native_process(native,input,output,frames,
-                                 spectral?events:nullptr,spectral?count:0);
+                                 used?filtered.data():nullptr,used);
     }
     void run() noexcept {
         FWNativeOpaque* active=nullptr;
