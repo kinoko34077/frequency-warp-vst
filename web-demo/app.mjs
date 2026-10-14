@@ -489,10 +489,14 @@ async function play(mode="wet",offset=null){
     });
     const dry=ctx.createGain(),wet=ctx.createGain(),master=ctx.createGain();
     worklet.connect(wet,0);worklet.connect(dry,1);
-    dry.connect(master);wet.connect(master);master.connect(ctx.destination);
+    dry.connect(master);wet.connect(master);
+    const directRoute=ctx.createGain();
+    directRoute.gain.value=1;
+    master.connect(directRoute);directRoute.connect(ctx.destination);
     master.gain.value=1;
     const player={
-      worklet,dry,wet,master,buffer:makeBuffer(),source:null,
+      worklet,dry,wet,master,directRoute,bridgeRoute:null,outputRoute:"direct",
+      buffer:makeBuffer(),source:null,
       mode,quality:current.qualityIndex,engine:current.engine,hopDiv:current.hopDiv,at:ctx.currentTime,
       offset:0,appliedRevision:0
     };
