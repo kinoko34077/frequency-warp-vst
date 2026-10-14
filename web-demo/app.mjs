@@ -443,7 +443,10 @@ async function mediaBridge(player){
   let node;
   try{
     node=state.ctx.createMediaStreamDestination();
-    player.master.connect(node);
+    player.bridgeRoute=state.ctx.createGain();
+    player.bridgeRoute.gain.value=0.0001;
+    player.master.connect(player.bridgeRoute);
+    player.bridgeRoute.connect(node);
     element.srcObject=node.stream;
     await element.play();
     if(state.player!==player){element.pause();return;}
