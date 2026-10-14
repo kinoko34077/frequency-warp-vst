@@ -82,7 +82,7 @@ mod tests{
   assert!((target-200.0).abs()<1e-8);
   let d=distance(800.0,target,s,false,1.0,0.0,500.0,500.0,-1.0,350.0,0.0);
   assert!((d-300.0).abs()<1e-8);
-  assert!((gain(d,.5,0.0,350.0)-.5).abs()<1e-9);
+  assert!((gain(d,0.5,0.0,350.0)-0.5).abs()<1e-9);
  }
  #[test]fn reflected_positive_fold(){
   let s=Settings{low:100.0,high:1000.0,curvature:1.0,
