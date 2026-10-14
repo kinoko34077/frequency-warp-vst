@@ -43,7 +43,7 @@
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <div class="control-grid">
           <div class="control shape-control">
-            <div class="compact-title"><strong class="reflect-title">変換形状</strong><details class="info-tip"><summary aria-label="変換形状の説明" title="変換形状の説明">ⓘ</summary><div class="info-body">反転は周波数の並びを変えます。移動尺度p=0は倍率的、p=1は一定Hz的な移動です。<small class="slider-formula" id="curvature-log-formula" aria-live="polite"></small></div></details></div>
+            <div class="compact-title"><strong class="reflect-title">変換形状</strong><details class="info-tip"><summary aria-label="変換形状の説明" title="変換形状の説明">ⓘ</summary><div class="info-body">反転は周波数の並びを変えます。移動尺度p=0は倍率的、p=1は一定Hz的な移動です。<small id="invert-reference-hz" class="slider-formula"></small><small class="slider-formula" id="curvature-log-formula" aria-live="polite"></small></div></details></div>
             <div class="dual-headings">
               <label for="invert-value"><span class="dual-dot first"></span>反転 <input class="inline-value" id="invert-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反転の割合 %">%</label>
               <label for="curvature-value"><span class="dual-dot second"></span>移動尺度 <input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="移動尺度 p"></label>
@@ -56,11 +56,11 @@
                 <button type="button" id="curvature-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="移動の尺度" aria-valuenow="1"></button>
               </div>
             </div>
-            <div class="ends"><span>上：反転　下：尺度</span><strong id="invert-reference-hz" class="invert-hz-marker">補間率 0%</strong></div>
+            
             
           </div>
           <div class="control reflect-control">
-            <div class="compact-title"><strong class="reflect-title">周波数の反射</strong><details class="info-tip"><summary aria-label="反射の説明" title="反射の説明">ⓘ</summary><div class="info-body">合成率は反射成分全体の振幅、反射率は折返し点からの距離減衰を調整します。<small id="zero-reflect-formula" class="slider-formula"></small></div></details></div>
+            <div class="compact-title"><strong class="reflect-title">周波数の反射</strong><details class="info-tip"><summary aria-label="反射の説明" title="反射の説明">ⓘ</summary><div class="info-body">合成率は反射成分全体の振幅、反射率は折返し点からの距離減衰を調整します。<small id="zero-reflect-status" class="slider-formula"></small><small id="zero-reflect-formula" class="slider-formula"></small><small id="reflection-activity" class="slider-formula" aria-live="polite"></small></div></details></div>
             <div class="dual-headings">
               <label for="zero-reflect-value"><span class="dual-dot first"></span>合成率 <input id="zero-reflect-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="100" aria-label="反射成分の合成率 %">%</label>
               <label for="zero-decay-value"><span class="dual-dot second"></span>反射率 <input id="zero-decay-value" class="inline-value" type="number" min="0" max="100" step="0.001" value="0" aria-label="反射成分の反射率 %">%</label>
@@ -73,9 +73,8 @@
                 <button type="button" id="zero-decay-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="反射率" aria-valuenow="0"></button>
               </div>
             </div>
-            <div class="ends"><span>上：合成　下：反射</span><strong id="zero-reflect-status" class="invert-hz-marker">合成 100% / 反射 0%</strong></div>
             
-            <small id="reflection-activity" class="slider-formula" aria-live="polite"></small>
+            
           </div>
           <div class="control"><div class="control-heading"><label for="axis-shift">移動</label><details class="info-tip"><summary aria-label="移動の説明" title="移動の説明">ⓘ</summary><div class="info-body">移動尺度p=0で倍率、p=1でHz移動です。<small id="axis-explainer" class="axis-explainer"></small><small id="axis-mode-hint" class="axis-mode-hint"></small></div></details><span class="axis-value-tools"><input class="inline-value" id="axis-shift-value" type="number" min="-2" max="2" step="0.001" value="0" aria-label="axis-shift-value の数値"><button id="axis-zero" type="button" class="zero-button" title="上下移動を0へ戻す" aria-label="上下移動を正確にゼロに戻す">0へ</button></span></div>
             <input id="axis-shift" type="range" min="-2" max="2" step=".05" value="0">
