@@ -2,6 +2,7 @@
 //! definitions. No whole-track render; 128-frame calls have persistent state.
 //! This retains experimental R2.1 peak-tracking limitations and N-1 latency.
 
+use super::reflection;
 use super::{fft,fold_frequency,map_frequency,translate_frequency_affine,translate_frequency_controls,translate_frequency_anchored,quality,Complex,Progression,Settings,Track,PI,TAU};
 
 pub struct Stream {
