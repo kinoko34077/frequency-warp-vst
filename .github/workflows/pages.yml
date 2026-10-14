@@ -27,14 +27,17 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
       - name: Compile the same native DSP core to WASM
         run: cargo build --manifest-path core/Cargo.toml --release --target wasm32-unknown-unknown
-      - name: Stage browser-only static assets
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Stage and validate the complete browser dependency graph
         run: |
-          mkdir -p _site
-          cp web-demo/index.html _site/index.html
-          cp web-demo/app.mjs web-demo/processor.worker.mjs web-demo/realtime.worklet.js web-demo/dsp.mjs web-demo/graph.mjs web-demo/harmonics.mjs web-demo/harmonics-panel.mjs web-demo/style.css _site/
-          cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm _site/dsp_core.wasm
-          touch _site/.nojekyll
+          node --test web-demo/stage-pages.test.mjs
+          node web-demo/stage-pages.mjs core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm
           test -s _site/dsp_core.wasm
+          test -s _site/engine-policy.mjs
+          test -s _site/export-policy.mjs
+          test -s _site/entry-controls.js
       - name: Configure GitHub Pages (requires existing Pages enablement)
         uses: actions/configure-pages@v5
       - name: Upload Pages artifact
@@ -45,6 +48,8 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -52,3 +57,18 @@ jobs:
       - name: Deploy site
         id: deployment
         uses: actions/deploy-pages@v4
+
+  verify-public-entry:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chrome automation client
+        run: npm install --no-save --no-package-lock puppeteer-core@24
+      - name: Verify the actual published mobile settings and file chooser
+        env:
+          WARP_ENTRY_URL: ${{ needs.deploy.outputs.page_url }}
+        run: node --test web-demo/entry-smoke.test.mjs
