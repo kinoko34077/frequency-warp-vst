@@ -216,11 +216,29 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#engine-auto-result",el=>el.textContent),/A /);
     assert.equal(await page.$eval("#engine",el=>el.hidden),true);
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
-    // Killing negative targets removes the visible descending output.
-    await page.select("#zero-mode","1");
+    // 0-Hz policy is now a FRONT-PANEL reflected-amplitude slider; 0%
+    // kills the branch, 100% reflects it, and mid settings are translucent.
+    assert.equal(await page.$("#zero-mode"),null,"obsolete modal policy select removed");
+    assert.equal(await page.$eval("#zero-reflect",el=>el.value),"100");
+    const reflectedFull=await page.$eval("#curve",el=>el.toDataURL());
+    await page.$eval("#zero-reflect",el=>{
+      el.value="50";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/50%/);
+    const reflectedHalf=await page.$eval("#curve",el=>el.toDataURL());
+    assert.notEqual(reflectedFull,reflectedHalf,"reflected trajectory should become translucent at 50%");
+    await page.$eval("#zero-reflect",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/除去 0%/);
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),true);
-    await page.select("#zero-mode","0");
+    const reflectedKill=await page.$eval("#curve",el=>el.toDataURL());
+    assert.notEqual(reflectedHalf,reflectedKill,"zero gain must remove reflected plot entirely");
+    await page.$eval("#zero-reflect-value",el=>{
+      el.value="100";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#zero-reflect-status",el=>el.textContent),"折返し 100%");
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^A /);
     await page.click("#engine-auto");
     assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
