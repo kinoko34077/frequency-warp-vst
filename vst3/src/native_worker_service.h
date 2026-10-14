@@ -97,8 +97,12 @@ private:
                                  uint32_t frames,const FWNativeEvent* events,
                                  uint32_t count) noexcept {
         if(!context)return -1;
-        return fw_native_process(static_cast<FWNativeOpaque*>(context),
-                                 input,output,frames,events,count);
+        auto* native=static_cast<FWNativeOpaque*>(context);
+        // Explicit semantic guard: generic Identity/Gain module has slot64
+        // only, so never forward unrelated spectral host parameter events.
+        const bool spectral=fw_native_supports_stream_controls(native);
+        return fw_native_process(native,input,output,frames,
+                                 spectral?events:nullptr,spectral?count:0);
     }
     void run() noexcept {
         FWNativeOpaque* active=nullptr;
