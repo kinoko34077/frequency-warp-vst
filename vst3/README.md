@@ -25,3 +25,28 @@ Build official Steinberg VST3 SDK 3.8.x recursively, Visual Studio 2022 x64, Rus
     ctest --test-dir build/vst3 -C Release --output-on-failure
 
 Windows CI compiles actual VST3 with Rust Wasmi staticlib and runs official Steinberg Validator and always-on C++ regressions. S3 native CI runs actual Identity/Gain .fwengine files and verifies worker lifetime on Linux and Windows. None of these is a physical FL Studio or second-DAW test, nor a release approval. Steinberg SDK remains governed by its upstream license.
+
+## S3b4-C: actual Processor lifetime and module message route
+
+The native Windows VST3 Processor **now owns its own** `NativeWorkerService`.
+`setActive(true)` starts the worker; `setActive(false)` joins it and fully
+detaches the mailbox **after callbacks are quiescent**. Each plugin instance
+has separate thread, engine state, PCM queues and 4095-frame Dry ring.
+No Wasmi execution or allocations occur in `Processor::process`.
+
+The Host-mediated `IConnectionPoint::notify(IMessage*)` transport accepts
+**message ID** `FrequencyWarp.LoadFwengineV1` with **binary attribute**
+`package` holding at most 8 MiB of complete `.fwengine` bytes. A valid
+request is copied and queued for non-RT prepare/ABI validation; success here
+means **queued, not activated**. A bad module keeps the last valid worker
+engine, and the absent/late/broken case outputs latency-compensated Dry.
+The message should only be sent from the Controller's non-audio UI/host route;
+the native Browser/Drop/Reload editor and visible per-file status are still
+S3c, and project-save module identity/semantic bindings are S4.
+
+This CI stage proves VST3 Processor native worker ownership and build/Validator
+compatibility, but **does not prove** the physical FL Studio host forwards the
+binary message or plays an actual selected module. S3c/S5 must test these
+separately. The 34 DAW-exposed host parameters remain stable and observable;
+all spectral knobs only become audibly effective after the genuine S4 DSP
+module and binding schema are installed.
