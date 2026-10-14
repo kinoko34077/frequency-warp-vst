@@ -45,7 +45,7 @@ fn invalid(msg: impl Into<String>) -> VerifyError { VerifyError(msg.into()) }
 
 fn dotted_id(v: &str) -> bool {
     v.len() >= 3 && v.len() <= 128 && v.as_bytes()[0].is_ascii_lowercase()
-        && v.contains('.')
+        && (v.contains('.') || v.contains('-'))
         && v.split(['.', '-']).all(|segment|
             !segment.is_empty() && segment.bytes().all(|b|
                 b.is_ascii_lowercase() || b.is_ascii_digit()))
@@ -142,6 +142,7 @@ mod tests {
     use super::*;
     #[test] fn identity_rules() {
         assert!(dotted_id("org.example.gain"));
+        assert!(dotted_id("org-gain")); // manifest JSON schema allows period or hyphen
         assert!(!dotted_id("org.EXAMPLE"));
         assert!(!dotted_id("foo..bar"));
         assert!(semver("0.1.0"));
