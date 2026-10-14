@@ -21,6 +21,10 @@ fn main()->Result<()> {
     ensure!(zero.is_empty(),"zero-frame flush produced audio");
     ensure!((gain.process(&input,256,&[])?[0]-0.6).abs()<1e-5,"zero-frame flush failed");
     ensure!(Runtime::prepare(b"not a ZIP",48000.,2,256).is_err(),"invalid archive passed");
+    let high=gain.process(&input,256,&[ParamEvent{id:64,offset:0,value:2.0}])?;
+    ensure!((high[0]-1.6).abs()<1e-5,"canonical gain domain 0..4 mismatch");
+    ensure!(gain.process(&input,256,&[ParamEvent{id:65,offset:0,value:0.5}]).is_err(),
+       "unbound generic parameter silently bound");
     ensure!(identity.process(&[f32::NAN],1,&[]).is_err(),"bad PCM accepted");
     println!("PASS native WASM single-file DSP swap, audio, automation, zero-frame and malformed rejects");
     Ok(())
