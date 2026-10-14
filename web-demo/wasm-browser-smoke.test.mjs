@@ -418,6 +418,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(crusherMax,"1000");
     await page.$eval("#crusher-hold",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const slow=Number(await page.$eval("#crusher-hold-value",el=>el.value));
+    assert.equal(slow,0,"leftmost update frequency must reach exactly 0Hz");
+    assert.match(await page.$eval("#crusher-rate-explainer",el=>el.textContent),/0 Hz.*更新停止/);
+    assert.equal(await page.$eval("#curve",el=>el.dataset.crusherSpectrum),"dc-frozen");
+    assert.equal(await page.$eval("#curve",el=>Number(el.dataset.crusherUpdateHz)),0);
     await page.$eval("#crusher-hold",el=>{el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const fast=Number(await page.$eval("#crusher-hold-value",el=>el.value));
     assert.ok(fast>slow*20,"crusher Hz slider must INCREASE toward the right");
@@ -426,6 +430,30 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(shape.w>180&&shape.h>=80,"crusher visual must render at mobile size");
     await page.$eval("#crusher-hold",el=>{el.value="600";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#crusher-alias-legend",el=>el.hidden),false);
+    assert.equal(await page.$eval("#curve",el=>el.dataset.crusherSpectrum),
+      "linear-zoh-images-before-quantizer");
+    const info=await page.$eval("#curve",el=>({
+      rate:Number(el.dataset.crusherUpdateHz),
+      mirror:Number(el.dataset.crusherMirrorHz)
+    }));
+    assert.ok(info.rate>0 && Math.abs(info.mirror-info.rate/2)<.001);
+    assert.match(await page.$eval("#crusher-alias-note",el=>el.textContent),/y=.*Hz/);
+    const graphOn=await page.$eval("#curve",el=>el.toDataURL());
+    await page.$eval("#crusher-hold",el=>{
+      el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const graphOff=await page.$eval("#curve",el=>el.toDataURL());
+    assert.notEqual(graphOn,graphOff,"main graph must show real sample-hold spectral branches");
+    await page.$eval("#crusher-bits",el=>{
+      el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const coarse=await page.$eval("#crusher-preview",el=>el.toDataURL());
+    await page.$eval("#crusher-bits",el=>{
+      el.value="8";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const fine=await page.$eval("#crusher-preview",el=>el.toDataURL());
+    assert.notEqual(coarse,fine,"faint quantisation-memory level lines must change with number of bits");
+
     await page.click("#mini-expand");
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false,"graph must stay visible when equations open");
     assert.match(await page.$eval("#harmonic-table-title",el=>el.textContent),/12倍音/);
