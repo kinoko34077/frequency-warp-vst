@@ -341,3 +341,35 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .workspace-right .variable-grid{font-size:10px;gap:0 3px}
 .header{margin-bottom:6px}
 }
+
+/* Compact, independently scrolling preferences. Avoid viewport-minus-header
+   magic numbers: Safari can otherwise trap touch and wheel scroll. */
+dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-height:92dvh;overflow:hidden}
+.settings-head,.settings-foot{flex:0 0 auto}
+.settings-body{flex:1 1 auto;min-height:0;max-height:none!important;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding:6px 12px}
+.settings-body fieldset{padding:5px 0 7px}
+.settings-body legend{padding:2px 0;font-size:11px}
+.settings-body label{margin:4px 0 2px;font-size:11px}
+.settings-body select{padding:5px 7px;font-size:11px}
+.settings-body .settings-pair{gap:5px 8px}
+.settings-body .setting-help{font-size:10px;line-height:1.35;margin-top:3px}
+.settings-body .setting-checkbox{margin:5px 0;gap:7px}
+.settings-body input[type=range]{margin:0;min-height:18px}
+.settings-head,.settings-foot{padding:7px 12px}
+.settings-head h2{font-size:16px}
+.settings-head p:not(.eyebrow){margin-top:2px}
+.settings-foot button{padding:7px}
+.move-inline{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-top:1px;font-size:9px;color:#9abbb7;white-space:nowrap}
+.move-inline .axis-explainer{margin:0;text-align:center;font-size:10px;color:#b6eee0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.graph-scale{display:flex;align-items:center;gap:6px;color:#9ebfba;font-size:10px;margin:3px 0 2px}
+.graph-scale label{font-weight:650;color:#b7dcd3}
+.graph-scale input[type=range]{flex:1;min-width:25px;height:18px;accent-color:#71dab9}
+@media(max-width:450px){
+  dialog[open]{height:95dvh;max-height:95dvh}
+  .settings-body .settings-pair{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .settings-body input.inline-value{width:48px!important}
+  .settings-body{padding:4px 9px}
+  .move-inline{font-size:8px;gap:2px}
+  .move-inline .axis-explainer{font-size:8px}
+  .graph-scale{font-size:9px}
+}
