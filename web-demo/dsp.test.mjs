@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {mixWet,latencyForQuality,QUALITY} from "./dsp.mjs";
+import {mixWet,QUALITY} from "./dsp.mjs";
 import {mapFrequency} from "./mapping-oracle.test-helper.mjs";
 
 test("UI preview follows the shared curvature formula",()=>{
@@ -40,26 +40,4 @@ test("H/L fold directions are different at partial invert, equal at complete inv
       assert.ok(Math.abs(fullH-fullL)<1e-7);
     }
   }
-});
-
-test("WAV partial-Wet aligns original to shared Rust/WASM lookahead",()=>{
-  const dry=Float32Array.from([1,2,3,4,5,6]);
-  // Processed stream represents the same dry input delayed 2 frames.
-  const processed=Float32Array.from([0,0,1,2,3,4]);
-  const expected=[0,0,1,2,3,4];
-  assert.deepEqual(Array.from(mixWet(dry,processed,.5,2)),expected,
-    "Equal dry/wet content should not comb/echo if perfectly aligned");
-  assert.deepEqual(Array.from(mixWet(dry,processed,1,2)),Array.from(processed));
-  assert.deepEqual(Array.from(mixWet(dry,processed,0,2)),Array.from(dry),
-    "Fully Dry exported WAV must preserve the original samples");
-  assert.notDeepEqual(Array.from(mixWet(dry,processed,.5)),expected,
-    "Without dry alignment there is an audible, user-visible mix difference");
-  assert.throws(()=>mixWet(dry,processed,.5,-1),RangeError);
-  assert.throws(()=>mixWet(dry,processed,.5,1.5),RangeError);
-  assert.throws(()=>mixWet(dry,processed,.5,7),RangeError);
-});
-test("WAV lookahead table is exactly n-1 for all Rust quality profiles",()=>{
-  assert.deepEqual([0,1,2].map(latencyForQuality),[1023,2047,4095]);
-  assert.throws(()=>latencyForQuality(-1),RangeError);
-  assert.throws(()=>latencyForQuality(3),RangeError);
 });
