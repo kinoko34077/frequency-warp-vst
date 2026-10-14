@@ -252,7 +252,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/Hz/);
     await page.select("#mode","reciprocal");
     assert.match(await page.$eval("#invert-reference-hz",el=>el.textContent),/反転固定点.*Hz/);
-    assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/折返し点がありません/);
+    assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/連動対象なし/);
     await page.select("#mode","fold-h");
     assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
     assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
