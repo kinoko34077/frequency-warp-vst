@@ -21,6 +21,7 @@ static void check(bool ok, const char* what){
 int main(int argc,char** argv){
     try{
         check(argc==3,"provide Identity.fwengine Gain.fwengine");
+        check(fw_native_abi_major()==1u,"native C ABI version incompatible");
         auto a=load(argv[1]), b=load(argv[2]);
         auto* identity=fw_native_prepare(a.data(),a.size(),48000.,2,256);
         auto* half=fw_native_prepare(b.data(),b.size(),48000.,2,256);
