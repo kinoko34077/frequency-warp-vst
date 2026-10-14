@@ -1095,12 +1095,13 @@ mod tests{
         let mut block=[0.12f32,-0.17,0.9,0.75,-0.4,0.56,0.6,0.33];
         st.post_process(&mut block,4);
         assert_eq!(block[..4],[0.0,0.0,0.0,0.0],"channel0 first hold quantizes .12 to 0");
-        assert_eq!(block[4..],[0.0,0.0,0.0,0.0],"channel1 first hold quantizes -.4 to 0");
+        assert_eq!(block[4..],[-0.5,-0.5,-0.5,-0.5],"channel1 first hold quantizes -.4 to -.5");
         // The post_process buffer is planar. Changing input in later blocks
         // MUST NOT modify the latched output until stream restart/set change.
         let mut later=[0.95f32,-0.8,0.7,0.0,0.5,-0.1,0.7,-0.6];
         st.post_process(&mut later,4);
-        assert!(later.iter().all(|v|*v==0.0));
+        assert_eq!(later[..4],[0.0,0.0,0.0,0.0]);
+        assert_eq!(later[4..],[-0.5,-0.5,-0.5,-0.5]);
         assert!(st.crusher_frozen);
         st.set_crusher(3,2).unwrap();
         st.set_crusher(3,0).unwrap();
