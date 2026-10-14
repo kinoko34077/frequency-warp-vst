@@ -54,7 +54,10 @@ export function mapAtFrequency(f,
     transformed=-transformed;
   }
   if(transformed===0)return {f,inside,outputs:[],reason:"0Hzへ到達"};
-  const candidates=ringEnabled?[transformed+carrierHz,Math.abs(transformed-carrierHz)]:[transformed];
+  // Ring Mod is applied only to transformed source components in [L,H].
+  // Outside Pass is mixed unchanged after the ringed in-band wet signal.
+  const candidates=ringEnabled&&inside?
+    [transformed+carrierHz,Math.abs(transformed-carrierHz)]:[transformed];
   const outputs=candidates.filter(y=>Number.isFinite(y)&&y>0&&y<sampleRate/2);
   return {f,inside,outputs,reason:outputs.length?"": "再生周波数範囲外（0Hz／ナイキスト）",
     raw:transformed};
