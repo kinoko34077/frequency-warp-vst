@@ -461,7 +461,9 @@ async function mediaBridge(player){
     if(!element.paused)switchAudioRoute(player,state.ctx,true);
     player.mediaBridge=node;
   }catch{
-    try{if(node)player.master.disconnect(node);}catch{}
+    switchAudioRoute(player,state.ctx,false);
+    try{player.bridgeRoute?.disconnect();}catch{}
+    player.bridgeRoute=null;
     try{element.pause();element.srcObject=null;}catch{}
   }
 }
@@ -471,7 +473,9 @@ async function stop(){
   state.seek=playPosition();
   state.player=null;
   try{p.source?.stop();}catch{}
-  try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();p.dry.disconnect();p.master.disconnect();}catch{}
+  try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();
+    p.dry.disconnect();p.master.disconnect();p.directRoute.disconnect();
+    p.bridgeRoute?.disconnect();}catch{}
   try{p.worklet.port.postMessage({type:"dispose"});}catch{}
   try{const el=$("#background-output");el.pause();el.srcObject=null;}catch{}
   mediaStatus(false);
