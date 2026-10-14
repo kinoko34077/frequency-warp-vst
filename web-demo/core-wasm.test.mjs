@@ -390,3 +390,36 @@ test("A minimum partial frequency and synthesis reverb change real PCM without a
     assert.ok(delta>20,"A reverb amount didn't alter actual sound");
   }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
 });
+
+test("A spectral peak band is independently adjustable in live Rust DSP",async()=>{
+  const e=await load();
+  assert.ok(e.warp_stream_set_a_band);
+  assert.ok(e.warp_stream_render_f32_a_band_ext);
+  const fs=8192,frames=128,total=frames*90;
+  const input=e.warp_alloc_f32(frames),output=e.warp_alloc_f32(frames);
+  const versions=[];
+  try{
+    for(const band of [1,8]){
+      const st=e.warp_stream_create_ext(fs,1,20,3000,1,0,1,0,0,0,1,0,0,0,4);
+      assert.ok(st);
+      try{
+        assert.equal(e.warp_stream_set_a_band(st,band),0);
+        assert.equal(e.warp_stream_set_a_band(st,0),-2);
+        assert.equal(e.warp_stream_set_a_band(st,9),-2);
+        const outputBuffer=[];
+        for(let b=0;b<total/frames;b++){
+          const samples=new Float32Array(e.memory.buffer,input,frames);
+          for(let i=0;i<frames;i++){
+            const t=(b*frames+i)/fs;
+            samples[i]=.65*Math.cos(2*Math.PI*500*t)+.35*Math.cos(2*Math.PI*556*t);
+          }
+          assert.equal(e.warp_stream_process(st,input,output,frames),0);
+          outputBuffer.push(...new Float32Array(e.memory.buffer,output,frames));
+        }
+        versions.push(outputBuffer);
+      }finally{e.warp_stream_free(st);}
+    }
+    const avg=versions[0].slice(2500).reduce((sum,x,i)=>sum+Math.abs(x-versions[1][i+2500]),0)/(total-2500);
+    assert.ok(avg>0.0001,"A band adjustment did not affect real audio: "+avg);
+  }finally{e.warp_free_f32(input,frames);e.warp_free_f32(output,frames);}
+});

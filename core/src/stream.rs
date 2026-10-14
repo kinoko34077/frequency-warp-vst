@@ -29,6 +29,7 @@ pub struct Stream {
     crusher_counter:u64,
     crusher_value:Vec<f32>,
     a_min_hz:f64,
+    a_peak_band_bins:usize,
     a_reverb_amount:f32,
     a_reverb_delays:Vec<Vec<Vec<f32>>>,
     a_reverb_pos:[usize;3],
@@ -75,7 +76,7 @@ impl Stream {
             ring_phase:0.0,ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],
-            a_min_hz:20.0,a_reverb_amount:0.0,
+            a_min_hz:20.0,a_peak_band_bins:1,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
@@ -152,6 +153,14 @@ impl Stream {
             self.a_reverb_pos=[0;3];
         }
         self.a_reverb_amount=reverb as f32;Ok(())
+    }
+    /// Minimum frequency-bin spacing of separately tracked peaks in engine A.
+    /// 1 retains the original local-maximum selector. Wider neighborhoods
+    /// reject nearby spurious peaks but may also suppress close partials.
+    pub fn set_a_peak_band(&mut self,bins:u32)->Result<(),&'static str>{
+        if !(1..=8).contains(&bins){return Err("invalid A peak band");}
+        self.a_peak_band_bins=bins as usize;
+        Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
         if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
@@ -318,7 +327,11 @@ impl Stream {
         let threshold=(greatest*self.floor).max(1e-10);
         self.candidates.clear();
         for k in 2..half-1{
-            if self.mag[k]>=threshold&&self.mag[k]>=self.mag[k-1]&&self.mag[k]>self.mag[k+1]{
+            if k<self.a_peak_band_bins || k+self.a_peak_band_bins>=half {continue;}
+            // One stronger local maximum inside each adjustable FFT-bin band.
+            // No FFT extra allocation or copy on the audio render thread.
+            if self.mag[k]>=threshold && (1..=self.a_peak_band_bins).all(|d|
+                self.mag[k]>=self.mag[k-d] && self.mag[k]>self.mag[k+d]) {
                 self.candidates.push(k);
             }
         }
@@ -558,6 +571,12 @@ pub unsafe extern "C" fn warp_stream_set_a_options(ptr:*mut Stream,min_hz:f64,re
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_a_band(ptr:*mut Stream,bins:u32)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_a_peak_band(bins){Ok(())=>0,Err(_)=>-2}
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_geometry(ptr:*mut Stream,pivot:f64,slope:f64)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_geometry(pivot,slope){Ok(())=>0,Err(_)=>-2}
@@ -576,6 +595,21 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_ext(
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
     a_min_hz:f64,a_reverb:f64,
 )->i32{
+    warp_stream_render_f32_a_band_ext(input,output,frames,channels,rate,
+        low,high,p,amount,mode,quality_id,outside,engine,pitch_ratio,shift_hz,
+        carrier_hz,zero_mode,hop_div,crusher_bits,crusher_hold,axis_shift,
+        axis_reference,ring,rational,axis_pivot,axis_slope,a_min_hz,a_reverb,1)
+}
+/// Extended offline render using the same adjustable A-peak selection as live.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_a_band_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,
+)->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
     let settings=params(low,high,p,amount,mode,quality_id);
@@ -586,7 +620,8 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_ext(
     if st.set_crusher(crusher_bits,crusher_hold).is_err()||
        st.set_transform(axis_shift,axis_reference,ring,rational).is_err()||
        st.set_geometry(axis_pivot,axis_slope).is_err()||
-       st.set_a_options(a_min_hz,a_reverb).is_err(){return -2;}
+       st.set_a_options(a_min_hz,a_reverb).is_err()||
+       st.set_a_peak_band(a_peak_band_bins).is_err(){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
@@ -805,6 +840,19 @@ mod tests{
         assert!(aa[0]<bb[0]);
         a.reset();assert_eq!(a.a_reverb_pos,[0;3]);
         assert!(a.a_reverb_delays[0][0].iter().all(|v|*v==0.0));
+    }
+    #[test]
+    fn a_peak_band_is_configurable_without_changing_engine_b(){
+        let mut a=Stream::new(8192.0,1,settings(),1).unwrap();
+        assert_eq!(a.a_peak_band_bins,1);
+        assert!(a.set_a_peak_band(5).is_ok());
+        assert_eq!(a.a_peak_band_bins,5);
+        assert!(a.set_a_peak_band(0).is_err());
+        assert!(a.set_a_peak_band(9).is_err());
+        let ptr=Box::into_raw(Box::new(a));
+        unsafe {assert_eq!(warp_stream_set_a_band(ptr,7),0);
+            assert_eq!((*ptr).a_peak_band_bins,7);
+            warp_stream_free(ptr);}
     }
     #[test]
     fn physical_slope_zero_pivot_is_uniform_pitch_in_both_engines(){

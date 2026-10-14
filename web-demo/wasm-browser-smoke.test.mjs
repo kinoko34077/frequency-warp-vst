@@ -52,7 +52,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const dimensions=await page.$eval("#curve",el=>({w:el.width,h:el.height}));
     assert.equal(dimensions.w,dimensions.h,"20-2kHz mapping must be square");
     assert.equal(await page.$eval("#invert",el=>el.value),"0");
-    assert.equal(await page.$eval("#engine",el=>el.value),"1","STFT B must be default");
+    assert.equal(await page.$eval("#engine",el=>el.value),"1","B must be initial manual engine");
+    assert.equal(await page.$eval("#mode",el=>el.value),"blend");
+    assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
+    assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
     assert.equal(await page.$eval(".dual-range",el=>el.querySelectorAll("input[type=range]").length),2);
     assert.equal(await page.$eval("#engine",el=>el.value),"1");
     assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
@@ -83,7 +87,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0.1);
     assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/43\.05/);
     await page.$eval("#axis-shift-value",el=>el.blur());
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
+    await page.select("#decimal-digits","2");
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.12);
+    await page.select("#decimal-digits","3");
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
     await page.$eval("#axis-shift-value",el=>el.focus());
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
     await page.$eval("#axis-shift-value",el=>el.blur());
@@ -110,6 +118,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     }
     assert.equal(await page.$eval("#axis-pivot",el=>Number(el.value)),0);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
+    const beforeLog=await page.$eval("#curve",el=>el.toDataURL());
+    await page.$eval("#graph-log",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    const afterLog=await page.$eval("#curve",el=>el.toDataURL());
+    assert.notEqual(beforeLog,afterLog,"display-axis slider must redraw the graph");
     await page.click("#curve");
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/20kHz/);
     await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
@@ -166,6 +178,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
     await page.$eval("#carrier-range",el=>{el.value="592";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.click("#ring-enabled");
+    await page.select("#mode","fold-h");
     await page.click("#carrier-link");
     await page.waitForFunction(()=>document.querySelector("#carrier-linked-value").textContent.includes("Hz") &&
       document.querySelector("#carrier").disabled,{timeout:10000});
@@ -177,6 +190,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
+    assert.equal(await page.$eval("#engine-auto",el=>el.checked),false);
+    await page.click("#engine-auto");
+    await page.$eval("#invert",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^A /);
+    await page.$eval("#invert",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.match(await page.$eval("#engine-summary",el=>el.textContent),/^B /);
+    await page.click("#engine-auto");
 
     // Instrument old offline Worker: any attempt while clicking play would be a regression.
     await page.evaluate(()=>{
@@ -237,6 +257,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
     await page.$eval("#a-min",el=>{el.value="570";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.ok(await page.$eval("#a-min-value",el=>Number(el.value))>100);
+    await page.$eval("#a-band",el=>{el.value="6";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#a-band-value",el=>Number(el.value)),6);
     await page.$eval("#a-reverb",el=>{el.value="35";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-reverb-value",el=>el.value),"35");
     await page.select("#engine","1");
@@ -289,6 +311,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);
     await page.click("#settings-open");
+    const modalScroll=await page.evaluate(()=>{
+      const body=document.querySelector(".settings-body");
+      const overflow=body.scrollHeight-body.clientHeight;
+      body.scrollTop=body.scrollHeight;
+      return {overflow,top:body.scrollTop};
+    });
+    assert.ok(modalScroll.overflow>30&&modalScroll.top>30,"settings must scroll on small displays: "+JSON.stringify(modalScroll));
     await page.select("#harmonic-count","12");
     await page.click("#settings-done");
     await page.click("#crusher-enabled");

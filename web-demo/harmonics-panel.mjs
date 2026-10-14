@@ -3,7 +3,8 @@ import {deriveHarmonics} from "./harmonics.mjs";
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
 const $=id=>document.querySelector(id);
-const fmt=value=>Number.isFinite(value)?Number(value.toFixed(2)).toString():"—";
+const precision=()=>Number($("#decimal-digits")?.value||3);
+const fmt=value=>Number.isFinite(value)?Number(value.toFixed(precision())).toString():"—";
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const preciseFields=new Map();
@@ -46,7 +47,7 @@ export function resolvedCarrierHz(foldPoint){
 }
 export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
-  const count=Number($("#harmonic-count").value)||7;
+  const count=Number($("#harmonic-count").value)||5;
   const z=deriveHarmonics(F,m,n,q,r,count);
   const c=resolvedCarrierHz(foldPoint);
   const movedH=axisMarker?.(z.H);
@@ -149,7 +150,7 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
     number.addEventListener("blur",()=>{
       const value=read(id);
       if(Number.isFinite(value))number.value=integerFields.has(id)?
-        String(value):String(Number(value.toFixed(2)));
+        String(value):String(Number(value.toFixed(precision())));
     });
     syncPair(id);
   }
