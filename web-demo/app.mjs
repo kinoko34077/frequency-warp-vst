@@ -211,7 +211,12 @@ function updateEngineInfo(){
     "部分音追跡と発振器による実験的な再合成方式です。残差や過渡音は完全に復元されません。",
     "FFTビン再配置による実験的な再合成方式です。位相・離散格子誤差に注意してください。"
   ];
-  $("#engine").disabled=$("#engine-auto").checked;
+  const automatic=$("#engine-auto").checked;
+  $("#engine").disabled=automatic;
+  $("#engine").hidden=automatic;
+  $("#engine-manual-label").hidden=automatic;
+  $("#engine-auto-result").hidden=!automatic;
+  $("#engine-auto-result").textContent="自動選択："+names[s.engine];
   $("#engine-a-settings").hidden=s.engine!==0;
   $("#engine-description").textContent=explain[s.engine]+
     (s.ringEnabled?" / Ring Mod ON":"")+(s.rationalEnabled?" / #24倍音配置 ON":"");
