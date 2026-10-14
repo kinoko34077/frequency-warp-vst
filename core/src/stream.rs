@@ -146,7 +146,7 @@ impl Stream {
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
     pub fn set_a_options(&mut self,min_hz:f64,reverb:f64)->Result<(),&'static str>{
-        if !min_hz.is_finite()||!(20.0..=20000.0).contains(&min_hz)
+        if !min_hz.is_finite()||!(0.001..=20000.0).contains(&min_hz)
            || !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
             return Err("invalid A options");
         }
