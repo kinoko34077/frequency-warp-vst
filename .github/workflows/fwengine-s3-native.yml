@@ -44,6 +44,15 @@ jobs:
       - name: Native interpreter compile and fuel/trap tests
         shell: bash
         run: cargo test --release --manifest-path fwengine-runtime/Cargo.toml
+      - name: Build native C staticlib ABI for future non-RT plugin worker
+        shell: bash
+        run: |
+          cargo build --release --manifest-path fwengine-runtime/Cargo.toml --lib
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            test -f fwengine-runtime/target/release/fwengine_runtime.lib
+          else
+            test -f fwengine-runtime/target/release/libfwengine_runtime.a
+          fi
       - name: Actual native PCM from independently compiled single-file modules
         shell: bash
         run: cargo run --release --manifest-path fwengine-runtime/Cargo.toml -- _s3/identity.fwengine _s3/gain.fwengine
