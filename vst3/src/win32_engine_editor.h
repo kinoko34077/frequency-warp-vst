@@ -12,6 +12,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include "public.sdk/source/vst/vsteditcontroller.h"
+#include "verified_engine_history.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -141,60 +142,54 @@ private:
         dlg.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
         if(GetOpenFileNameW(&dlg))load(file);
     }
-    struct Verified {
-        std::vector<uint8_t> bytes;
-        std::wstring path;
-    };
     void reload(){
-        if(current_.path.empty()){
+        if(history_.current().path.empty()){
             setStatus(L"No confirmed file path to reload yet.");return;
         }
-        load(current_.path.c_str());
+        load(history_.current().path.c_str());
     }
     void back() {
-        if(previous_.bytes.empty()){
+        if(history_.previous().bytes.empty()){
             setStatus(L"No previously verified engine available.");return;
         }
-        submit(previous_.bytes,previous_.path);
+        submit(history_.previous().bytes,history_.previous().path);
     }
     void submit(const std::vector<uint8_t>& bytes,const std::wstring& path){
-        if(awaiting_){setStatus(L"Verification is still pending.");return;}
+        if(history_.awaiting()){setStatus(L"Verification is still pending.");return;}
         const uint64_t request=send_?send_(bytes):0;
         if(request==0){
             setStatus(L"Could not queue engine (host inactive/busy/disconnected).");
             return;
         }
-        candidate_.bytes=bytes;
-        candidate_.path=path;
-        awaited_=request;awaiting_=true;
+        if(!history_.begin(request,VerifiedPackage{bytes,path})){
+            setStatus(L"Unable to track engine verification request.");return;
+        }
         setStatus(L"Queued for verification; NOT yet confirmed active.");
     }
     void poll() {
         if(!poll_)return;
         const auto state=poll_();
         if(!state.known)return;
-        if(awaiting_ && state.state==0 && state.completedId!=awaited_){
-            awaiting_=false;candidate_=Verified{};
+        if(history_.awaiting() && state.state==0 &&
+           state.completedId!=history_.pendingId()){
+            history_.cancel();
             setStatus(L"Host worker stopped before engine activation.");
             return;
         }
-        if(awaiting_ && state.completedId==awaited_){
-            awaiting_=false;
-            if(state.succeeded){
-                previous_=std::move(current_);
-                current_=std::move(candidate_);
+        if(history_.awaiting() && state.completedId==history_.pendingId()){
+            const auto outcome=history_.complete(state.completedId,state.succeeded);
+            if(outcome==VerifiedEngineHistory::Outcome::Accepted){
                 if(backButton_)EnableWindow(backButton_,
-                    previous_.bytes.empty()?FALSE:TRUE);
+                    history_.previous().bytes.empty()?FALSE:TRUE);
                 setStatus(L"Worker accepted engine. Active (verified).");
-            }else{
-                candidate_=Verified{};
+            }else if(outcome==VerifiedEngineHistory::Outcome::Rejected){
                 setStatus(L"Module rejected; last valid engine unchanged.");
             }
-        }else if(!awaiting_){
-            // No identity is inferred from a Controller reopening an old view.
+        }else if(!history_.awaiting()){
             if(state.state==6)
                 setStatus(L"Engine faulted; latency-compensated Dry fallback.");
-            else if(state.state==4 && state.accepted>0 && current_.bytes.empty())
+            else if(state.state==4 && state.accepted>0 &&
+                    history_.current().bytes.empty())
                 setStatus(L"Worker reports active engine (file identity unavailable).");
         }
     }
@@ -221,9 +216,7 @@ private:
     SendBytes send_;
     PollState poll_;
     HWND hwnd_=nullptr,status_=nullptr,backButton_=nullptr;
-    Verified current_{},previous_{},candidate_{};
-    uint64_t awaited_=0;
-    bool awaiting_=false;
+    VerifiedEngineHistory history_{};
 };
 } // namespace fw
 #endif // _WIN32
