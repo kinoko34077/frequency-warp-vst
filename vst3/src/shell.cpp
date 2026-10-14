@@ -427,7 +427,7 @@ public:
         }
 #endif
         const auto pending=inFlight_.load(std::memory_order_acquire);
-        if(pending>0&&request==static_cast<int64>(pending))
+        if(pending>0&&(request==static_cast<int64>(pending)||state==0))
             inFlight_.store(0,std::memory_order_release);
         return kResultOk;
     }
