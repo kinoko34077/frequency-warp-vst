@@ -7,6 +7,8 @@
 #include "win32_engine_editor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
+#include <atomic>
+#include <mutex>
 #include <vector>
 #include "parameter_registry.h"
 #include "base/source/fstring.h"
@@ -365,31 +367,87 @@ public:
         for(ParamID id=0;id<kParamCount;id++)setParamNormalized(id,v[id]);
         return kResultOk;
     }
-    // Actual engine GUI actions use host-mediated Controller->Processor message
-    // transport. No WASM work, ZIP parsing, or file I/O occurs in process().
-    bool sendPackageToProcessor(const std::vector<uint8_t>& bytes){
-        if(bytes.empty()||bytes.size()>8*1024*1024)return false;
+    // Controller sends one request at a time. Exactly matched worker request IDs
+    // are required before any GUI calls a candidate ACTIVE or allows Back.
+    uint64_t sendPackageToProcessor(const std::vector<uint8_t>& bytes) {
+        if(bytes.empty()||bytes.size()>8*1024*1024)return 0;
+        const uint64_t request=nextRequest_.fetch_add(1,std::memory_order_relaxed)+1;
+        if(request>(UINT64_MAX>>1))return 0;
+        uint64_t none=0;
+        if(!inFlight_.compare_exchange_strong(none,request,
+            std::memory_order_acq_rel))return 0;
         auto* msg=allocateMessage();
-        if(!msg)return false;
+        if(!msg){inFlight_.store(0,std::memory_order_release);return 0;}
         msg->setMessageID("FrequencyWarp.LoadFwengineV1");
         auto* attrs=msg->getAttributes();
-        const bool ok=attrs&&attrs->setBinary("package",bytes.data(),
-            static_cast<uint32>(bytes.size()))==kResultTrue;
+        const bool ok=attrs &&
+            attrs->setInt("request",static_cast<int64>(request))==kResultTrue &&
+            attrs->setBinary("package",bytes.data(),
+                static_cast<uint32>(bytes.size()))==kResultTrue;
         const auto sent=ok?sendMessage(msg):kResultFalse;
         msg->release();
-        return sent==kResultTrue;
+        if(sent!=kResultTrue){
+            uint64_t id=request;
+            inFlight_.compare_exchange_strong(id,0,std::memory_order_acq_rel);
+            return 0;
+        }
+        return request;
+    }
+#ifdef _WIN32
+    EngineStatusSnapshot pollWorkerStatus(){
+        if(auto* message=allocateMessage()){
+            message->setMessageID("FrequencyWarp.QueryEngineV1");
+            sendMessage(message);
+            message->release();
+        }
+        std::lock_guard<std::mutex> guard(snapshotMutex_);
+        return lastSnapshot_;
+    }
+#endif
+    tresult PLUGIN_API notify(IMessage* message) override {
+        if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),"FrequencyWarp.EngineStatusV1")!=0)
+            return EditController::notify(message);
+        auto* attrs=message->getAttributes();
+        if(!attrs)return kResultFalse;
+        int64 request=0,succeeded=0,accepted=0,handled=0,state=0;
+        if(attrs->getInt("request",request)!=kResultTrue||
+           attrs->getInt("succeeded",succeeded)!=kResultTrue||
+           attrs->getInt("accepted",accepted)!=kResultTrue||
+           attrs->getInt("handled",handled)!=kResultTrue||
+           attrs->getInt("status",state)!=kResultTrue||
+           request<0||accepted<0||handled<0||state<0||state>6||
+           (succeeded!=0&&succeeded!=1))return kResultFalse;
+#ifdef _WIN32
+        {
+            std::lock_guard<std::mutex> guard(snapshotMutex_);
+            lastSnapshot_=EngineStatusSnapshot{true,static_cast<uint64_t>(request),
+                static_cast<uint64_t>(accepted),static_cast<uint64_t>(handled),
+                succeeded==1,static_cast<uint32_t>(state)};
+        }
+#endif
+        const auto pending=inFlight_.load(std::memory_order_acquire);
+        if(pending>0&&request==static_cast<int64>(pending))
+            inFlight_.store(0,std::memory_order_release);
+        return kResultOk;
     }
     IPlugView* PLUGIN_API createView(FIDString type) override {
 #ifdef _WIN32
         if(!type||std::strcmp(type,ViewType::kEditor)!=0)return nullptr;
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
-        });
+        },[this](){return pollWorkerStatus();});
 #else
         (void)type;
         return nullptr;
 #endif
     }
+private:
+    std::atomic<uint64_t> nextRequest_{0},inFlight_{0};
+#ifdef _WIN32
+    std::mutex snapshotMutex_{};
+    EngineStatusSnapshot lastSnapshot_{};
+#endif
 };
 } // namespace fw
 
