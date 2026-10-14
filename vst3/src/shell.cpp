@@ -4,6 +4,7 @@
 #include "async_pcm_mailbox.h"
 #include "native_engine_abi.h"
 #include "native_worker_service.h"
+#include "stream_host_events.h"
 #include "win32_engine_editor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
@@ -220,42 +221,73 @@ public:
                     return kResultFalse;
             }
         }
-        // Read an entire bounded chunk BEFORE writing any host output, so
-        // in-place buffers never overwrite input not yet copied to the worker.
-        // Avoid calling the worker or Wasmi; only two lock-free queue operations
-        // and constant-size stack buffers are permitted here.
+        // Chunking is adaptive: each packet begins with four verified physical
+        // parameter snapshots (so a newly loaded engine receives host state).
+        // Up to 124 more distinct per-sample changes fit the fixed 128-event
+        // ABI. If over capacity, split BEFORE consuming any host point.
+        // No host automation changes are silently discarded.
         const bool hasWorker=worker_.mailbox().rtHasPreparedWorker();
+        std::array<Queue*,4> streamQueues{};
+        for(int32 q=0;q<used;q++){
+            if(StreamHostEvents::bound(cursors[q].id))
+                streamQueues[cursors[q].id-StreamHostEvents::kFirst]=&cursors[q];
+        }
         for(int32 start=0;start<data.numSamples;) {
-            const uint32_t frames=static_cast<uint32_t>(
-                std::min<int32>(data.numSamples-start,AsyncPcmMailbox::kMaxFrames));
+            uint32_t frames=0;
+            StreamHostEvents controls{};
             std::array<std::array<float,AsyncPcmMailbox::kMaxFrames>,2> input{};
             std::array<std::array<Sample,AsyncPcmMailbox::kMaxFrames>,2> original{};
             std::array<double,AsyncPcmMailbox::kMaxFrames> wetMix{};
             std::array<bool,AsyncPcmMailbox::kMaxFrames> bypass{};
-            for(uint32_t i=0;i<frames;i++) {
-                apply(start+static_cast<int32>(i));
-                wetMix[i]=values_[0];
-                bypass[i]=values_[1]>=0.5;
+            while(frames<AsyncPcmMailbox::kMaxFrames &&
+                  start+static_cast<int32>(frames)<data.numSamples) {
+                const int32 frame=start+static_cast<int32>(frames);
+                std::array<bool,4> changed{};
+                uint32_t demand=0;
+                if(frames>0) {
+                    for(uint32_t k=0;k<4;k++) {
+                        const Queue* q=streamQueues[k];
+                        changed[k]=q&&q->next<q->count&&q->offset==frame;
+                        if(changed[k])demand++;
+                    }
+                    if(!controls.hasRoom(demand))break;
+                }
+                apply(frame);
+                if(frames==0) {
+                    // Equivalent to all same-sample changes in host order:
+                    // only final values can affect a continuously sampled DSP.
+                    if(!controls.start(values_,hostSampleRate_))
+                        return kResultFalse;
+                }else{
+                    for(uint32_t k=0;k<4;k++)if(changed[k]){
+                        const uint32_t id=k+StreamHostEvents::kFirst;
+                        if(!controls.append(id,frames,values_[id],hostSampleRate_))
+                            return kResultFalse;
+                    }
+                }
+                wetMix[frames]=values_[0];
+                bypass[frames]=values_[1]>=0.5;
                 for(int32 ch=0;ch<src.numChannels;ch++) {
                     const bool silent=(src.silenceFlags&(uint64(1)<<ch))!=0;
                     Sample sample{};
-                    if(!silent) {
+                    if(!silent){
                         if constexpr(std::is_same_v<Sample,Sample32>)
-                            sample=src.channelBuffers32[ch][start+i];
-                        else sample=src.channelBuffers64[ch][start+i];
+                            sample=src.channelBuffers32[ch][frame];
+                        else sample=src.channelBuffers64[ch][frame];
                     }
-                    original[ch][i]=sample;
-                    input[ch][i]=static_cast<float>(sample);
+                    original[ch][frames]=sample;
+                    input[ch][frames]=static_cast<float>(sample);
                 }
+                frames++;
             }
+            if(frames==0)return kResultFalse; // impossible: four always fit
             uint64_t jobStart=0;
-            if(hasWorker) {
+            if(hasWorker){
                 jobStart=worker_.mailbox().rtNextTime();
                 const float* inputs[2]={input[0].data(),input[1].data()};
-                // No unvalidated generic host ParamID semantic binding.
-                // Parameter event forwarding is a separate S3b4-B/S4 gate.
-                worker_.mailbox().rtSubmit(inputs,static_cast<uint32_t>(src.numChannels),
-                                  frames);
+                worker_.mailbox().rtSubmit(inputs,
+                    static_cast<uint32_t>(src.numChannels),frames,
+                    controls.data(),controls.count());
             }
             for(uint32_t i=0;i<frames;i++) {
                 float wet[2]{};
