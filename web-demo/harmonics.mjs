@@ -37,12 +37,12 @@ export function mapAtFrequency(f,
   if(!inside&&outside!=="pass")return {f,inside,outputs:[],reason:"帯域外を除去"};
   const base=inside?warp(f,low,high,curvature,invert,mode):f;
   if(!Number.isFinite(base))return {f,inside,outputs:[],reason:"写像不能"};
-  let transformed=base;
+  let transformed=base,sourceAnchor=axisPivot;
   if(inside){
     if(rationalEnabled)transformed=pitchRatio*transformed+shiftHz;
     const pivotInside=axisPivot>=low&&axisPivot<=high;
     const pivotBase=pivotInside?warp(axisPivot,low,high,curvature,invert,mode):axisPivot;
-    const sourceAnchor=pivotBase;
+    sourceAnchor=pivotBase;
     // Rust stream.rs skips axis translation when the optional rational stage
     // already crossed zero; both engines then apply the signed zero policy.
     if(transformed>0)transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
@@ -50,7 +50,7 @@ export function mapAtFrequency(f,
   if(!Number.isFinite(transformed))return {f,inside,outputs:[],reason:"座標計算不能"};
   const signed=transformed;
   const allGain=typeof allReflectionGain==="function"?
-    allReflectionGain(f,signed,pivotBase):null;
+    allReflectionGain(f,signed,sourceAnchor):null;
   const reflected=typeof allGain==="object"&&allGain!==null?
     allGain.distance>0:transformed<0;
   let reflectionGain=allGain===null?1:allGain.gain;
