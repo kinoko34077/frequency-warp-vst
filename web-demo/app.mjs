@@ -306,6 +306,7 @@ async function ensureSharedCore(){
         typeof core.warp_all_reflection_distance!=="function"||
         typeof core.warp_all_reflection_gain!=="function")throw Error("共通数式APIがありません");
       state.module=bytes;state.mathCore=core;
+      labels(); // populate visible Rust/WASM fold/fixed-point Hz after async core boot
       drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
       if($("#engine-auto").checked){updateEngineInfo();updateParams("engine-auto");}
       return bytes;
