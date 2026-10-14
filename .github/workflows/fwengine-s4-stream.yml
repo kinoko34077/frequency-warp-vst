@@ -1,0 +1,53 @@
+name: S4a shared Rust spectral Stream native-WASM parity
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'fwengine-stream/**'
+      - 'fwengine-runtime/**'
+      - 'fwengine-package/**'
+      - 'scripts/fwengine_pack.py'
+      - '.github/workflows/fwengine-s4-stream.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'fwengine-stream/**'
+      - 'fwengine-runtime/**'
+      - 'fwengine-package/**'
+      - 'scripts/fwengine_pack.py'
+      - '.github/workflows/fwengine-s4-stream.yml'
+permissions:
+  contents: read
+jobs:
+  spectral-parity:
+    runs-on: {{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install WASM compilation target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Compile original Rust DSP unit tests and adapter
+        shell: bash
+        run: |
+          cargo test --release --manifest-path core/Cargo.toml
+          cargo build --release --manifest-path fwengine-stream/Cargo.toml --target wasm32-unknown-unknown
+          test -s fwengine-stream/target/wasm32-unknown-unknown/release/fwengine_stream.wasm
+      - name: Package exact validated spectral Stream engine and wrong-latency negative fixture
+        shell: bash
+        run: |
+          mkdir -p _s4
+          python scripts/fwengine_pack.py fwengine-stream/target/wasm32-unknown-unknown/release/fwengine_stream.wasm _s4/stream.fwengine org.kinotch.stream --latency 1023
+          python scripts/fwengine_pack.py fwengine-stream/target/wasm32-unknown-unknown/release/fwengine_stream.wasm _s4/latency-wrong.fwengine org.kinotch.stream --latency 0
+      - name: Wasmi interpreter and shared DSP PCM/automation parity
+        shell: bash
+        run: |
+          cargo test --release --manifest-path fwengine-runtime/Cargo.toml
+          cargo run --release --manifest-path fwengine-runtime/Cargo.toml --example stream_parity -- _s4/stream.fwengine _s4/latency-wrong.fwengine
