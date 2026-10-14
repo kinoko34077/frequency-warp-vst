@@ -68,6 +68,18 @@ pub extern "C" fn fw_process(
     unsafe {
         let ch = CHANNELS;
         if ch == 0 { return -1; }
+        // Host zero-sample calls may contain parameter flushes.
+        // They must change canonical state without reading audio buffers.
+        if frames == 0 {
+            for i in 0..event_count as usize {
+                let event = EVENTS[i];
+                if event.sample_offset != 0 || event.host_param_id != 64
+                    || !event.canonical_value.is_finite()
+                    || !(0.0..=4.0).contains(&event.canonical_value) { return -2; }
+                GAIN = event.canonical_value;
+            }
+            return 0;
+        }
         // Two distinct static arrays, no in-place alias and no heap work.
         let mut next = 0_usize;
         for frame in 0..frames as usize {
