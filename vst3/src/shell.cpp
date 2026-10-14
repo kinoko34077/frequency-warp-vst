@@ -64,8 +64,8 @@ public:
         return kResultOk;
     }
     tresult PLUGIN_API setupProcessing(ProcessSetup& setup) override {
-        if(!std::isfinite(setup.sampleRate)||setup.sampleRate<8000||
-            setup.sampleRate>384000||setup.maxSamplesPerBlock<1)return kResultFalse;
+        if(!std::isfinite(setup.sampleRate)||setup.sampleRate<=0.0||
+            setup.maxSamplesPerBlock<1)return kResultFalse;
         return AudioEffect::setupProcessing(setup);
     }
     tresult PLUGIN_API setActive(TBool active) override {
