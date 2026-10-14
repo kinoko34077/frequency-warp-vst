@@ -57,7 +57,7 @@
               <input id="zero-decay" class="dual-thumb-lower" type="range" min="0" max="100" step="1" value="0" aria-label="下つまみ、反射率 0～100%">
             </div>
             <div class="ends"><span>0%</span><strong id="zero-reflect-status" class="invert-hz-marker" aria-live="polite">合成 100% / 反射 0%</strong><span>100%</span></div>
-            <small id="zero-reflect-formula" class="slider-formula">反射成分に合成率と距離反射率を適用（負周波数・L/H折返し・反転を含む）。</small>
+            <small id="zero-reflect-formula" class="slider-formula">反射成分の振幅＝合成率 × (1−反射率)^(反射点からの距離/基準Hz)。0HzだけでなくL/H折返し・反転成分も対象。</small>
           </div>
           <div class="control"><div class="control-heading"><label for="curvature">移動の尺度</label><input class="inline-value" id="curvature-value" type="number" min="0" max="1" step="0.001" value="1" aria-label="curvature-value の数値"></div>
             <input id="curvature" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>対数・倍率移動</span><span>線形・Hz移動</span></div><small class="slider-formula" id="curvature-log-formula" aria-live="polite">p=0: S₀(f)=ln(f/L), p&gt;0: Sₚ(f)=((f/L)ᵖ−1)/p。移動量は p=0 で倍率、p=1 でHz</small>
