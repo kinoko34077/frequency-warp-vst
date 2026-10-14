@@ -83,7 +83,7 @@ impl Runtime{
         ensure!(events.len()<=self.capacity,"event capacity exceeded");
         let mut last=0;
         for (i,e) in events.iter().enumerate(){
-            ensure!(e.id<128&&e.value.is_finite()&&(0.0..=1.0).contains(&e.value),"invalid parameter");
+            ensure!(e.id==64&&e.value.is_finite()&&(0.0..=4.0).contains(&e.value),"S3a permits only the test Gain slot 64 at canonical 0..4");
             ensure!(e.offset as usize<=if frames==0{0}else{frames-1},"event outside block");
             ensure!(i==0||e.offset>=last,"unsorted automation");
             last=e.offset;
