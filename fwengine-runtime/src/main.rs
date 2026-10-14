@@ -26,6 +26,18 @@ fn main()->Result<()> {
     ensure!(gain.process(&input,256,&[ParamEvent{id:65,offset:0,value:0.5}]).is_err(),
        "unbound generic parameter silently bound");
     ensure!(identity.process(&[f32::NAN],1,&[]).is_err(),"bad PCM accepted");
+    // Native C ABI boundary must reproduce PCM without a host Vec allocation.
+    use fwengine_runtime::ffi::{fw_native_prepare,fw_native_process,fw_native_destroy,fw_native_latency};
+    let handle=unsafe{fw_native_prepare(a.as_ptr(),a.len(),48000.,2,256)};
+    ensure!(!handle.is_null(),"C ABI prepare rejected known-good package");
+    let mut output=vec![0.0f32;512];
+    let rc=unsafe{fw_native_process(handle,input.as_ptr(),output.as_mut_ptr(),256,
+        std::ptr::null(),0)};
+    ensure!(rc==0&&output.iter().all(|v|(v-0.8).abs()<1e-5),"C ABI PCM mismatch");
+    ensure!(unsafe{fw_native_latency(handle)}==0,"C ABI latency incorrect");
+    ensure!(unsafe{fw_native_process(handle,input.as_ptr(),input.as_ptr() as *mut f32,
+        256,std::ptr::null(),0)}!=0,"unsafe aliased host pointer accepted");
+    unsafe{fw_native_destroy(handle)};
     println!("PASS native WASM single-file DSP swap, audio, automation, zero-frame and malformed rejects");
     Ok(())
 }

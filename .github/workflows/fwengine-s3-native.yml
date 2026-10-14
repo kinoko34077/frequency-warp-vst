@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'fwengine-runtime/**'
+      - 'vst3/tests/native/**'
+      - 'vst3/src/native_engine_abi.h'
       - 'fwengine-demo/**'
       - 'fwengine-package/**'
       - 'scripts/fwengine_pack.py'
@@ -47,3 +49,22 @@ jobs:
       - name: Actual native PCM from independently compiled single-file modules
         shell: bash
         run: cargo run --release --manifest-path fwengine-runtime/Cargo.toml -- _s3/identity.fwengine _s3/gain.fwengine
+
+      - name: Build native Rust C ABI static library
+        shell: bash
+        run: cargo build --release --lib --manifest-path fwengine-runtime/Cargo.toml
+      - name: Link native C++ caller to Rust static library and compare actual audio
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            archive="$GITHUB_WORKSPACE/fwengine-runtime/target/release/fwengine_runtime.lib"
+          else
+            archive="$GITHUB_WORKSPACE/fwengine-runtime/target/release/libfwengine_runtime.a"
+          fi
+          cmake -S vst3/tests/native -B _bridge_build -DFW_NATIVE_ARCHIVE="$archive"
+          cmake --build _bridge_build --config Release
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            _bridge_build/Release/fw_native_bridge_smoke.exe _s3/identity.fwengine _s3/gain.fwengine
+          else
+            _bridge_build/fw_native_bridge_smoke _s3/identity.fwengine _s3/gain.fwengine
+          fi
