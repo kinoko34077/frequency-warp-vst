@@ -576,3 +576,42 @@ test("Engine A quality slider controls true native/WASM peak budget and real off
     }));
   }finally {e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("Engine B actual Rust/WASM bin shift keeps phase coherent at hop N/4 and N/8",async()=>{
+  const e=await load();
+  const rate=8192,n=8192,sourceHz=480,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  const input=Float32Array.from({length:n},(_,i)=>.45*Math.cos(2*Math.PI*sourceHz*i/rate));
+  try{
+    new Float32Array(e.memory.buffer,src,n).set(input);
+    const rows=[];
+    for(const hopDiv of [4,8]){
+      for(const delta of [-24,0,24]){
+        // FFT bin spacing is exactly 8 Hz for quality=1024; all shifts
+        // here are exact integer bin moves. Reproduction must NOT
+        // depend on overlap factor or absolute frame window position.
+        const rc=e.warp_stream_render_f32_a_band_ext(
+          src,dst,n,1,rate,20,3000,1,0,1,0,1,1,1,delta,0,0,hopDiv,
+          0,1,0,350,0,1,350,1,20,0,1);
+        assert.equal(rc,0,"B PCM render "+JSON.stringify({hopDiv,delta}));
+        const output=new Float32Array(e.memory.buffer,dst,n);
+        const target=sourceHz+delta;
+        let targetPower=0,outputPower=0,errorPower=0,cross=0;
+        for(let i=2400;i<7400;i++){
+          const desired=.45*Math.cos(2*Math.PI*target*i/rate);
+          const got=output[i];
+          targetPower+=desired*desired;outputPower+=got*got;
+          errorPower+=(desired-got)**2;cross+=desired*got;
+        }
+        const rmsRatio=Math.sqrt(outputPower/targetPower);
+        const nrmse=Math.sqrt(errorPower/targetPower);
+        const correlation=cross/Math.sqrt(targetPower*outputPower);
+        rows.push({hopDiv,delta,target,rmsRatio,nrmse,correlation});
+        assert.ok(rmsRatio>.85&&rmsRatio<1.15,
+          "B integer shift should not phase-cancel under window overlap: "+JSON.stringify(rows.at(-1)));
+        assert.ok(nrmse<.2 && correlation>.97,
+          "B integer shift must remain close to target carrier: "+JSON.stringify(rows.at(-1)));
+      }
+    }
+    console.log("B_INTERFRAME_PHASE_PCM_ACTUAL "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
