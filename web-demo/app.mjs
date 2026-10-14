@@ -191,7 +191,7 @@ function labels(id=""){
   const modeCode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
   const hz=state.mathCore?.warp_invert_reference_frequency?.(p.low,p.high,p.curvature,p.invert,modeCode);
   $("#invert-reference-hz").textContent=p.mode==="blend"?"反転 "+displayNumber(p.invert*100)+"%":
-    (p.mode==="reciprocal"?"固定点 ":p.mode==="fold-l"?"L折返し ":"H折返し ")+
+    (p.mode==="reciprocal"?"反転固定点 ":p.mode==="fold-l"?"L折返し ":"H折返し ")+
     (Number.isFinite(hz)?displayNumber(hz)+" Hz":"—");
   const pText=displayNumber(p.curvature);
   $("#curvature-log-formula").textContent="p="+pText+" · S₀(f)=ln(f/L)、Sₚ(f)=((f/L)ᵖ−1)/p (p>0)。移動量は p=0: f×eᵘ、p=1: f+uR Hz（他の傾き/起点設定は別）。";
