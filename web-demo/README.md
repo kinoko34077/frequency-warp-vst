@@ -483,3 +483,25 @@ for 90s showed an unchanged stable RMS .2828427 from second 2 onward;
 user-reported *browser/iOS* delayed silence was NOT reproduced by
 this pure DSP fixture and remains a separate host/MediaStream/
 AudioContext investigation in #62, not a proven DSP lifetime bug.
+
+## 2026-10-14 iOS background media output — Issue #65 U2
+
+The old Web host connected one live Rust AudioWorklet master to both
+AudioContext.destination and a MediaStream->HTMLAudioElement bridge while
+awaiting HTMLAudioElement.play(). It then abruptly disconnected the
+direct destination. The period before the promise settled could play
+the same signal twice and the transition could change loudness.
+The new browser-only host passes through two gain nodes: direct route
+starts at unity, bridge begins at a nearly inaudible gain (0.0001),
+then complementary 8ms gain targets switch ONLY after the media
+element reports playing. Pause/stalled/waiting/error falls back to
+direct output; cleanup disconnects both paths. The platform playback
+AudioSession category is requested where available. Shared Rust native
+DSP and WAV export are unchanged.
+
+Browser CI can verify route control and playback, but cannot reproduce
+iOS hardware lock-screen, Bluetooth route changes, WebKit background
+suspension, audio focus/ducking, or an actual physical iPhone. WebKit
+bug reports describe AudioContext suspended/silent in background even
+when JS reports running; therefore this mitigates a proven host-level
+double-route behavior, and does NOT guarantee iOS background continuity.
