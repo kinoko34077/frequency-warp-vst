@@ -65,7 +65,9 @@ export function mountDualThumb(root,sourceIds,formatters=[]){
     if(event.button!==undefined&&event.pointerType==="mouse"&&event.button!==0)return;
     if(active!==null)return;
     active=pick(event);pointerId=event.pointerId;
-    root.setPointerCapture?.(pointerId);
+    // Synthetic PointerEvents used by automation have no active pointer to
+    // capture; physical mouse/touch events do. Both must keep working.
+    try{root.setPointerCapture?.(pointerId);}catch{}
     const source=sources[active],min=Number(source.min),max=Number(source.max);
     set(active,min+fromPointer(event)*(max-min));
     thumbs[active].focus({preventScroll:true});
