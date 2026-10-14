@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kinoko34077/frequency-warp-vst/blob/main/schemas/fwengine-manifest-v1.schema.json",
+  "title": "Frequency Warp Engine Package Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "format_version",
+    "engine_id",
+    "engine_version",
+    "abi_major",
+    "abi_minor",
+    "entry",
+    "sha256",
+    "max_memory_bytes",
+    "max_frames",
+    "supported_channels",
+    "nominal_latency_frames",
+    "parameter_schema"
+  ],
+  "properties": {
+    "format": {
+      "const": "frequency-warp-engine"
+    },
+    "format_version": {
+      "const": 1
+    },
+    "engine_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+    },
+    "engine_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$",
+      "maxLength": 64
+    },
+    "abi_major": {
+      "const": 1
+    },
+    "abi_minor": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 255
+    },
+    "entry": {
+      "const": "engine.wasm"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "max_memory_bytes": {
+      "type": "integer",
+      "minimum": 1048576,
+      "maximum": 67108864
+    },
+    "max_frames": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2048
+    },
+    "supported_channels": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ]
+      }
+    },
+    "nominal_latency_frames": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4095
+    },
+    "parameter_schema": {
+      "const": "host-slots-v1"
+    }
+  }
+}
