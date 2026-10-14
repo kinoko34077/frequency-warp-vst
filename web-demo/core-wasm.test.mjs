@@ -446,3 +446,16 @@ test("A peak-neighborhood reaches actual offline WAV Rust renderer",async()=>{
       "offline render ignored A FFT-bin neighborhood: "+averageDifference);
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("Offline Wet alignment agrees with exact live Rust stream latency for all quality sizes",async()=>{
+  const e=await load();
+  const {latencyForQuality}=await import("./dsp.mjs");
+  for(const qualityIndex of [0,1,2]){
+    const stream=e.warp_stream_create(48000,1,20,3000,1,0,1,qualityIndex,1);
+    assert.ok(stream,"failed to make native Rust quality "+qualityIndex);
+    try{
+      assert.equal(e.warp_stream_latency(stream),latencyForQuality(qualityIndex),
+        "WAV dry mix and Rust Worklet must use the same intrinsic latency");
+    }finally{e.warp_stream_free(stream);}
+  }
+});
