@@ -25,11 +25,17 @@ template<class Pred> static bool waitUntil(Pred pred) {
     }
     return true;
 }
-static void proveWet(fw::NativeWorkerService& svc,float level,std::uint64_t due) {
+static void proveWet(fw::NativeWorkerService& svc,float level,std::uint64_t due,
+                    bool unboundHostAutomation=false) {
     std::array<float,128> left{},right{};
     left.fill(.8f);right.fill(.8f);
     const float* inputs[]={left.data(),right.data()};
-    ensure(svc.mailbox().rtSubmit(inputs,2,128),"audio PCM was not submitted");
+    // Host may automate core Stream IDs2..5 while a demo Gain/Identity is
+    // loaded. The worker must filter these UNBOUND parameters, not fault.
+    FWNativeEvent event{4,64,0.75};
+    ensure(svc.mailbox().rtSubmit(inputs,2,128,
+          unboundHostAutomation?&event:nullptr,unboundHostAutomation?1:0),
+          "audio PCM was not submitted");
     // Test clock deliberately pauses before the playback deadline; the
     // worker has up to fixed-4095-sample PDC to execute real native WASM.
     float wet[2]{};
@@ -58,7 +64,7 @@ int main(int argc,char** argv) {
                "Identity was not prepared by worker");
         ensure(service.lastCompletedId()==17&&service.lastCompletedSucceeded(),
                "verified Identity request outcome not correlated");
-        proveWet(service,.8f,4095);
+        proveWet(service,.8f,4095,true);
 
         // Valid package replacement only, no rebuilding native C ABI.
         ensure(service.postPackage(b,48000.,2,128,18),"unable to request Gain");
@@ -66,7 +72,7 @@ int main(int argc,char** argv) {
                "Gain was not accepted");
         ensure(service.lastCompletedId()==18&&service.lastCompletedSucceeded(),
                "verified Gain request outcome not correlated");
-        proveWet(service,.4f,4095+128);
+        proveWet(service,.4f,4095+128,true);
 
         const auto prior=service.acceptedVersion();
         const auto before=service.handledRequests();
