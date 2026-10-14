@@ -92,6 +92,10 @@ static void faultsAndGenerations(){
     check(queue.workerStep(),"process 2047 latency module");
     check(!queue.rtReadWet(2047,2,out),"not before PDC-minus-module delay");
     check(queue.rtReadWet(2048,2,out),"precise 4095-2047 compensation");
+    check(queue.rtHasPreparedWorker(),"plain reset preserved prepared engine");
+    queue.detachWorkerWhenStopped(); // both simulated threads quiescent
+    check(!queue.rtHasPreparedWorker(),"full stop detached worker callback");
+    check(queue.rtNextTime()==0,"full stop clears source timeline");
 }
 static void boundedOverflow(){
     fw::AsyncPcmMailbox queue;
