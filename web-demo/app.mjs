@@ -1,6 +1,7 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
+import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
@@ -14,6 +15,7 @@ const controls={
   dry:$("#play-dry"),wet:$("#play-wet"),stop:$("#stop"),
   render:$("#render"),download:$("#download")
 };
+const dualControls={};
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -63,6 +65,7 @@ function bounds(changed=""){
   const rail=$("#dual-range");
   rail.style.setProperty("--lo",($("#low").value/10)+"%");
   rail.style.setProperty("--hi",($("#high").value/10)+"%");
+  dualControls.bounds?.sync();
   return state.effective;
 }
 function settings(){
@@ -120,11 +123,13 @@ function labels(id=""){
   showNumber("invert-value",100*p.invert);
   showNumber("zero-reflect-value",100*p.zeroReflectGain);
   showNumber("zero-decay-value",100*p.zeroReflectDecay);
+  dualControls.reflection?.sync();
+  dualControls.shape?.sync();
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
     "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
-  $("#zero-reflect-formula").textContent="反射成分の音量="+displayNumber(100*p.zeroReflectGain)+
-    "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(|負周波数|/"+
-    displayNumber(p.axisReference)+"Hz)。折返しの基準は0HzまたはL/H折返し点。距離基準="+displayNumber(p.axisReference)+"Hz。反転・折返し側の成分だけ適用。";
+  $("#zero-reflect-formula").textContent="振幅="+displayNumber(100*p.zeroReflectGain)+
+    "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(反射点からの周波数距離/"+
+    displayNumber(p.axisReference)+"Hz)。L/H・反転・0Hzの反射区間に適用。";
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
@@ -227,6 +232,14 @@ function drawCurve(){
   const {warp,translate}=mathCallbacks();
   const alpha=Number($("#graph-log").value)/100;
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
+  let hasReflect=false;
+  for(let i=0;i<=24;i++){
+    const f=p.low+(p.high-p.low)*i/24;
+    if(mapAtFrequency(f,shown,warp,translate).reflected){hasReflect=true;break;}
+  }
+  $("#reflection-activity").textContent=hasReflect?
+    "反射区間あり · 2つのつまみは音声・グラフに即時反映":
+    "現在は反射区間なし。反転や移動で反射が発生すると有効になります。";
   $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×f/"+graphMax+"+α×ln(1+f/20)/ln(1+"+graphMax+"/20)。x/y共通の0Hzを含む表示尺度（音声DSPに影響しません）。";
   const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
   $("#crusher-alias-legend").hidden=!isCrushed;
@@ -645,18 +658,20 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
 }
-// The two handles share a physical track. Touching the bare rail selects
-// whichever endpoint is closest; the handles themselves remain draggable.
-$("#dual-range").addEventListener("pointerdown",event=>{
-  if(event.target!==$("#dual-range"))return;
-  const box=event.currentTarget.getBoundingClientRect();
-  const normalized=clamp((event.clientX-box.left)/box.width,0,1);
-  const target=normalized*1000;
-  const low=Number($("#low").value),high=Number($("#high").value);
-  const slider=Math.abs(target-low)<=Math.abs(target-high)?$("#low"):$("#high");
-  slider.value=String(Math.round(target));
-  slider.dispatchEvent(new Event("input",{bubbles:true}));
-});
+// Compact shared rails. Actual parameter updates still use the same
+// source ranges and existing native Rust AudioWorklet/WAV bindings.
+dualControls.bounds=mountDualThumb($("#dual-range"),["low","high"],[
+  v=>hzText(hzFromScale(v)),v=>hzText(hzFromScale(v))
+]);
+dualControls.reflection=mountDualThumb($("#reflection-dual"),
+  ["zero-reflect","zero-decay"],[
+    v=>"合成率 "+v+"%",v=>"反射率 "+v+"%"
+  ]);
+dualControls.shape=mountDualThumb($("#shape-dual"),
+  ["invert","curvature"],[
+    v=>"反転 "+Number((v*100).toFixed(1))+"%",
+    v=>"移動尺度 p="+v+"（0=対数、1=線形）"
+  ]);
 $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;drawCurve();});
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}

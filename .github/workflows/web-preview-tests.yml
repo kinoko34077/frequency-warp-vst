@@ -47,6 +47,7 @@ jobs:
           test -s _site/engine-policy.mjs
           test -s _site/export-policy.mjs
           test -s _site/crusher-visual.mjs
+          test -s _site/dual-thumb.mjs
       - name: Chrome realtime streaming and waveform seek against staged Pages
         run: |
           WARP_WEB_ROOT=_site node --test web-demo/wasm-browser-smoke.test.mjs
