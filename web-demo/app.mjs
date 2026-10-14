@@ -79,7 +79,7 @@ function settings(){
     shiftHz:harmonic.n*harmonic.r*harmonic.F/harmonic.m,
     carrierHz:harmonic.c,zeroMode:0,
     zeroReflectGain:scalar("zero-reflect",()=>Number($("#zero-reflect").value)/100),
-    zeroReflectDecay:scalar("zero-decay",()=>Number($("#zero-decay").value)/100),
+    zeroReflectDecay:1-scalar("zero-decay",()=>Number($("#zero-decay").value)/100),
     axisShift:scalar("axis-shift",()=>Number($("#axis-shift").value)),
     axisReference:harmonic.r*harmonic.F,
     axisPivot:scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value)),
