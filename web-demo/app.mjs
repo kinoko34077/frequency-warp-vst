@@ -448,6 +448,14 @@ async function mediaBridge(player){
     player.master.connect(player.bridgeRoute);
     player.bridgeRoute.connect(node);
     element.srcObject=node.stream;
+    const fallback=()=>{if(state.player===player)switchAudioRoute(player,state.ctx,false);};
+    element.onpause=fallback;
+    element.onwaiting=fallback;
+    element.onstalled=fallback;
+    element.onerror=fallback;
+    element.onplaying=()=>{
+      if(state.player===player)switchAudioRoute(player,state.ctx,true);
+    };
     await element.play();
     if(state.player!==player){element.pause();return;}
     if(!element.paused)switchAudioRoute(player,state.ctx,true);
