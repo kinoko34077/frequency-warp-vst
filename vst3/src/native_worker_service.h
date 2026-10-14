@@ -31,6 +31,17 @@ public:
     uint64_t handledRequests() const noexcept {
         return handled_.load(std::memory_order_acquire);
     }
+    // Request correlation is a single atomic record, so id+outcome cannot
+    // be mismatched during concurrent UI polls. Controller serializes loads.
+    uint64_t lastCompletedWord() const noexcept {
+        return lastCompleted_.load(std::memory_order_acquire);
+    }
+    uint64_t lastCompletedId() const noexcept {
+        return lastCompleted_.load(std::memory_order_acquire)>>1;
+    }
+    bool lastCompletedSucceeded() const noexcept {
+        return (lastCompleted_.load(std::memory_order_acquire)&1u)!=0;
+    }
     bool start() noexcept {
         if(thread_.joinable())return false;
         stopping_.store(false,std::memory_order_release);
@@ -46,8 +57,10 @@ public:
     // NonRT GUI/controller producer. It does not open arbitrary filesystem
     // paths; a bounded complete .fwengine package is the only input.
     bool postPackage(std::vector<uint8_t> bytes,double sampleRate,
-                     uint32_t channels,uint32_t maxFrames=128) {
+                     uint32_t channels,uint32_t maxFrames=128,
+                     uint64_t requestId=0) {
         if(!thread_.joinable()||bytes.empty()||bytes.size()>8*1024*1024||
+           requestId>(UINT64_MAX>>1)||
            !(sampleRate>0.)||!(channels==1||channels==2)||
            maxFrames==0||maxFrames>128)return false;
         std::lock_guard<std::mutex> lock(commandMutex_);
@@ -57,6 +70,7 @@ public:
         pending_.rate=sampleRate;
         pending_.channels=channels;
         pending_.frames=maxFrames;
+        pending_.requestId=requestId;
         commandPending_=true;
         return true;
     }
@@ -77,6 +91,7 @@ private:
         std::vector<uint8_t> bytes;
         double rate=48000.;
         uint32_t channels=2,frames=128;
+        uint64_t requestId=0;
     };
     static int32_t processNative(void* context,const float* input,float* output,
                                  uint32_t frames,const FWNativeEvent* events,
@@ -102,6 +117,7 @@ private:
                 }
             }
             if(haveCommand) {
+                bool activated=false;
                 status_.store(Status::Preparing,std::memory_order_release);
                 FWNativeOpaque* candidate=fw_native_prepare(
                     req.bytes.data(),req.bytes.size(),req.rate,
@@ -114,6 +130,7 @@ private:
                     // load/destroy at once; RT only holds copied PCM packets.
                     if(retired)fw_native_destroy(retired);
                     accepted_.fetch_add(1,std::memory_order_release);
+                    activated=true;
                     status_.store(Status::Ready,std::memory_order_release);
                 }else{
                     if(candidate)fw_native_destroy(candidate);
@@ -121,6 +138,8 @@ private:
                     status_.store(active?Status::Ready:Status::Rejected,
                                   std::memory_order_release);
                 }
+                lastCompleted_.store((req.requestId<<1)|(activated?1ull:0ull),
+                                     std::memory_order_release);
                 handled_.fetch_add(1,std::memory_order_release);
             }
             bool work=false;
@@ -151,5 +170,6 @@ private:
     std::atomic<Status> status_{Status::Stopped};
     std::atomic<uint64_t> accepted_{0};
     std::atomic<uint64_t> handled_{0};
+    std::atomic<uint64_t> lastCompleted_{0};
 };
 } // namespace fw

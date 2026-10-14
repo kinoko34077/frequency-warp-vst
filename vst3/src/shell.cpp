@@ -7,6 +7,8 @@
 #include "win32_engine_editor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
+#include <atomic>
+#include <mutex>
 #include <vector>
 #include "parameter_registry.h"
 #include "base/source/fstring.h"
@@ -106,6 +108,24 @@ public:
     // invoked from the audio callback; it only queues bytes for the worker.
     tresult PLUGIN_API notify(IMessage* message) override {
         if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),"FrequencyWarp.QueryEngineV1")==0) {
+            // Request and response remain on the host's non-audio message path.
+            // Worker status is atomic; never send host messages from process().
+            IMessage* reply=allocateMessage();
+            if(!reply)return kResultFalse;
+            reply->setMessageID("FrequencyWarp.EngineStatusV1");
+            auto* result=reply->getAttributes();
+            const uint64_t done=worker_.lastCompletedWord();
+            const bool ok=result &&
+                result->setInt("request",static_cast<int64>(done>>1))==kResultTrue &&
+                result->setInt("succeeded",static_cast<int64>(done&1u))==kResultTrue &&
+                result->setInt("accepted",static_cast<int64>(worker_.acceptedVersion()))==kResultTrue &&
+                result->setInt("handled",static_cast<int64>(worker_.handledRequests()))==kResultTrue &&
+                result->setInt("status",static_cast<int64>(worker_.status()))==kResultTrue;
+            const auto response=ok?sendMessage(reply):kResultFalse;
+            reply->release();
+            return response;
+        }
         if(std::strcmp(message->getMessageID(),"FrequencyWarp.LoadFwengineV1")!=0)
             return AudioEffect::notify(message);
         auto* attrs=message->getAttributes();
@@ -114,6 +134,9 @@ public:
         uint32 size=0;
         if(attrs->getBinary("package",bytes,size)!=kResultTrue ||
            !bytes||size==0||size>8*1024*1024)return kResultFalse;
+        int64 requestId=0;
+        if(attrs->getInt("request",requestId)!=kResultTrue||requestId<=0)
+            return kResultFalse;
         // Rejection never replaces the last valid engine. Unsupported mono/
         // stereo arrangement is refused earlier by setBusArrangements.
         const uint32 channels=hostChannels_;
@@ -123,7 +146,8 @@ public:
             copy.assign(first,first+size);
         }catch(...) { return kResultFalse; }
         return worker_.postPackage(std::move(copy),hostSampleRate_,
-                                  channels,AsyncPcmMailbox::kMaxFrames)
+                                  channels,AsyncPcmMailbox::kMaxFrames,
+                                  static_cast<uint64_t>(requestId))
             ? kResultOk:kResultFalse;
     }
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
@@ -343,31 +367,87 @@ public:
         for(ParamID id=0;id<kParamCount;id++)setParamNormalized(id,v[id]);
         return kResultOk;
     }
-    // Actual engine GUI actions use host-mediated Controller->Processor message
-    // transport. No WASM work, ZIP parsing, or file I/O occurs in process().
-    bool sendPackageToProcessor(const std::vector<uint8_t>& bytes){
-        if(bytes.empty()||bytes.size()>8*1024*1024)return false;
+    // Controller sends one request at a time. Exactly matched worker request IDs
+    // are required before any GUI calls a candidate ACTIVE or allows Back.
+    uint64_t sendPackageToProcessor(const std::vector<uint8_t>& bytes) {
+        if(bytes.empty()||bytes.size()>8*1024*1024)return 0;
+        const uint64_t request=nextRequest_.fetch_add(1,std::memory_order_relaxed)+1;
+        if(request>(UINT64_MAX>>1))return 0;
+        uint64_t none=0;
+        if(!inFlight_.compare_exchange_strong(none,request,
+            std::memory_order_acq_rel))return 0;
         auto* msg=allocateMessage();
-        if(!msg)return false;
+        if(!msg){inFlight_.store(0,std::memory_order_release);return 0;}
         msg->setMessageID("FrequencyWarp.LoadFwengineV1");
         auto* attrs=msg->getAttributes();
-        const bool ok=attrs&&attrs->setBinary("package",bytes.data(),
-            static_cast<uint32>(bytes.size()))==kResultTrue;
+        const bool ok=attrs &&
+            attrs->setInt("request",static_cast<int64>(request))==kResultTrue &&
+            attrs->setBinary("package",bytes.data(),
+                static_cast<uint32>(bytes.size()))==kResultTrue;
         const auto sent=ok?sendMessage(msg):kResultFalse;
         msg->release();
-        return sent==kResultTrue;
+        if(sent!=kResultTrue){
+            uint64_t id=request;
+            inFlight_.compare_exchange_strong(id,0,std::memory_order_acq_rel);
+            return 0;
+        }
+        return request;
+    }
+#ifdef _WIN32
+    EngineStatusSnapshot pollWorkerStatus(){
+        if(auto* message=allocateMessage()){
+            message->setMessageID("FrequencyWarp.QueryEngineV1");
+            sendMessage(message);
+            message->release();
+        }
+        std::lock_guard<std::mutex> guard(snapshotMutex_);
+        return lastSnapshot_;
+    }
+#endif
+    tresult PLUGIN_API notify(IMessage* message) override {
+        if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),"FrequencyWarp.EngineStatusV1")!=0)
+            return EditController::notify(message);
+        auto* attrs=message->getAttributes();
+        if(!attrs)return kResultFalse;
+        int64 request=0,succeeded=0,accepted=0,handled=0,state=0;
+        if(attrs->getInt("request",request)!=kResultTrue||
+           attrs->getInt("succeeded",succeeded)!=kResultTrue||
+           attrs->getInt("accepted",accepted)!=kResultTrue||
+           attrs->getInt("handled",handled)!=kResultTrue||
+           attrs->getInt("status",state)!=kResultTrue||
+           request<0||accepted<0||handled<0||state<0||state>6||
+           (succeeded!=0&&succeeded!=1))return kResultFalse;
+#ifdef _WIN32
+        {
+            std::lock_guard<std::mutex> guard(snapshotMutex_);
+            lastSnapshot_=EngineStatusSnapshot{true,static_cast<uint64_t>(request),
+                static_cast<uint64_t>(accepted),static_cast<uint64_t>(handled),
+                succeeded==1,static_cast<uint32_t>(state)};
+        }
+#endif
+        const auto pending=inFlight_.load(std::memory_order_acquire);
+        if(pending>0&&(request==static_cast<int64>(pending)||state==0))
+            inFlight_.store(0,std::memory_order_release);
+        return kResultOk;
     }
     IPlugView* PLUGIN_API createView(FIDString type) override {
 #ifdef _WIN32
         if(!type||std::strcmp(type,ViewType::kEditor)!=0)return nullptr;
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
-        });
+        },[this](){return pollWorkerStatus();});
 #else
         (void)type;
         return nullptr;
 #endif
     }
+private:
+    std::atomic<uint64_t> nextRequest_{0},inFlight_{0};
+#ifdef _WIN32
+    std::mutex snapshotMutex_{};
+    EngineStatusSnapshot lastSnapshot_{};
+#endif
 };
 } // namespace fw
 

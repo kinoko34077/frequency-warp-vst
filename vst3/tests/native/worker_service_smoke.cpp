@@ -51,25 +51,32 @@ int main(int argc,char** argv) {
         fw::NativeWorkerService service;
         ensure(!service.mailbox().rtHasPreparedWorker(),"no module initially");
         ensure(service.start(),"worker failed to start");
-        ensure(service.postPackage(a,48000.,2,128),"unable to request Identity");
+        ensure(service.postPackage(a,48000.,2,128,17),"unable to request Identity");
         ensure(waitUntil([&]{return service.acceptedVersion()==1&&
-            service.status()==fw::NativeWorkerService::Status::Ready;}),
+            service.status()==fw::NativeWorkerService::Status::Ready&&
+            service.lastCompletedId()==17;}),
                "Identity was not prepared by worker");
+        ensure(service.lastCompletedId()==17&&service.lastCompletedSucceeded(),
+               "verified Identity request outcome not correlated");
         proveWet(service,.8f,4095);
 
         // Valid package replacement only, no rebuilding native C ABI.
-        ensure(service.postPackage(b,48000.,2,128),"unable to request Gain");
-        ensure(waitUntil([&]{return service.acceptedVersion()==2;}),
+        ensure(service.postPackage(b,48000.,2,128,18),"unable to request Gain");
+        ensure(waitUntil([&]{return service.acceptedVersion()==2&&service.lastCompletedId()==18;}),
                "Gain was not accepted");
+        ensure(service.lastCompletedId()==18&&service.lastCompletedSucceeded(),
+               "verified Gain request outcome not correlated");
         proveWet(service,.4f,4095+128);
 
         const auto prior=service.acceptedVersion();
         const auto before=service.handledRequests();
-        ensure(service.postPackage(std::vector<uint8_t>{'b','a','d'},48000.,2,128),
+        ensure(service.postPackage(std::vector<uint8_t>{'b','a','d'},48000.,2,128,19),
                "invalid fixture must reach verifier");
         ensure(waitUntil([&]{return service.handledRequests()==before+1;}),
                "worker did not finish rejecting invalid package");
         ensure(service.acceptedVersion()==prior,"rejected module replaced valid module");
+        ensure(service.lastCompletedId()==19&&!service.lastCompletedSucceeded(),
+               "rejected candidate reported as accepted or lost its request token");
         proveWet(service,.4f,4095+256);
 
         service.stop();
@@ -80,9 +87,11 @@ int main(int argc,char** argv) {
         ensure(service.mailbox().rtNextTime()==0,
                "stopped plugin retained stale source timeline");
         ensure(service.start(),"worker restart failed");
-        ensure(service.postPackage(a,48000.,2,128),"restart package refused");
-        ensure(waitUntil([&]{return service.acceptedVersion()==prior+1;}),
+        ensure(service.postPackage(a,48000.,2,128,20),"restart package refused");
+        ensure(waitUntil([&]{return service.acceptedVersion()==prior+1&&service.lastCompletedId()==20;}),
                "restarted worker failed to prepare fresh instance");
+        ensure(service.lastCompletedId()==20&&service.lastCompletedSucceeded(),
+               "restart request token was not acknowledged");
         proveWet(service,.8f,4095);
         service.stop();
         std::cout<<"PASS native worker: 2-module file replacement, rejection rollback, PDC, stop/restart\n";
