@@ -1,5 +1,7 @@
-// Windows VST3 S2 FIXED SHELL: delayed identity only. Swappable WASM runtime is S3.
+// S3b4 Stage A: fixed VST3 host with bounded asynchronous wet/Dry fallback.
+// Native Wasmi is NEVER called from the audio thread. Actual package loading is S3b4-B.
 #include "delay.h"
+#include "async_pcm_mailbox.h"
 #include "parameter_registry.h"
 #include "base/source/fstring.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
@@ -9,6 +11,7 @@
 #include "pluginterfaces/base/ustring.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/vstspeaker.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -143,22 +146,64 @@ public:
                     return kResultFalse;
             }
         }
-        for(int32 frame=0;frame<data.numSamples;frame++) {
-            apply(frame); // sample-accurate host state despite S2 dry-only engine
-            for(int32 ch=0;ch<src.numChannels;ch++) {
-                const bool silent=(src.silenceFlags&(uint64(1)<<ch))!=0;
-                Sample input{};
-                if(!silent) {
-                    if constexpr(std::is_same_v<Sample,Sample32>)
-                        input=src.channelBuffers32[ch][frame];
-                    else input=src.channelBuffers64[ch][frame];
+        // Read an entire bounded chunk BEFORE writing any host output, so
+        // in-place buffers never overwrite input not yet copied to the worker.
+        // Avoid calling the worker or Wasmi; only two lock-free queue operations
+        // and constant-size stack buffers are permitted here.
+        const bool hasWorker=mailbox_.rtHasPreparedWorker();
+        for(int32 start=0;start<data.numSamples;) {
+            const uint32_t frames=static_cast<uint32_t>(
+                std::min<int32>(data.numSamples-start,AsyncPcmMailbox::kMaxFrames));
+            std::array<std::array<float,AsyncPcmMailbox::kMaxFrames>,2> input{};
+            std::array<std::array<Sample,AsyncPcmMailbox::kMaxFrames>,2> original{};
+            std::array<double,AsyncPcmMailbox::kMaxFrames> wetMix{};
+            std::array<bool,AsyncPcmMailbox::kMaxFrames> bypass{};
+            for(uint32_t i=0;i<frames;i++) {
+                apply(start+static_cast<int32>(i));
+                wetMix[i]=values_[0];
+                bypass[i]=values_[1]>=0.5;
+                for(int32 ch=0;ch<src.numChannels;ch++) {
+                    const bool silent=(src.silenceFlags&(uint64(1)<<ch))!=0;
+                    Sample sample{};
+                    if(!silent) {
+                        if constexpr(std::is_same_v<Sample,Sample32>)
+                            sample=src.channelBuffers32[ch][start+i];
+                        else sample=src.channelBuffers64[ch][start+i];
+                    }
+                    original[ch][i]=sample;
+                    input[ch][i]=static_cast<float>(sample);
                 }
-                const auto output=delay_.tick(ch,input); // in-place safe
-                if constexpr(std::is_same_v<Sample,Sample32>)
-                    dst.channelBuffers32[ch][frame]=output;
-                else dst.channelBuffers64[ch][frame]=output;
             }
-            delay_.next();
+            uint64_t jobStart=0;
+            if(hasWorker) {
+                jobStart=mailbox_.rtNextTime();
+                const float* inputs[2]={input[0].data(),input[1].data()};
+                // No unvalidated generic host ParamID semantic binding.
+                // Parameter event forwarding is a separate S3b4-B/S4 gate.
+                mailbox_.rtSubmit(inputs,static_cast<uint32_t>(src.numChannels),
+                                  frames);
+            }
+            for(uint32_t i=0;i<frames;i++) {
+                float wet[2]{};
+                const bool available=hasWorker&&
+                   mailbox_.rtReadWet(jobStart+i,
+                     static_cast<uint32_t>(src.numChannels),wet);
+                for(int32 ch=0;ch<src.numChannels;ch++) {
+                    const auto dry=delay_.tick(ch,original[ch][i]);
+                    Sample output=dry;
+                    if(available&&!bypass[i]) {
+                        const double w=wetMix[i];
+                        output=static_cast<Sample>(
+                            static_cast<double>(dry)*(1.-w)+
+                            static_cast<double>(wet[ch])*w);
+                    }
+                    if constexpr(std::is_same_v<Sample,Sample32>)
+                        dst.channelBuffers32[ch][start+i]=output;
+                    else dst.channelBuffers64[ch][start+i]=output;
+                }
+                delay_.next();
+            }
+            start+=static_cast<int32>(frames);
         }
         dst.silenceFlags=0; // never drop the buffered impulse tail
         return kResultOk;
@@ -171,6 +216,7 @@ public:
 private:
     Values values_=defaults();
     Delay delay_;
+    AsyncPcmMailbox mailbox_; // ready/worker configured only from non-RT context
 };
 class Controller final:public EditController {
 public:
