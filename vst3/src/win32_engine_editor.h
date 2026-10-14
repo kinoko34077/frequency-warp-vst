@@ -196,7 +196,7 @@ private:
     }
     void load(const wchar_t* filename){
         if(!filename||!*filename)return;
-        if(awaiting_){setStatus(L"Verification is still pending.");return;}
+        if(history_.awaiting()){setStatus(L"Verification is still pending.");return;}
         std::filesystem::path path{filename};
         if(_wcsicmp(path.extension().c_str(),L".fwengine")!=0){
             setStatus(L"Only .fwengine packages are accepted.");return;
