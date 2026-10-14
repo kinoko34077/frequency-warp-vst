@@ -12,7 +12,20 @@ add_subdirectory("${vst3sdk_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/sdk")
 smtg_enable_vst3_sdk()
 smtg_add_vst3plugin(FrequencyWarpShell
     src/shell.cpp src/delay.h src/parameter_registry.h)
-target_link_libraries(FrequencyWarpShell PRIVATE sdk)
+# Link verified Rust WASM interpreter statically once into installed VST3.
+# The .fwengine package NEVER contains a platform-native DLL.
+if(NOT DEFINED FW_NATIVE_ARCHIVE OR NOT EXISTS "${FW_NATIVE_ARCHIVE}")
+  message(FATAL_ERROR "Build fwengine-runtime staticlib and supply FW_NATIVE_ARCHIVE")
+endif()
+add_library(FrequencyWarpNativeRuntime STATIC IMPORTED GLOBAL)
+set_target_properties(FrequencyWarpNativeRuntime PROPERTIES
+  IMPORTED_LOCATION "${FW_NATIVE_ARCHIVE}")
+target_link_libraries(FrequencyWarpShell PRIVATE sdk FrequencyWarpNativeRuntime)
+if(WIN32)
+  target_link_libraries(FrequencyWarpShell PRIVATE ws2_32 bcrypt userenv ntdll advapi32)
+elseif(UNIX)
+  target_link_libraries(FrequencyWarpShell PRIVATE pthread dl m)
+endif()
 target_compile_features(FrequencyWarpShell PRIVATE cxx_std_17)
 smtg_target_configure_version_file(FrequencyWarpShell)
 enable_testing()
