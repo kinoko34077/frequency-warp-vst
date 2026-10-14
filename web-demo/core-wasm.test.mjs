@@ -615,3 +615,47 @@ test("Engine B actual Rust/WASM bin shift keeps phase coherent at hop N/4 and N/
     console.log("B_INTERFRAME_PHASE_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
+
+test("Experimental A mapped residual: neutral fidelity gain across broadband, mixed and transient PCM",async()=>{
+  const e=await load();
+  const rate=12000,n=12000,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  assert.ok(src&&dst);
+  let seed=0x34077;
+  const next=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/0x80000000-1;};
+  const noise=Float32Array.from({length:n},next);
+  const cases={
+    broadband_noise:Float32Array.from(noise,x=>.23*x),
+    tone_plus_noise:Float32Array.from(noise,(x,i)=>
+      .29*Math.cos(2*Math.PI*440*i/rate)+.13*x),
+    gated_burst:Float32Array.from({length:n},(_,i)=>
+      (i%2400<96?.6:0)*Math.cos(2*Math.PI*880*i/rate))
+  };
+  const rows=[];
+  try{
+    for(const [kind,input] of Object.entries(cases)){
+      const outputs=[];
+      for(const quality of [0,100]){
+        new Float32Array(e.memory.buffer,src,n).set(input);
+        const begin=performance.now();
+        const rc=e.warp_stream_render_f32_a_quality_ext(
+          src,dst,n,1,rate,20,5500,1,0,1,0,1,0,1,0,0,0,4,0,1,
+          0,350,0,0,350,1,20,0,1,quality);
+        assert.equal(rc,0,"native residual render "+kind+" q"+quality);
+        const ms=performance.now()-begin;
+        const output=Float32Array.from(new Float32Array(e.memory.buffer,dst,n));
+        assert.ok(output.every(Number.isFinite));
+        let x2=0,y2=0,e2=0,xy=0;
+        for(let i=4200;i<10000;i++){
+          const x=input[i],y=output[i];x2+=x*x;y2+=y*y;e2+=(x-y)**2;xy+=x*y;
+        }
+        const row={kind,quality,nrmse:Math.sqrt(e2/x2),
+          rmsGain:Math.sqrt(y2/x2),correlation:xy/Math.sqrt(x2*y2),ms};
+        rows.push(row);outputs.push(row);
+      }
+      assert.ok(outputs[1].nrmse<outputs[0].nrmse*.95,
+        "A residual is not an accepted quality improvement on "+kind+": "+
+          JSON.stringify(outputs));
+    }
+    console.log("A_MAPPED_RESIDUAL_PCM_ACTUAL "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
