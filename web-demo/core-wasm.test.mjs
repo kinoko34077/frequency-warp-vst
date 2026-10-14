@@ -945,3 +945,109 @@ test("Crusher 0Hz frozen level and exact ZOH frequency images from actual shared
     console.log("CRUSHER_ZOH_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
 });
+
+test("B actual shared Rust/WASM long-play identity continuity and nonlinear envelope diagnostic",async()=>{
+  const e=await load(),rate=8192,frames=128,src=e.warp_alloc_f32(frames),
+    dst=e.warp_alloc_f32(frames);
+  assert.ok(src&&dst);
+  try{
+    // 90 seconds of continuous 128-frame playback, without hiding the
+    // analysis history behind periodic synthetic resets.
+    const ptr=e.warp_stream_create_ext(rate,1,100,3200,1,0,1,0,1,1,1,0,0,0,4);
+    assert.ok(ptr);
+    const secs=new Float64Array(90),counts=new Uint32Array(90);
+    try{
+      for(let block=0;block<90*rate/frames;block++){
+        const offset=block*frames;
+        const input=new Float32Array(e.memory.buffer,src,frames);
+        for(let i=0;i<frames;i++)input[i]=.4*Math.cos(2*Math.PI*480*(offset+i)/rate);
+        assert.equal(e.warp_stream_process(ptr,src,dst,frames),0);
+        const out=new Float32Array(e.memory.buffer,dst,frames);
+        const second=Math.floor(offset/rate);
+        for(let i=0;i<frames;i++){secs[second]+=out[i]*out[i];counts[second]++;}
+      }
+      const rms=Array.from(secs,(sum,i)=>Math.sqrt(sum/counts[i]));
+      const stable=rms.slice(2);
+      const min=Math.min(...stable),max=Math.max(...stable);
+      console.log("B_LONGPLAY_RUST_WASM "+JSON.stringify({
+        seconds:90,first:rms.slice(0,4),middle:rms.slice(42,47),last:rms.slice(-6),
+        min,max}));
+      assert.ok(min>.18,"persistent Rust FFT B output must not die after an extended run");
+      assert.ok(max/min<1.15,"identity B must not oscillate throughout long-run");
+    }finally{e.warp_stream_free(ptr);}
+    // Compare nonlinear warp on off-grid steady sinusoidal input. Here
+    // multiple neighboring analysis bins map to the same relocated bin.
+    // This baseline is intentionally diagnostic, not a fabricated pass
+    // claim. Regression acceptance will require actual modulation bounds.
+    const rows=[];
+    for(const hop of [4,8]){
+      for(const amount of [0,.25,.42,.48,.50,.60,.80,1]){
+        const run=e.warp_stream_create_ext(rate,1,100,3200,1,amount,1,0,1,1,1,0,0,0,hop);
+        assert.ok(run);
+        try{
+          const total=rate*4,values=new Float32Array(total);
+          for(let offset=0;offset<total;offset+=frames){
+            const input=new Float32Array(e.memory.buffer,src,frames);
+            for(let i=0;i<frames;i++)input[i]=.4*Math.cos(2*Math.PI*483.37*(offset+i)/rate);
+            assert.equal(e.warp_stream_process(run,src,dst,frames),0);
+            values.set(new Float32Array(e.memory.buffer,dst,frames),offset);
+          }
+          const windows=[];
+          for(let offset=rate;offset+256<total;offset+=256){
+            let power=0;
+            for(let i=offset;i<offset+256;i++)power+=values[i]*values[i];
+            windows.push(Math.sqrt(power/256));
+          }
+          windows.sort((a,b)=>a-b);
+          const q=(p)=>windows[Math.floor((windows.length-1)*p)];
+          const row={hop,amount,p10:q(.1),p50:q(.5),p90:q(.9),
+            envelopeRatio:q(.1)/q(.9)};
+          rows.push(row);
+          assert.ok(Number.isFinite(row.envelopeRatio));
+          assert.ok(row.envelopeRatio>.92,
+            "B must not create artificial source-bin beating under nonlinear warp: "+JSON.stringify(row));
+        }finally{e.warp_stream_free(run);}
+      }
+    }
+    console.log("B_TREMOLO_ENVELOPE_BASELINE "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
+});
+
+test("B phase-locked lobes preserve two separated notes and linked stereo at both overlaps",async()=>{
+  const e=await load(),rate=8192,n=16384,frames=n*2;
+  const src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+  assert.ok(src&&dst);
+  try{
+    const source=new Float32Array(e.memory.buffer,src,frames);
+    for(let c=0;c<2;c++)for(let i=0;i<n;i++){
+      const t=i/rate,level=c===0?1:.6;
+      source[c*n+i]=level*(.35*Math.cos(2*Math.PI*400*t)+
+        .18*Math.cos(2*Math.PI*896*t));
+    }
+    const tone=(audio,c,f)=>{
+      let re=0,im=0;
+      for(let i=4096;i<n;i++){
+        const phi=2*Math.PI*f*i/rate;
+        re+=audio[c*n+i]*Math.cos(phi);
+        im-=audio[c*n+i]*Math.sin(phi);
+      }
+      return 2*Math.hypot(re,im)/(n-4096);
+    };
+    const rows=[];
+    for(const hop of [4,8]){
+      const args=[src,dst,n,2,rate,100,3200,1,.25,1,0,1,1,1,0,0,0,
+        hop,0,1,0,350,0,0,350,1,20,0,1,0,1,0];
+      assert.equal(e.warp_stream_render_f32_zero_controls_ext(...args),0);
+      const pcm=new Float32Array(e.memory.buffer,dst,frames);
+      const amplitudes=[376,624].map(freq=>[tone(pcm,0,freq),tone(pcm,1,freq)]);
+      const ghosts=[400,896].map(freq=>tone(pcm,0,freq));
+      rows.push({hop,amplitudes,ghosts});
+      assert.ok(Math.abs(amplitudes[0][0]-.35)<.035,"mapped first partial");
+      assert.ok(Math.abs(amplitudes[1][0]-.18)<.03,"mapped second partial");
+      assert.ok(Math.abs(amplitudes[0][1]/amplitudes[0][0]-.6)<.02,"stereo partial 1");
+      assert.ok(Math.abs(amplitudes[1][1]/amplitudes[1][0]-.6)<.02,"stereo partial 2");
+      assert.ok(ghosts[0]<.025&&ghosts[1]<.025,"original-frequency ghost must not dominate");
+    }
+    console.log("B_LOCKED_TWO_TONE_STEREO_PCM "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
+});

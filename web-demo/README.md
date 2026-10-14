@@ -455,3 +455,31 @@ frequency alone. The original dashed diagonal is a reference only.
 The separate synthetic waveform example is retained, now with faint
 sample-update clock/history lines and horizontal quantizer-step levels,
 coarser and more visible at low update rates or bit depths.
+
+## 2026-10-14 B phase-locked peak neighbourhood and duration regression (#62)
+
+After an earlier correction of absolute-frame phase rotation removed the
+known integer-bin comb cancellation, off-bin stationary tones at a
+non-unit frequency-warp slope could still exhibit a **tremolo** because
+one Hann-window sinusoid spreads across adjacent FFT bins. Independently
+moving all bins may merge two leakage bins into a shared destination
+while rotating their phases by different numbers. The mapped carrier
+then pulses at the FFT-bin offset rather than holding constant gain.
+
+B now identifies the dominant +/-2 FFT bins from the common stereo
+magnitudes, and translates each nearby lobe by the **same integer-bin
+displacement as its dominant anchor**. The existing absolute frame
+phase compensation then stays coherent across the lobe. No new memory
+buffers or audio-thread heap allocations, no separate browser DSP.
+Actual shared Rust/WASM 483.37Hz test at Fs8192 before: nonlinear
+invert .48, envelope p10/p90 ~.430 at 4x and ~.433 at 8x; after
+candidate >.99 at both. Tested other invert settings 0..1, exact bin
+translations, actual two partials and stereo level ratios.
+
+This is a bounded solution for window sidelobe interference, not a
+fully continuous noninteger spectral warping phase vocoder or a guarantee
+that complex music has no artifacts. Pure Rust/WASM B identity streamed
+for 90s showed an unchanged stable RMS .2828427 from second 2 onward;
+user-reported *browser/iOS* delayed silence was NOT reproduced by
+this pure DSP fixture and remains a separate host/MediaStream/
+AudioContext investigation in #62, not a proven DSP lifetime bug.
