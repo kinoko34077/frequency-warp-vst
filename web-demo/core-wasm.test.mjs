@@ -838,3 +838,54 @@ test("0Hz reflected negative targets: real shared Rust/WASM live + WAV gain 0/25
     console.log("ZERO_REFLECTION_GAIN_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
 });
+
+test("Distinct synthesis and frequency-distance falloff: real stereo Rust/WASM native PCM and graph gain oracle",async()=>{
+  const e=await load();
+  for(const name of ["warp_zero_reflection_amplitude","warp_stream_set_zero_reflect_decay",
+    "warp_stream_render_f32_zero_controls_ext"])assert.equal(typeof e[name],"function");
+  for(const distance of [0,175,350,700]){
+    const expected=.8*Math.pow(.5,distance/350);
+    assert.ok(Math.abs(e.warp_zero_reflection_amplitude(distance,.8,.5,350)-expected)<1e-11);
+  }
+  const rate=8192,n=8192,count=n*2,src=e.warp_alloc_f32(count),dst=e.warp_alloc_f32(count);
+  assert.ok(src&&dst);
+  const rms=(signal,c)=>{
+    let power=0;
+    for(let i=2400;i<7300;i++)power+=signal[c*n+i]**2;
+    return Math.sqrt(power/(7300-2400));
+  };
+  try {
+    const rows=[];
+    for(const freq of [400,650,1000]){
+      for(let c=0;c<2;c++)for(let i=0;i<n;i++){
+        new Float32Array(e.memory.buffer,src,count)[c*n+i]=
+          (c===0?.42:.25)*Math.cos(2*Math.PI*freq*i/rate);
+      }
+      const render=(gain,decay)=>{
+        const args=[src,dst,n,2,rate,100,1400,1,0,1,0,0,1,1,0,0,0,4,
+          0,1,-2,350,0,0,350,1,20,0,1,0,gain,decay];
+        assert.equal(e.warp_stream_render_f32_zero_controls_ext(...args),0);
+        return Float32Array.from(new Float32Array(e.memory.buffer,dst,count));
+      };
+      const baseline=render(1,0);
+      const changed=render(.8,.5);
+      const target=freq-700;
+      const expected=target<0?.8*Math.pow(.5,-target/350):1;
+      for(let c=0;c<2;c++){
+        const measured=rms(changed,c)/rms(baseline,c);
+        assert.ok(Math.abs(measured-expected)<.035,
+          "distance-dependent gain must match real PCM "+JSON.stringify({freq,target,c,measured,expected}));
+        rows.push({freq,target,channel:c,measured,expected});
+      }
+    }
+    const ptr=e.warp_stream_create_ext(rate,1,100,1400,1,0,1,0,0,1,1,0,0,0,4);
+    assert.ok(ptr);
+    try{
+      assert.equal(e.warp_stream_set_zero_reflect_gain(ptr,.75),0);
+      for(const decay of [0,.35,1])assert.equal(e.warp_stream_set_zero_reflect_decay(ptr,decay),0);
+      assert.equal(e.warp_stream_set_zero_reflect_decay(ptr,-.01),-2);
+      assert.equal(e.warp_stream_set_zero_reflect_decay(ptr,1.01),-2);
+    }finally{e.warp_stream_free(ptr);}
+    console.log("REFLECTION_FALLOFF_PCM_ACTUAL "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
+});
