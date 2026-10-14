@@ -6,6 +6,8 @@
 // A handle must NEVER be destroyed until every callback using it finishes.
 extern "C" {
 struct FWNativeOpaque;
+// Stable Rust runtime ABI handshake; call from non-RT plugin lifecycle.
+std::uint32_t fw_native_abi_major();
 struct FWNativeEvent {
     std::uint32_t id;
     std::uint32_t offset;

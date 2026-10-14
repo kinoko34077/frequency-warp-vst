@@ -3,6 +3,10 @@
 use crate::{ParamEvent,Runtime};
 use std::{panic::{catch_unwind,AssertUnwindSafe},ptr,slice};
 
+// ABI handshake is called by VST3 Processor::initialize outside RT.
+#[no_mangle]
+pub extern "C" fn fw_native_abi_major() -> u32 { 1 }
+
 pub struct Opaque {runtime:Runtime,channels:usize}
 #[no_mangle]
 pub unsafe extern "C" fn fw_native_prepare(
