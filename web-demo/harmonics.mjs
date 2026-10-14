@@ -29,7 +29,7 @@ function settingsZeroMode(mode,f){
  * plotting a curve where DSP cannot actually output a spectral component. */
 export function mapAtFrequency(f,
   {low,high,curvature,invert,mode,outside,pitchRatio=1,shiftHz=0,
-   carrierHz=0,zeroMode=0,axisShift=0,axisReference=350,axisPivot=axisReference,
+   carrierHz=0,zeroMode=0,zeroReflect=undefined,axisShift=0,axisReference=350,axisPivot=axisReference,
    axisSlope=1,ringEnabled=false,rationalEnabled=false,sampleRate=48000,qualityIndex=0},
   warp,translate=(f)=>f) {
   const inside=f>=low&&f<=high;
@@ -47,10 +47,18 @@ export function mapAtFrequency(f,
     if(transformed>0)transformed=translate(transformed,axisPivot,curvature,axisShift,axisSlope,sourceAnchor);
   }
   if(!Number.isFinite(transformed))return {f,inside,outputs:[],reason:"座標計算不能"};
+  let reflected=false,reflectionGain=1;
   if(transformed<0){
-    if(zeroMode===1)return {f,inside,outputs:[],reason:"0Hz未満を除去"};
-    const fftWindow=[1024,2048,4096][qualityIndex]||1024;
-    if(zeroMode===2 && -transformed>=sampleRate/fftWindow)return {f,inside,outputs:[],reason:"0Hz未満を減衰除去"};
+    reflected=true;
+    if(Number.isFinite(zeroReflect)){
+      reflectionGain=Math.min(1,Math.max(0,zeroReflect));
+      if(reflectionGain===0)return {f,inside,outputs:[],reason:"0Hz未満の反射量0%（除去）",reflected,reflectionGain};
+    }else{
+      // Historical engine ABI tests may still request old 0/1/2 modes.
+      if(zeroMode===1)return {f,inside,outputs:[],reason:"0Hz未満を除去",reflected};
+      const fftWindow=[1024,2048,4096][qualityIndex]||1024;
+      if(zeroMode===2 && -transformed>=sampleRate/fftWindow)return {f,inside,outputs:[],reason:"0Hz未満を減衰除去",reflected};
+    }
     transformed=-transformed;
   }
   if(transformed===0)return {f,inside,outputs:[],reason:"0Hzへ到達"};
@@ -59,7 +67,8 @@ export function mapAtFrequency(f,
   const candidates=ringEnabled&&inside?
     [transformed+carrierHz,Math.abs(transformed-carrierHz)]:[transformed];
   const outputs=candidates.filter(y=>Number.isFinite(y)&&y>0&&y<sampleRate/2);
-  return {f,inside,outputs,reason:outputs.length?"": "再生周波数範囲外（0Hz／ナイキスト）",
+  return {f,inside,outputs,reflected,reflectionGain,
+    reason:outputs.length?"": "再生周波数範囲外（0Hz／ナイキスト）",
     raw:transformed};
 }
 export function graphSegments(settings,warp,translate=(f)=>f,maxHz=DISPLAY_MAX,sampleAt=null){
