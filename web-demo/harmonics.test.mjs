@@ -47,3 +47,43 @@ test("20 kHz view spans full range while retaining square-axis ideal map",()=>{
  const at500=points.find(pt=>Math.abs(pt.f-500)<25);
  assert.ok(Math.abs(at500.outputs[0]-2*at500.f)<1e-9);
 });
+
+test("display sampling follows logarithmic 20-20k frequency view instead of missing bass",()=>{
+ const cfg={low:20,high:20000,curvature:1,invert:0,mode:"blend",
+   outside:"pass",axisPivot:350,axisSlope:1,axisReference:350,axisShift:0,
+   sampleRate:48000};
+ const linear=graphSegments(cfg,f=>f,(f)=>f,20000);
+ const logarithmic=graphSegments(cfg,f=>f,(f)=>f,20000,
+   t=>20*Math.pow(1000,t));
+ const bass=rows=>rows.filter(pt=>pt.f>20&&pt.f<100).length;
+ assert.ok(bass(linear)<5,"linear graph should show sparse bass samples");
+ assert.ok(bass(logarithmic)>100,"log graph must sample bass densely");
+ assert.equal(logarithmic[0].f,20);
+ assert.equal(logarithmic.at(-1).f,20000);
+});
+test("graph matches Rust signed zero handling AFTER rational layout",()=>{
+ const cfg={low:100,high:1000,curvature:1,invert:0,mode:"blend",
+   outside:"pass",axisReference:350,axisPivot:350,axisSlope:1,
+   axisShift:-2,rationalEnabled:true,pitchRatio:1,shiftHz:-700,
+   zeroMode:0,sampleRate:48000,qualityIndex:0};
+ // At 500Hz, rational stage yields -200Hz. The Rust streaming engine does
+ // not subsequently translate the negative value; Reflect yields +200Hz.
+ const result=graphSegments(cfg,f=>f,(f,pivot,p,shift,slope)=>f+shift*350,2000)
+   .find(row=>Math.abs(row.f-500)<2);
+ assert.ok(result);
+ assert.ok(Math.abs(result.outputs[0]-200)<2);
+});
+test("Fade near zero follows the selected Rust FFT window, not a fixed 1024",()=>{
+ const cfg={low:20,high:2000,curvature:1,invert:0,mode:"blend",
+   outside:"pass",axisReference:350,axisPivot:350,axisSlope:1,axisShift:0,
+   rationalEnabled:true,pitchRatio:1,shiftHz:-513,zeroMode:2,
+   sampleRate:48000};
+ const f=500;
+ // Negative target -13Hz; 1024-window step=46.875 keeps it, while
+ // 4096-window step=11.719 discards it.
+ const one=graphSegments({...cfg,qualityIndex:0},x=>x,(x)=>x,2000);
+ const three=graphSegments({...cfg,qualityIndex:2},x=>x,(x)=>x,2000);
+ const near=rows=>rows.find(row=>Math.abs(row.f-f)<2);
+ assert.ok(near(one)?.outputs[0]>0);
+ assert.equal(near(three)?.outputs.length,0);
+});
