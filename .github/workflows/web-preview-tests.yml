@@ -52,6 +52,7 @@ jobs:
         run: |
           WARP_WEB_ROOT=_site node --test web-demo/wasm-browser-smoke.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/entry-smoke.test.mjs
+          WARP_WEB_ROOT=_site node --test web-demo/visual-editor-browser.test.mjs
       - name: Check browser resource wiring
         run: |
           test -s web-demo/index.html
