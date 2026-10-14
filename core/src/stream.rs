@@ -33,7 +33,8 @@ pub struct Stream {
     a_reverb_amount:f32,
     a_reverb_delays:Vec<Vec<Vec<f32>>>,
     a_reverb_pos:[usize;3],
-    zero_mode:u32, // 0=reflect,1=kill,2=fade
+    zero_mode:u32, // legacy: 0=reflect,1=kill,2=near-zero fade; 3=variable reflection
+    zero_reflect_gain:f64, // 0..1 reflected negative-target amplitude, applied when mode=3
     received:u64,
     input:Vec<Vec<f64>>,
     output:Vec<Vec<f64>>,
@@ -81,7 +82,7 @@ impl Stream {
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
-            a_reverb_pos:[0;3],zero_mode,received:0,
+            a_reverb_pos:[0;3],zero_mode,zero_reflect_gain:1.0,received:0,
             input:vec![vec![0.0;q.n];channels],
             output:vec![vec![0.0;q.n*2];channels],
             weights:vec![0.0;q.n*2],
@@ -175,6 +176,18 @@ impl Stream {
         self.a_quality_percent=percent;
         self.max_peaks=base.max_peaks+(base.max_peaks*3*percent as usize/100);
         self.floor=base.floor*(1.0-0.9*(percent as f64/100.0));
+        Ok(())
+    }
+    /// Negative-target reflection amplitude in [0,1]. 0 eliminates the
+    /// crossed-zero component, 1 reflects at original magnitude. Intermediate
+    /// values attenuate only the reflected component. The legacy 0/1/2
+    /// zero-mode behavior is untouched until this setter is called.
+    pub fn set_zero_reflect_gain(&mut self,gain:f64)->Result<(),&'static str>{
+        if !gain.is_finite()||!(0.0..=1.0).contains(&gain){
+            return Err("invalid negative-target reflection gain");
+        }
+        self.zero_reflect_gain=gain;
+        self.zero_mode=3;
         Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
@@ -560,6 +573,10 @@ impl Stream {
             match self.zero_mode {
                 0=>(-target,1.0), // Reflect
                 1=>return None, // Kill
+                3=>{
+                    if self.zero_reflect_gain<=0.0{return None;}
+                    (-target,self.zero_reflect_gain)
+                },
                 _=>{
                     let negative=-target;
                     if negative>=step{return None;}
@@ -657,6 +674,12 @@ pub unsafe extern "C" fn warp_stream_set_ext(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_zero_reflect_gain(ptr:*mut Stream,gain:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_zero_reflect_gain(gain){Ok(())=>0,Err(_)=>-2}
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u32)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_crusher(bits,hold){Ok(())=>0,Err(_)=>-2}
@@ -738,6 +761,23 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
     a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,
 )->i32{
+    warp_stream_render_f32_zero_gain_ext(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
+        outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
+        crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,f64::NAN)
+}
+
+/// Unified native/WASM offline export with controllable negative-target
+/// reflection. Legacy callers stay on the prior ABI and zero policy.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_zero_gain_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:f64,
+)->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
     let settings=params(low,high,p,amount,mode,quality_id);
@@ -750,7 +790,11 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
        st.set_geometry(axis_pivot,axis_slope).is_err()||
        st.set_a_options(a_min_hz,a_reverb).is_err()||
        st.set_a_peak_band(a_peak_band_bins).is_err()||
-       st.set_a_quality(a_quality_percent).is_err(){return -2;}
+       st.set_a_quality(a_quality_percent).is_err()||
+       // NAN is an internal sentinel from the legacy ABI wrapper only:
+       // never override historical reflect/kill/fade semantics for old callers.
+       (!zero_reflect_gain.is_nan()&&
+        st.set_zero_reflect_gain(zero_reflect_gain).is_err()){return -2;}
     let total=frames as usize;
     let channel_count=channels as usize;
     let source=std::slice::from_raw_parts(input,total*channel_count);
