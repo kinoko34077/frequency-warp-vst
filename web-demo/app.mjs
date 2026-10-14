@@ -137,7 +137,9 @@ function labels(id=""){
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
   showNumber("crusher-hold-value",p.crusherRateHz);
-  $("#crusher-rate-explainer").textContent="指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
+  $("#crusher-rate-explainer").textContent=p.crusherHold===0?
+    "指定 0 Hz → 標本更新停止（最初の量子化値を保持・ゼロHz/DC）":
+    "指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
   drawCrusherPreview($("#crusher-preview"),{bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate});
   const u=p.axisShift,ref=p.axisReference;
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
@@ -213,10 +215,12 @@ function drawCurve(){
   const alpha=Number($("#graph-log").value)/100;
   drawFrequencyGraph(canvas,shown,warp,translate,graphMax,alpha);
   $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×(f−20)/("+graphMax+"−20)+α×ln(f/20)/ln("+graphMax+"/20)。x/y共通の表示尺度（音声DSPに影響しません）。";
-  const isCrushed=p.crusherBits>0&&p.crusherHold>1;
+  const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=!isCrushed;
-  if(isCrushed)$("#crusher-alias-note").textContent="実効サンプル周波数 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz · 破線は標本化の折返し位置の理論図（実際の音量スペクトルではありません）";
+  if(isCrushed)$("#crusher-alias-note").textContent=p.crusherHold===0?
+    "更新 0 Hz：開始値を保持。出力はDCのみで元周波数の周期音は消えます。":
+    "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝標本保持の理論スペクトル像、線の透明度＝単音応答ゲイン（量子化倍音は別）。";
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
 }
@@ -562,11 +566,11 @@ const inline={
   "axis-slope-value":["axis-slope",v=>v,"axis-slope",0.1,4],
   "wet-value":["wet",v=>v/100,"wet",0,100],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
-  "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",1,96000]
+  "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,192000]
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   const field=$("#"+id);
-  const integer=range==="crusher-bits"||range==="crusher-hold"||range==="a-band"||range==="a-quality";
+  const integer=range==="crusher-bits"||range==="a-band"||range==="a-quality";
   const normalized=value=>{
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
@@ -840,7 +844,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#a-min").value="0";$("#a-reverb").value="0";
   $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
-  $("#crusher-bits").value="8";$("#crusher-hold").value="600";
+  $("#crusher-bits").value="8";$("#crusher-hold").value="880";
   $("#crusher-bits-value").value="8";
   $("#crusher-hold-value").value="12000";
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
