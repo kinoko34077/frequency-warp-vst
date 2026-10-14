@@ -143,7 +143,7 @@ function labels(id=""){
     "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
   $("#zero-reflect-formula").textContent="振幅="+displayNumber(100*p.zeroReflectGain)+
     "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(反射点からの周波数距離/"+
-    displayNumber(p.axisReference)+"Hz)。L/H・反転・0Hzの反射区間に適用。";
+    displayNumber(p.axisReference)+"Hz)。L/Hの折返し枝と0Hz越えの成分だけに適用。単なる周波数反転・負の傾きには適用しません。";
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
