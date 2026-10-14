@@ -58,4 +58,4 @@ jobs:
           python3 scripts/test_fwengine_packages.py fwengine-package/target/release/fwengine-package _s1_fixture/identity.fwengine
       - name: Actual WASM PCM swap and parameter automation (unchanged harness)
         run: |
-          node --test scripts/test_fwengine_runtime.mjs fwengine-package/target/release/fwengine-package _s1_fixture/identity.fwengine _s1_fixture/gain-half.fwengine
+          node scripts/test_fwengine_runtime.mjs fwengine-package/target/release/fwengine-package _s1_fixture/identity.fwengine _s1_fixture/gain-half.fwengine
