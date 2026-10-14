@@ -227,10 +227,10 @@ public:
         // ABI. If over capacity, split BEFORE consuming any host point.
         // No host automation changes are silently discarded.
         const bool hasWorker=worker_.mailbox().rtHasPreparedWorker();
-        std::array<Queue*,4> streamQueues{};
+        std::array<Queue*,StreamHostEvents::kBindingCount> streamQueues{};
         for(int32 q=0;q<used;q++){
-            if(StreamHostEvents::bound(cursors[q].id))
-                streamQueues[cursors[q].id-StreamHostEvents::kFirst]=&cursors[q];
+            const int index=StreamHostEvents::indexOf(cursors[q].id);
+            if(index>=0)streamQueues[static_cast<size_t>(index)]=&cursors[q];
         }
         for(int32 start=0;start<data.numSamples;) {
             uint32_t frames=0;
@@ -242,10 +242,10 @@ public:
             while(frames<AsyncPcmMailbox::kMaxFrames &&
                   start+static_cast<int32>(frames)<data.numSamples) {
                 const int32 frame=start+static_cast<int32>(frames);
-                std::array<bool,4> changed{};
+                std::array<bool,StreamHostEvents::kBindingCount> changed{};
                 uint32_t demand=0;
                 if(frames>0) {
-                    for(uint32_t k=0;k<4;k++) {
+                    for(uint32_t k=0;k<StreamHostEvents::kBindingCount;k++) {
                         const Queue* q=streamQueues[k];
                         changed[k]=q&&q->next<q->count&&q->offset==frame;
                         if(changed[k])demand++;
@@ -259,8 +259,8 @@ public:
                     if(!controls.start(values_,hostSampleRate_))
                         return kResultFalse;
                 }else{
-                    for(uint32_t k=0;k<4;k++)if(changed[k]){
-                        const uint32_t id=k+StreamHostEvents::kFirst;
+                    for(uint32_t k=0;k<StreamHostEvents::kBindingCount;k++)if(changed[k]){
+                        const uint32_t id=StreamHostEvents::idAt(k);
                         if(!controls.append(id,frames,values_[id],hostSampleRate_))
                             return kResultFalse;
                     }
@@ -280,7 +280,7 @@ public:
                 }
                 frames++;
             }
-            if(frames==0)return kResultFalse; // impossible: four always fit
+            if(frames==0)return kResultFalse; // impossible: initial 11 always fit
             uint64_t jobStart=0;
             if(hasWorker){
                 jobStart=worker_.mailbox().rtNextTime();
