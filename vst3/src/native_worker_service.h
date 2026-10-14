@@ -42,6 +42,19 @@ public:
     bool lastCompletedSucceeded() const noexcept {
         return (lastCompleted_.load(std::memory_order_acquire)&1u)!=0;
     }
+    // Called only on non-audio host lifecycle/getState threads. A load
+    // request is NOT committed here: only a successful worker prepare may
+    // replace these exact self-contained engine archive bytes.
+    std::vector<uint8_t> verifiedPackageSnapshot() const {
+        std::lock_guard<std::mutex> guard(verifiedMutex_);
+        return verifiedPackage_;
+    }
+    bool clearVerifiedWhenStopped() {
+        if(thread_.joinable())return false;
+        std::lock_guard<std::mutex> guard(verifiedMutex_);
+        verifiedPackage_.clear();
+        return true;
+    }
     bool start() noexcept {
         if(thread_.joinable())return false;
         stopping_.store(false,std::memory_order_release);
@@ -74,6 +87,20 @@ public:
         commandPending_=true;
         return true;
     }
+    // A project with no module must return to delayed Dry, not keep
+    // another project's last active engine. This command executes on the
+    // worker; no native handle is freed in the RT callback.
+    bool postClear(uint64_t requestId=0) {
+        if(!thread_.joinable()||requestId>(UINT64_MAX>>1))return false;
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(commandPending_||stopping_.load(std::memory_order_acquire))
+            return false;
+        pending_=Request{};
+        pending_.unload=true;
+        pending_.requestId=requestId;
+        commandPending_=true;
+        return true;
+    }
     // NonRT only. Host must quiesce audio process first.
     void stop() noexcept {
         stopping_.store(true,std::memory_order_release);
@@ -92,6 +119,7 @@ private:
         double rate=48000.;
         uint32_t channels=2,frames=128;
         uint64_t requestId=0;
+        bool unload=false;
     };
     static int32_t processNative(void* context,const float* input,float* output,
                                  uint32_t frames,const FWNativeEvent* events,
@@ -132,7 +160,17 @@ private:
                     haveCommand=true;
                 }
             }
-            if(haveCommand) {
+            if(haveCommand && req.unload) {
+                mailbox_.workerConfigure(nullptr,nullptr,0);
+                if(active)fw_native_destroy(std::exchange(active,nullptr));
+                {
+                    std::lock_guard<std::mutex> guard(verifiedMutex_);
+                    verifiedPackage_.clear();
+                }
+                status_.store(Status::Missing,std::memory_order_release);
+                lastCompleted_.store((req.requestId<<1)|1ull,std::memory_order_release);
+                handled_.fetch_add(1,std::memory_order_release);
+            } else if(haveCommand) {
                 bool activated=false;
                 status_.store(Status::Preparing,std::memory_order_release);
                 FWNativeOpaque* candidate=fw_native_prepare(
@@ -145,6 +183,10 @@ private:
                     // Same worker thread cannot be inside workerStep and
                     // load/destroy at once; RT only holds copied PCM packets.
                     if(retired)fw_native_destroy(retired);
+                    {
+                        std::lock_guard<std::mutex> guard(verifiedMutex_);
+                        verifiedPackage_=std::move(req.bytes);
+                    }
                     accepted_.fetch_add(1,std::memory_order_release);
                     activated=true;
                     status_.store(Status::Ready,std::memory_order_release);
@@ -187,5 +229,8 @@ private:
     std::atomic<uint64_t> accepted_{0};
     std::atomic<uint64_t> handled_{0};
     std::atomic<uint64_t> lastCompleted_{0};
+    mutable std::mutex verifiedMutex_{};
+    std::vector<uint8_t> verifiedPackage_{}; // success-confirmed only
+
 };
 } // namespace fw
