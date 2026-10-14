@@ -109,7 +109,7 @@ function labels(id=""){
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
   $("#axis-explainer").textContent=p.curvature===0?
     "移動倍率 ×"+displayNumber(Math.exp(u)):p.curvature===1?
-    "移動 "+Math.round(u*ref)+" Hz":"移動：中間尺度";
+    "移動 "+displayNumber(u*ref)+" Hz":"移動 "+displayNumber(u)+"（中間尺度）";
 }
 
 function foldPoint(){
