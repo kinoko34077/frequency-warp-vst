@@ -220,7 +220,7 @@ check to be considered independently verified.
 - A/B options omit a subjective “standard” tag. The optional **反転で切り替え** checkbox follows the *final audible main mapped curve* over the in-band range: shared Rust/WASM nonlinear warp plus physical pivot/translation, rational stage, and signed zero policy; A when the surviving curve overall descends, B otherwise. Ring sidebands and logarithmic display scaling do not change this choice. The UI shows the effective automatic engine rather than a stale disabled manual dropdown; disabling restores the previous manual selection. This is not an audio-quality ranking.
 - Engine A adds 1–8 FFT-bin **peak neighborhood / isolation** control (default 1 preserves the former candidate selector). A larger value excludes neighboring weak peaks and may reduce high-frequency flutter, but may also remove close partials; it does **not** reconstruct residual/noise and must not be reported as R2.2 research acceptance. Both AudioWorklet and WAV export call the same Rust setter/engine, retaining the old streaming/offline ABI entries.
 - The graph has a display-only 0–100% linear/log frequency-axis slider, applied identically to both square x/y axes; it does not change sound or the engine policy. 20 kHz view now shows low-frequency details through logarithmic spacing.
-- Defaults: `mode=blend`, detailed harmonic rows 5, displayed numeric precision up to 3 decimals. 2/3 display digits are selectable without truncating the stored 0.001-precision typed DSP values. Integer controls remain integers.
+- Defaults: `mode=reciprocal` (Blend removed from current Web UI but legacy Rust ABI retained), detailed harmonic rows 5, displayed numeric precision up to 3 decimals. 2/3 display digits are selectable without truncating the stored 0.001-precision typed DSP values. Integer controls remain integers.
 - The settings dialog scrolls within a flex-sized body on mobile and desktop, with a compact per-control explanation. Native selector `change` events update the shared Rust DSP without touching any other slider.
 - The PR #42 implementation passed native Rust, WASM, headless Chrome and Python reference CI, with a formal exact-head review. See Issue #41 for the release/deployment evidence and acceptance status. Physical iPhone behavior and subjective engine-A quality remain unverified.
 
@@ -523,3 +523,9 @@ double-route behavior, and does NOT guarantee iOS background continuity.
 移動量/起点、A品質/残響は一つのトラックへ無理にまとめない。
 折返し部分音が存在しない設定ではC/Rを変えても音量に変化が
 出ないため、その状態を主グラフ横の操作説明に明示する。
+
+## 2026-10-14 Signed slope and help-on-demand update (#72, candidate)
+- Physical spectral slope slider and number allow -4 through +4. Negative values invert source frequency orientation around the pivot, zero collapses frequencies to the pivot, +1 preserves spacing. Rust native and WASM audio/graph use the same anchored geometry, zero-crossing/fold reflection gain and offline WAV settings.
+- The visible inversion progression menu has Reciprocal as its default, plus Fold L/H. Removed Simple Blend from the Web menu/reset; historical DSP mode code remains for external ABI compatibility and existing regression evidence.
+- Main screen adopts short human-facing names and adjacent values/units, notably `量子化 [8] bit`, `打刻速度 [12000] Hz`, `搬送波 [350] Hz`. Numeric fields remain editable. Long generic captions and repeating explanations are not permanently laid out; open adjacent ⓘ with touch, mouse hover or keyboard to see formula/limitations/current sampling clock details. Feedback on absent reflected components still appears when applicable.
+- A/WASM waveform quality and background iPhone device behavior remain separate validation boundaries. Acceptance recorded on the owning Issue rather than inferred from code changes alone.
