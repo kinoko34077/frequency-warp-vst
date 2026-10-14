@@ -59,7 +59,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#axis-slope",el=>el.min),"-4");
     assert.equal(await page.$eval("#axis-slope-value",el=>el.min),"-4");
     assert.equal(await page.$("figcaption"),null,"Crusher explanation must not be permanent");
-    assert.ok((await page.$(".context-help summary")).length>=5,"Contextual info targets missing");
+    assert.ok((await page.$$(".context-help summary")).length>=5,"Contextual info targets missing");
     assert.equal(await page.$eval("#crusher-rate-explainer",el=>el.getBoundingClientRect().height),0,
       "Long sampling text must be hidden until contextual help opens");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
