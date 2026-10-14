@@ -40,6 +40,12 @@ pub unsafe extern "C" fn fw_native_latency(handle:*const Opaque)->u32{
 pub unsafe extern "C" fn fw_native_faulted(handle:*const Opaque)->bool{
     handle.is_null()||(*handle).runtime.faulted()
 }
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_supports_stream_controls(handle:*const Opaque)->bool{
+    // Worker-only module identity test. Generic ID64 demo modules must never
+    // receive spectral IDs2..5 and trip their own strict parameter contract.
+    !handle.is_null()&&(*handle).runtime.manifest.engine_id=="org.kinotch.stream"
+}
 fn intersects(a:usize,a_len:usize,b:usize,b_len:usize)->bool {
     match (a.checked_add(a_len),b.checked_add(b_len)){
         (Some(a_end),Some(b_end))=>a<b_end && b<a_end,

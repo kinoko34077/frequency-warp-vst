@@ -97,8 +97,24 @@ private:
                                  uint32_t frames,const FWNativeEvent* events,
                                  uint32_t count) noexcept {
         if(!context)return -1;
-        return fw_native_process(static_cast<FWNativeOpaque*>(context),
-                                 input,output,frames,events,count);
+        auto* native=static_cast<FWNativeOpaque*>(context);
+        // Explicit semantic guard: generic Identity/Gain module has slot64
+        // only, so never forward unrelated spectral host parameter events.
+        const bool spectral=fw_native_supports_stream_controls(native);
+        // Keep BOTH contracts valid: core Stream IDs2..5 and demo Gain ID64.
+        // Filtering is on this off-RT thread; no heap allocations or host
+        // parameter semantic aliasing are introduced.
+        if(count>AsyncPcmMailbox::kMaxEvents||(count>0&&!events))return -1;
+        std::array<FWNativeEvent,AsyncPcmMailbox::kMaxEvents> filtered{};
+        uint32_t used=0;
+        for(uint32_t i=0;i<count;i++) {
+            const bool bound=spectral
+                ? (events[i].id>=2&&events[i].id<=5)
+                : events[i].id==64;
+            if(bound)filtered[used++]=events[i];
+        }
+        return fw_native_process(native,input,output,frames,
+                                 used?filtered.data():nullptr,used);
     }
     void run() noexcept {
         FWNativeOpaque* active=nullptr;
