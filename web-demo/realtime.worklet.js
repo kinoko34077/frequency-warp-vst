@@ -35,7 +35,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
         "warp_stream_process","warp_stream_latency","warp_stream_set_crusher",
-        "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_a_options"
+        "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_a_options","warp_stream_set_a_band"
       ];
       for (const name of required) {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
@@ -57,7 +57,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       if(e.warp_stream_set_geometry(stream,options.axisPivot,options.axisSlope)!==0){
         e.warp_stream_free(stream);throw Error("Rust axis pivot/slope failed");
       }
-      if(e.warp_stream_set_a_options(stream,options.aMinHz,options.aReverb)!==0){
+      if(e.warp_stream_set_a_options(stream,options.aMinHz,options.aReverb)!==0 ||
+         e.warp_stream_set_a_band(stream,options.aBandBins)!==0){
         e.warp_stream_free(stream);throw Error("Rust A options failed");
       }
       if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
@@ -117,7 +118,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         p.axisReference,p.ringEnabled?1:0,p.rationalEnabled?1:0):code;
       const geometry=axis===0?e.warp_stream_set_geometry(this.stream,p.axisPivot,p.axisSlope):axis;
       const a=geometry===0?e.warp_stream_set_a_options(this.stream,p.aMinHz,p.aReverb):geometry;
-      const fx=a===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):a;
+      const band=a===0?e.warp_stream_set_a_band(this.stream,p.aBandBins):a;
+      const fx=band===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):band;
       if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
