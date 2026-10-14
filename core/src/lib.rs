@@ -65,7 +65,7 @@ pub fn translate_frequency_affine(f:f64,pivot:f64,p:f64,shift:f64,slope:f64)->f6
     if !f.is_finite()||f<=0.0||!pivot.is_finite()||pivot<=0.0||
        !p.is_finite()||!(0.0..=1.0).contains(&p)||
        !shift.is_finite()||shift.abs()>4.0||!slope.is_finite()||
-       !(0.1..=4.0).contains(&slope){return f64::NAN;}
+       !(-4.0..=4.0).contains(&slope){return f64::NAN;}
     if slope==1.0&&shift==0.0{return f;}
     // C_p(pivot; pivot) = 0: the anchor's displacement is exactly shift.
     let u=slope*coordinate(f,pivot,p)+shift;
@@ -89,7 +89,7 @@ pub extern "C" fn warp_translate_frequency_affine(
 
 pub fn translate_frequency_controls(f:f64,pivot:f64,slope:f64,reference:f64,p:f64,shift:f64)->f64{
  if !f.is_finite()||!pivot.is_finite()||!(0.0..=20000.0).contains(&pivot)
- || !slope.is_finite()||!(0.1..=4.0).contains(&slope)
+ || !slope.is_finite()||!(-4.0..=4.0).contains(&slope)
  || !reference.is_finite()||reference<=0.0
  || !p.is_finite()||!(0.0..=1.0).contains(&p)
  || !shift.is_finite()||shift.abs()>4.0{return f64::NAN;}
@@ -106,7 +106,7 @@ pub extern "C" fn warp_translate_frequency_controls(f:f64,pivot:f64,slope:f64,re
 pub fn translate_frequency_anchored(f:f64,anchor:f64,pivot:f64,slope:f64,reference:f64,p:f64,shift:f64)->f64{
     if !f.is_finite()||!anchor.is_finite()||!pivot.is_finite()
        ||!(0.0..=20000.0).contains(&pivot)||!slope.is_finite()
-       ||!(0.1..=4.0).contains(&slope)||!reference.is_finite()
+       ||!(-4.0..=4.0).contains(&slope)||!reference.is_finite()
        ||reference<=0.0||!p.is_finite()||!(0.0..=1.0).contains(&p)
        ||!shift.is_finite()||shift.abs()>4.0{return f64::NAN;}
     let value=pivot+slope*(f-anchor);
@@ -577,6 +577,21 @@ mod tests {
         assert!((warp_translate_frequency_affine(500.0,500.0,0.0,(2.0f64).ln(),1.0)-1000.0).abs()<1e-7);
         assert!((warp_translate_frequency_affine(500.0,500.0,1.0,0.2,1.0)-600.0).abs()<1e-7);
         assert!(warp_translate_frequency_affine(500.0,0.0,0.0,0.0,1.0).is_nan());
+    }
+    #[test]
+    fn signed_physical_slope_reverses_and_zero_collapses_about_pivot(){
+        for p in [0.0,0.25,1.0]{
+            for slope in [-4.0,-1.0,-0.5,0.0,0.5,1.0,4.0]{
+                let got=translate_frequency_anchored(600.0,500.0,350.0,slope,350.0,p,0.0);
+                assert!((got-(350.0+100.0*slope)).abs()<1e-8,
+                    "slope {slope}, p {p}, output {got}");
+            }
+            // Signed extension passes through the zero-policy (not clamped).
+            assert!((translate_frequency_anchored(1200.0,500.0,0.0,-1.0,350.0,p,0.0)+700.0).abs()<1e-8);
+        }
+        for bad in [-4.1,4.1,f64::NAN,f64::INFINITY]{
+            assert!(translate_frequency_anchored(500.0,500.0,350.0,bad,350.0,1.0,0.0).is_nan());
+        }
     }
     #[test]
     fn unified_axis_translation_pitch_at_log_and_hz_at_linear(){
