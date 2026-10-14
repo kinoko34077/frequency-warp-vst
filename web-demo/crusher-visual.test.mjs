@@ -25,3 +25,23 @@ test("theoretical alias mapping is bounded and does not invent a spectrum",()=>{
   assert.equal(aliasFrequency(500,0),0);
   assert.deepEqual(sampleHoldImages(500,8192,0),[{hz:0,gain:1,order:0,freeze:true}]);
 });
+
+test("ZOH image strengths match DFT of independent held-sample cosine",()=>{
+  const Fs=8192,N=8,f=336,n=8192,rate=Fs/N;
+  const held=Float64Array.from({length:n},(_,i)=>
+    Math.cos(2*Math.PI*f*(Math.floor(i/N)*N)/Fs));
+  for(const order of [-3,-2,-1,0,1,2,3]){
+    const signed=f+order*rate;
+    const q=((signed%Fs)+Fs)%Fs,physical=Math.min(q,Fs-q);
+    let re=0,im=0;
+    for(let i=0;i<n;i++){
+      const theta=2*Math.PI*physical*i/Fs;
+      re+=held[i]*Math.cos(theta);im-=held[i]*Math.sin(theta);
+    }
+    const actual=2*Math.hypot(re,im)/n;
+    const expected=zohImageMagnitude(signed,Fs,N);
+    assert.ok(Math.abs(actual-expected)<1e-9,
+      "image magnitude should equal measured PCM "+JSON.stringify({order,actual,expected}));
+  }
+  assert.ok(sampleHoldImages(f,Fs,N,3).some(x=>x.order===0));
+});
