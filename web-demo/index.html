@@ -203,7 +203,7 @@
         <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
       </select>
       <output id="engine-auto-result" class="engine-auto-result" role="status" aria-live="polite" hidden></output>
-      <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p>
+      <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><details class="setting-more"><summary>ⓘ 説明</summary><p>チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p></details>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
           <div><label for="a-min">A · 最低抽出周波数 <input class="inline-value" id="a-min-value" type="number" min="20" max="20000" step="0.001" value="20"></label><input id="a-min" type="range" min="0" max="1000" step="1" value="0"></div>
@@ -211,8 +211,8 @@
           <div><label for="a-band">A · 抽出帯域幅 <input class="inline-value" id="a-band-value" type="number" min="1" max="8" step="1" value="1"></label><input id="a-band" type="range" min="1" max="8" step="1" value="1"></div>
           <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
         </div>
-        <p id="a-quality-info" class="setting-help" aria-live="polite">品質0: 基準ピーク数。品質を上げるとピーク候補が増え、CPU負荷も増え得ます。原音忠実度100%の保証ではありません。</p>
-        <p class="setting-help">Aのみ。精細度はピーク候補・検出閾値と、非ピーク成分を同じ変換曲線で補完する試験的な残差量を連動調節します。抽出帯域幅はピーク間の距離の別設定です。残差分離は近似で、フォルマントや過渡音の完全復元ではありません。高設定ではCPU負荷が増加します。</p>
+        <details class="setting-more"><summary>ⓘ 精細度の詳細</summary><p id="a-quality-info" class="setting-help" aria-live="polite">品質0: 基準ピーク数。品質を上げるとピーク候補が増え、CPU負荷も増え得ます。原音忠実度100%の保証ではありません。</p>
+        <details class="setting-more"><summary>ⓘ 説明</summary><p>Aのみ。精細度はピーク候補・検出閾値と、非ピーク成分を同じ変換曲線で補完する試験的な残差量を連動調節します。抽出帯域幅はピーク間の距離の別設定です。残差分離は近似で、フォルマントや過渡音の完全復元ではありません。高設定ではCPU負荷が増加します。</p></details>
       </div>
     </fieldset>
     <fieldset><legend>反転と帯域</legend>
@@ -220,19 +220,19 @@
         <div><label for="mode">反転の進行</label><select id="mode"><option value="reciprocal" selected>逆数的・幾何補間</option><option value="fold-l">L側で折返し</option><option value="fold-h">H側で折返し</option></select></div>
         <div><label for="outside">L/Hの外側</label><select id="outside"><option value="pass" selected>通過する</option><option value="kill">除去する</option></select></div>
       </div>
-      <p class="setting-help">逆数的・幾何補間は f′=f^(1−a)×I(f)^a（Iは選択尺度での完全反転）、中間では周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点ができます。反転スライダー中央のHzは各方式の折れ点／反転固定点を示します。</p>
+      <details class="setting-more"><summary>ⓘ 説明</summary><p>逆数的・幾何補間は f′=f^(1−a)×I(f)^a（Iは選択尺度での完全反転）、中間では周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点ができます。反転スライダー中央のHzは各方式の折れ点／反転固定点を示します。</p></details>
       
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>
-      <p class="setting-help">グラフ下の小窓は最大3倍音、詳細表は選んだ倍音数まで表示します。</p>
+      <details class="setting-more"><summary>ⓘ 説明</summary><p>グラフ下の小窓は最大3倍音、詳細表は選んだ倍音数まで表示します。</p></details>
     </fieldset>
     <fieldset><legend>計算量・応答性</legend>
       <div class="settings-pair"><div><label for="quality">FFT窓サイズ</label><select id="quality"><option value="eco" selected>1024 · 低遅延</option><option value="standard">2048 · 標準</option><option value="high">4096 · 高分解能</option></select></div>
       <div><label for="overlap">重ね合わせ量</label><select id="overlap"><option value="4" selected>4× / hop N/4</option><option value="8">8× / hop N/8</option></select></div></div>
-      <p class="setting-help">FFT窓：大きいほど周波数を細かく調べますが、遅延が増えます。重ね合わせ：8×は分析回数が増え、処理が重くなります。変更すると処理状態を作り直します。</p>
+      <details class="setting-more"><summary>ⓘ 説明</summary><p>FFT窓：大きいほど周波数を細かく調べますが、遅延が増えます。重ね合わせ：8×は分析回数が増え、処理が重くなります。変更すると処理状態を作り直します。</p></details>
     </fieldset>
-    <fieldset><legend>数値表示</legend><label for="decimal-digits">小数点以下の表示桁数</label><select id="decimal-digits"><option value="2">2桁</option><option value="3" selected>3桁</option></select><p class="setting-help">数値欄・倍音表の見た目を切り替えます。どちらでも直接入力した小数第3位まで音に反映されます。整数設定は整数のままです。</p></fieldset>
+    <fieldset><legend>数値表示</legend><label for="decimal-digits">小数点以下の表示桁数</label><select id="decimal-digits"><option value="2">2桁</option><option value="3" selected>3桁</option></select><details class="setting-more"><summary>ⓘ 説明</summary><p>数値欄・倍音表の見た目を切り替えます。どちらでも直接入力した小数第3位まで音に反映されます。整数設定は整数のままです。</p></details></fieldset>
     <fieldset><legend>操作</legend><button id="settings-reset" type="button" class="reset-button">エフェクトの設定を初期値に戻す</button>
       <p class="setting-help">音声ファイルと再生位置はそのまま。研究用試作品のため一部の変更で短い音切れが生じます。</p>
     </fieldset>
