@@ -59,7 +59,7 @@ fn main()->Result<(),Box<dyn Error>>{
     const BLOCKS:usize=128; // 16K samples, FFT warmup and live parameter sweep
     let mut biggest=0f32;let mut power=0f64;
     let mut after_diff=0f64;
-    let mut dry_settings=native_settings;
+    let dry_settings=native_settings;
     let mut unchanged=Stream::new(48000.,2,dry_settings,0)?;
     for block in 0..BLOCKS{
         let input=frame_input(block*F,F);
@@ -85,7 +85,7 @@ fn main()->Result<(),Box<dyn Error>>{
     // Unsupported host param (e.g. Gain ID64) MUST fail on actual Stream,
     // while demo Identity/Gain native regression still accepts ID64.
     let buf=frame_input(16384,F);
-    assert!(wasm.process(&buf,F,&[ParamEvent{id:64,offset:0,value:.5}]).is_err());
+    assert!(wasm.process(&buf,F,&[ParamEvent{id:64,offset:0,value:0.5}]).is_err());
     println!("PASS S4a canonical Rust Stream/native Wasmi PCM: 16384 frames, max_error={biggest:.7}, post_event_diff={after_diff:.4}, declared_latency=1023, bad_manifest_rejected");
     Ok(())
 }
