@@ -770,3 +770,71 @@ test("Reciprocal interpolation and invert-Hz marker use common Rust/WASM geometr
   assert.ok(Math.abs(e.warp_invert_reference_frequency(l,h,p,amount,2)-
     e.warp_fold_frequency(l,h,p,amount,2))<1e-9);
 });
+
+test("0Hz reflected negative targets: real shared Rust/WASM live + WAV gain 0/25/50/100 and legacy ABI",async()=>{
+  const e=await load();
+  assert.equal(typeof e.warp_stream_set_zero_reflect_gain,"function");
+  assert.equal(typeof e.warp_stream_render_f32_zero_gain_ext,"function");
+  const fs=8192,n=8192,channels=2,count=n*channels;
+  const src=e.warp_alloc_f32(count),dst=e.warp_alloc_f32(count);
+  assert.ok(src&&dst);
+  const input=new Float32Array(count);
+  for(let c=0;c<channels;c++)for(let i=0;i<n;i++)
+    input[c*n+i]=(c===0?.45:.27)*Math.cos(2*Math.PI*400*i/fs);
+  const output=()=>Float32Array.from(new Float32Array(e.memory.buffer,dst,count));
+  try{
+    new Float32Array(e.memory.buffer,src,count).set(input);
+    const render=(gain,legacyMode=0,old=false)=>{
+      const params=[
+        src,dst,n,channels,fs,100,1000,1,0,1,0,0,1,1,0,0,
+        legacyMode,4,0,1,-2,350,0,0,350,1,20,0,1,0
+      ];
+      const code=old?e.warp_stream_render_f32_a_quality_ext(...params):
+        e.warp_stream_render_f32_zero_gain_ext(...params,gain);
+      assert.equal(code,0,"render "+JSON.stringify({gain,legacyMode,old}));
+      return output();
+    };
+    const full=render(1),half=render(.5),quarter=render(.25),zero=render(0);
+    const legacyReflect=render(null,0,true),legacyKill=render(null,1,true);
+    const metrics=(a,b,channel)=>{
+      let powerA=0,powerB=0,powerE=0;
+      for(let i=2400;i<7300;i++){
+        const x=a[channel*n+i],y=b[channel*n+i];
+        powerA+=x*x;powerB+=y*y;powerE+=(x-y)*(x-y);
+      }
+      return {ratio:Math.sqrt(powerB/(powerA||1)),
+        error:Math.sqrt(powerE/(powerA||1)),
+        rmsA:Math.sqrt(powerA/(7300-2400)),
+        rmsB:Math.sqrt(powerB/(7300-2400))};
+    };
+    const rows=[];
+    for(let c=0;c<channels;c++){
+      const mid=metrics(full,half,c),qtr=metrics(full,quarter,c);
+      const dead=metrics(full,zero,c);
+      const oldR=metrics(full,legacyReflect,c);
+      const oldK=metrics(zero,legacyKill,c);
+      rows.push({channel:c,fullRMS:mid.rmsA,half:mid.ratio,
+        quarter:qtr.ratio,off:dead.ratio,legacyDifference:oldR.error,
+        legacyKillRMS:oldK.rmsB});
+      assert.ok(mid.rmsA>.08,"target negative needs audibly present output");
+      assert.ok(Math.abs(mid.ratio-.5)<.01);
+      assert.ok(Math.abs(qtr.ratio-.25)<.01);
+      assert.ok(dead.ratio<.01);
+      assert.ok(oldR.error<1e-6,"legacy full reflect identical to new 100%");
+      assert.ok(oldK.rmsB<.002,"legacy negative Kill unchanged");
+    }
+    // Setter can switch while audio is running without rebuilding Stream.
+    const stream=e.warp_stream_create_ext(fs,2,100,1000,1,0,1,0,0,1,1,0,0,0,4);
+    assert.ok(stream);
+    try{
+      for(const gain of [0,.25,.5,1])assert.equal(e.warp_stream_set_zero_reflect_gain(stream,gain),0);
+      assert.equal(e.warp_stream_set_zero_reflect_gain(stream,1.01),-2);
+      assert.equal(e.warp_stream_set_zero_reflect_gain(stream,-.01),-2);
+      assert.equal(e.warp_stream_set_zero_reflect_gain(stream,NaN),-2);
+    }finally{e.warp_stream_free(stream);}
+    const bad=[src,dst,n,channels,fs,100,1000,1,0,1,0,0,1,1,0,0,
+      0,4,0,1,-2,350,0,0,350,1,20,0,1,0,1.5];
+    assert.equal(e.warp_stream_render_f32_zero_gain_ext(...bad),-2);
+    console.log("ZERO_REFLECTION_GAIN_PCM_ACTUAL "+JSON.stringify(rows));
+  }finally{e.warp_free_f32(src,count);e.warp_free_f32(dst,count);}
+});
