@@ -423,3 +423,26 @@ test("A spectral peak band is independently adjustable in live Rust DSP",async()
     assert.ok(avg>0.0001,"A band adjustment did not affect real audio: "+avg);
   }finally{e.warp_free_f32(input,frames);e.warp_free_f32(output,frames);}
 });
+
+test("A peak-neighborhood reaches actual offline WAV Rust renderer",async()=>{
+  const e=await load();
+  const n=8192,rate=8192,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
+  assert.ok(src&&dst);
+  try{
+    const input=new Float32Array(e.memory.buffer,src,n);
+    for(let i=0;i<n;i++)input[i]=.65*Math.cos(2*Math.PI*500*i/rate)
+      +.35*Math.cos(2*Math.PI*556*i/rate);
+    const render=(band)=>{
+      const code=e.warp_stream_render_f32_a_band_ext(
+        src,dst,n,1,rate,20,3000,1,0,1,0,0,0,1,0,0,0,4,
+        0,1,0,350,0,0,350,1,20,0,band);
+      assert.equal(code,0,"offline A peak-band "+band);
+      return new Float32Array(e.memory.buffer,dst,n).slice();
+    };
+    const one=render(1),eight=render(8);
+    const averageDifference=one.slice(2048).reduce((sum,v,i)=>
+      sum+Math.abs(v-eight[i+2048]),0)/(n-2048);
+    assert.ok(averageDifference>.001,
+      "offline render ignored A FFT-bin neighborhood: "+averageDifference);
+  }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
+});
