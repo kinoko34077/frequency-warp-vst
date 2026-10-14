@@ -58,6 +58,55 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
+    // Fold/reference Hz must remain visible without opening the tooltip.
+    const shapeMarker=await page.$eval("#invert-reference-hz",el=>({
+      text:el.textContent,
+      height:el.getBoundingClientRect().height,
+      parent:el.parentElement.className
+    }));
+    assert.match(shapeMarker.text,/固定点.*Hz/);
+    assert.ok(shapeMarker.height>0&&!shapeMarker.parent.includes("info-body"),
+      "fold/reference Hz was accidentally hidden behind the ⓘ tooltip");
+    // Opt-in chain couples H=rF/m with axis pivot and supports reverse input.
+    assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
+    await page.click(".harmonic-pivot-link");
+    assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),true);
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-87.5)<.002);
+    await page.click("#tab-math");
+    for(const [id,value] of [["fundamental","480"],["denominator","5"]]){
+      await page.$eval("#"+id,(el,v)=>{
+        el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));
+      },value);
+    }
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-96)<.002);
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="120";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#fundamental",el=>Number(el.value))-600)<.005,
+      "pivot→F must solve F=mP/r without recursive updates");
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-240)<.005,
+      "F/r/m→H→pivot must include pitch ratio");
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-240)<.005,
+      "unlink must preserve the independent existing pivot value");
+    for(const [id,value] of [["denominator","4"],["pitch-ratio","1"]]){
+      await page.$eval("#"+id,(el,v)=>{
+        el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));
+      },value);
+    }
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click("#tab-map");
+
     assert.equal(await page.$eval(".dual-range",el=>el.querySelectorAll("input[type=range]").length),2);
     for(const root of ["reflection-dual","shape-dual","dual-range"]){
       const shape=await page.$eval("#"+root,el=>({
