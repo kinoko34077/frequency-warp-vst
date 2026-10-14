@@ -1,0 +1,17 @@
+[package]
+name = "fwengine-warp-adapter"
+version = "0.1.0"
+edition = "2021"
+description = "Actual shared Frequency Warp Stream as swappable WASM module"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frequency-warp-core = { path = "../core" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -8,7 +8,9 @@ import json
 import pathlib
 import zipfile
 
-def pack(wasm_path, destination, engine_id, engine_version="0.1.0"):
+def pack(wasm_path, destination, engine_id, engine_version="0.1.0", latency=0):
+    if not 0 <= latency <= 4095:
+        raise ValueError("nominal latency must fit fixed PDC 0..4095")
     wasm = pathlib.Path(wasm_path).read_bytes()
     if not wasm.startswith(b"\x00asm\x01\x00\x00\x00"):
         raise ValueError("not wasm32 core module v1")
@@ -20,7 +22,7 @@ def pack(wasm_path, destination, engine_id, engine_version="0.1.0"):
         abi_major=1, abi_minor=0, entry="engine.wasm",
         sha256=hashlib.sha256(wasm).hexdigest(),
         max_memory_bytes=67108864, max_frames=2048,
-        supported_channels=[1, 2], nominal_latency_frames=0,
+        supported_channels=[1, 2], nominal_latency_frames=latency,
         parameter_schema="host-slots-v1"
     )
     manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
@@ -41,5 +43,7 @@ if __name__ == "__main__":
     parser.add_argument("destination")
     parser.add_argument("engine_id")
     parser.add_argument("--version", default="0.1.0")
+    parser.add_argument("--latency", type=int, default=0,
+                        help="Declared engine DSP latency in samples, <= 4095")
     args = parser.parse_args()
-    pack(args.wasm,args.destination,args.engine_id,args.version)
+    pack(args.wasm,args.destination,args.engine_id,args.version,args.latency)

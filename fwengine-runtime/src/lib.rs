@@ -92,7 +92,17 @@ impl Runtime{
         ensure!(events.len()<=self.capacity,"event capacity exceeded");
         let mut last=0;
         for (i,e) in events.iter().enumerate(){
-            ensure!(e.id==64&&e.value.is_finite()&&(0.0..=4.0).contains(&e.value),"S3a permits only the test Gain slot 64 at canonical 0..4");
+            // S4a binds ONLY the stable physical host IDs 2..5 to the
+            // actual shared Stream; all other IDs remain unbound until S4b.
+            // The demo Gain fixture retains its separate ID64 contract.
+            let allowed=if self.manifest.engine_id=="org.kinotch.stream" {
+                match e.id {
+                    2|3 => e.value.is_finite()&&(0.001..=20000.0).contains(&e.value),
+                    4|5 => e.value.is_finite()&&(0.0..=1.0).contains(&e.value),
+                    _=>false
+                }
+            }else{e.id==64&&e.value.is_finite()&&(0.0..=4.0).contains(&e.value)};
+            ensure!(allowed,"unbound or out-of-range canonical host parameter");
             ensure!(e.offset as usize<=if frames==0{0}else{frames-1},"event outside block");
             ensure!(i==0||e.offset>=last,"unsorted automation");
             last=e.offset;
