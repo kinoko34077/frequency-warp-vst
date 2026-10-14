@@ -373,3 +373,9 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   .move-inline .axis-explainer{font-size:8px}
   .graph-scale{font-size:9px}
 }
+
+/* Native [hidden] must win over generic input/select layout declarations.
+   Otherwise the disabled manual engine selector looks selected while auto
+   processing has already switched to the opposite actual Rust engine. */
+.settings-body [hidden]{display:none!important}
+.settings-body .engine-auto-result{display:block;padding:6px 8px;border:1px solid #426c61;border-radius:6px;background:#152f2c;color:#bdf6df;font-size:12px;font-weight:700;margin-top:3px}
