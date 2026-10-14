@@ -1,3 +1,4 @@
+pub mod ffi;
 //! Offline native .fwengine executor. Not real-time safe; see Issue #83.
 use anyhow::{bail, ensure, Context, Result};
 use fwengine_package::{verify_package, Manifest};
@@ -5,6 +6,7 @@ use wasmi::{Config, Engine, Instance, Linker, Memory, Module, Store, StoreLimits
 
 const FUEL_PREP: u64=15_000_000;
 const FUEL_BLOCK: u64=10_000_000;
+#[repr(C)]
 #[derive(Clone,Copy)]
 pub struct ParamEvent {pub id:u32,pub offset:u32,pub value:f64}
 type ProcessFn=TypedFunc<(i32,i32,i32,i32,i32,i32),i32>;
