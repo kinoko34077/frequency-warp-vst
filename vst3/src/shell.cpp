@@ -3,6 +3,10 @@
 #include "delay.h"
 #include "async_pcm_mailbox.h"
 #include "native_engine_abi.h"
+#include "native_worker_service.h"
+#include "pluginterfaces/vst/ivstmessage.h"
+#include <cstring>
+#include <vector>
 #include "parameter_registry.h"
 #include "base/source/fstring.h"
 #include "public.sdk/source/vst/vstaudioeffect.h"
@@ -69,15 +73,57 @@ public:
             (in[0]!=SpeakerArr::kStereo&&in[0]!=SpeakerArr::kMono))return kResultFalse;
         getAudioInput(0)->setArrangement(in[0]);
         getAudioOutput(0)->setArrangement(out[0]);
+        hostChannels_ = in[0]==SpeakerArr::kMono ? 1u : 2u;
         return kResultOk;
     }
     tresult PLUGIN_API setupProcessing(ProcessSetup& setup) override {
         if(!std::isfinite(setup.sampleRate)||setup.sampleRate<=0.0||
             setup.maxSamplesPerBlock<1)return kResultFalse;
-        return AudioEffect::setupProcessing(setup);
+        const auto result=AudioEffect::setupProcessing(setup);
+        if(result==kResultOk) hostSampleRate_=setup.sampleRate;
+        return result;
     }
     tresult PLUGIN_API setActive(TBool active) override {
-        delay_.reset();return AudioEffect::setActive(active);
+        // Host lifecycle is non-audio; setActive(false) requires quiescent
+        // callbacks. Joining or spawning a Rust worker in process is forbidden.
+        if(!active) {
+            worker_.stop();
+            delay_.reset();
+            return AudioEffect::setActive(active);
+        }
+        delay_.reset();
+        const auto result=AudioEffect::setActive(active);
+        if(result!=kResultOk)return result;
+        if(!worker_.start()) {
+            AudioEffect::setActive(false);
+            return kResultFalse;
+        }
+        return kResultOk;
+    }
+    // Controller-to-Processor single-file package transport. The actual
+    // file chooser and drag/drop UI are S3c. Host-mediated notify is NOT
+    // invoked from the audio callback; it only queues bytes for the worker.
+    tresult PLUGIN_API notify(IMessage* message) override {
+        if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),"FrequencyWarp.LoadFwengineV1")!=0)
+            return AudioEffect::notify(message);
+        auto* attrs=message->getAttributes();
+        if(!attrs)return kResultFalse;
+        const void* bytes=nullptr;
+        uint32 size=0;
+        if(attrs->getBinary("package",bytes,size)!=kResultTrue ||
+           !bytes||size==0||size>8*1024*1024)return kResultFalse;
+        // Rejection never replaces the last valid engine. Unsupported mono/
+        // stereo arrangement is refused earlier by setBusArrangements.
+        const uint32 channels=hostChannels_;
+        std::vector<uint8_t> copy;
+        try {
+            const auto* first=static_cast<const uint8_t*>(bytes);
+            copy.assign(first,first+size);
+        }catch(...) { return kResultFalse; }
+        return worker_.postPackage(std::move(copy),hostSampleRate_,
+                                  channels,AsyncPcmMailbox::kMaxFrames)
+            ? kResultOk:kResultFalse;
     }
     tresult PLUGIN_API canProcessSampleSize(int32 size) override {
         return (size==kSample32||size==kSample64)?kResultTrue:kResultFalse;
@@ -153,7 +199,7 @@ public:
         // in-place buffers never overwrite input not yet copied to the worker.
         // Avoid calling the worker or Wasmi; only two lock-free queue operations
         // and constant-size stack buffers are permitted here.
-        const bool hasWorker=mailbox_.rtHasPreparedWorker();
+        const bool hasWorker=worker_.mailbox().rtHasPreparedWorker();
         for(int32 start=0;start<data.numSamples;) {
             const uint32_t frames=static_cast<uint32_t>(
                 std::min<int32>(data.numSamples-start,AsyncPcmMailbox::kMaxFrames));
@@ -179,17 +225,17 @@ public:
             }
             uint64_t jobStart=0;
             if(hasWorker) {
-                jobStart=mailbox_.rtNextTime();
+                jobStart=worker_.mailbox().rtNextTime();
                 const float* inputs[2]={input[0].data(),input[1].data()};
                 // No unvalidated generic host ParamID semantic binding.
                 // Parameter event forwarding is a separate S3b4-B/S4 gate.
-                mailbox_.rtSubmit(inputs,static_cast<uint32_t>(src.numChannels),
+                worker_.mailbox().rtSubmit(inputs,static_cast<uint32_t>(src.numChannels),
                                   frames);
             }
             for(uint32_t i=0;i<frames;i++) {
                 float wet[2]{};
                 const bool available=hasWorker&&
-                   mailbox_.rtReadWet(jobStart+i,
+                   worker_.mailbox().rtReadWet(jobStart+i,
                      static_cast<uint32_t>(src.numChannels),wet);
                 for(int32 ch=0;ch<src.numChannels;ch++) {
                     const auto dry=delay_.tick(ch,original[ch][i]);
@@ -219,7 +265,9 @@ public:
 private:
     Values values_=defaults();
     Delay delay_;
-    AsyncPcmMailbox mailbox_; // ready/worker configured only from non-RT context
+    NativeWorkerService worker_{}; // per-instance worker, never process()
+    double hostSampleRate_=48000.;
+    uint32 hostChannels_=2;
 };
 class Controller final:public EditController {
 public:
