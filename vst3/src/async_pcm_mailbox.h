@@ -110,6 +110,7 @@ public:
         const auto next=activeGeneration_.load(std::memory_order_relaxed)+1;
         workerGeneration_=next;
         activeGeneration_.store(next,std::memory_order_release);
+        workerReady_.store(process!=nullptr,std::memory_order_release);
         return true;
     }
     // Off-RT only. Process at most one queued block, bounded queue operations.
@@ -167,6 +168,11 @@ public:
         }
         return false;
     }
+    // Audio thread queries this only; worker enables after complete setup.
+    // Must be reset by the owning plugin's non-RT lifecycle before destruction.
+    bool rtHasPreparedWorker() const noexcept {
+        return workerReady_.load(std::memory_order_acquire);
+    }
     Stats stats() const noexcept {
         return {rejectedInput_.load(std::memory_order_relaxed),
                 rejectedOutput_.load(std::memory_order_relaxed),
@@ -185,6 +191,7 @@ private:
     SpscPackets<Output,kQueueSize> output_{};
     uint64_t nextInputTime_=0; // RT-owned
     std::atomic<uint64_t> activeGeneration_{1};
+    std::atomic<bool> workerReady_{false};
     uint64_t workerGeneration_=1; // worker-owned
     uint32_t workerLatency_=0;
     ProcessFn workerProcess_=nullptr;
