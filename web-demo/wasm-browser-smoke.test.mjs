@@ -54,7 +54,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#invert",el=>el.value),"0");
     assert.equal(await page.$eval("#engine",el=>el.value),"1","B must be initial manual engine");
     assert.equal(await page.$eval("#mode",el=>el.value),"reciprocal");
-    assert.deepEqual(await page.$eval("#mode option",opts=>opts.map(o=>o.value)),
+    assert.deepEqual(await page.$eval("#mode",el=>Array.from(el.options,option=>option.value)),
       ["reciprocal","fold-l","fold-h"],"Blend is no longer selectable");
     assert.equal(await page.$eval("#axis-slope",el=>el.min),"-4");
     assert.equal(await page.$eval("#axis-slope-value",el=>el.min),"-4");
