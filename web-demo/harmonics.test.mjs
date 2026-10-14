@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {deriveHarmonics,graphSegments} from "./harmonics.mjs";
+import {deriveHarmonics,graphSegments,mapAtFrequency} from "./harmonics.mjs";
 import {mapFrequency} from "./mapping-oracle.test-helper.mjs";
 
 test("Issue16 F=100 -75Hz => virtual root 25Hz and sparse indices 1,5,9...",()=>{
@@ -81,9 +81,10 @@ test("Fade near zero follows the selected Rust FFT window, not a fixed 1024",()=
  const f=500;
  // Negative target -13Hz; 1024-window step=46.875 keeps it, while
  // 4096-window step=11.719 discards it.
- const one=graphSegments({...cfg,qualityIndex:0},x=>x,(x)=>x,2000);
- const three=graphSegments({...cfg,qualityIndex:2},x=>x,(x)=>x,2000);
- const near=rows=>rows.find(row=>Math.abs(row.f-f)<2);
- assert.ok(near(one)?.outputs[0]>0);
- assert.equal(near(three)?.outputs.length,0);
+ // A 13-Hz survivor is below the PLOT minimum (20 Hz), so inspect the
+ // audible mapping before graphSegments applies display-only clipping.
+ const one=mapAtFrequency(f,{...cfg,qualityIndex:0},x=>x,(x)=>x);
+ const three=mapAtFrequency(f,{...cfg,qualityIndex:2},x=>x,(x)=>x);
+ assert.equal(one.outputs[0],13);
+ assert.equal(three.outputs.length,0);
 });
