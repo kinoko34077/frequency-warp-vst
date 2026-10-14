@@ -70,8 +70,9 @@ export function sampleHoldImages(inputHz,sampleRate,hold,maxOrders=3){
   if(hold===1)return [{hz:f,gain:1,order:0}];
   const feff=Fs/hold;
   const base=-Math.round(f/feff);
-  const orders=new Set([0]);
+  const orders=new Set([base]);
   for(let m=-maxOrders;m<=maxOrders;m++)orders.add(base+m);
+  orders.add(0);
   const out=[];
   for(const order of orders){
     // Distinct coefficient indices mod N. Avoid duplicate physical images
