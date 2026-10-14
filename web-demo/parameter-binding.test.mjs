@@ -1,0 +1,134 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {UNIT_REGISTRY, defineParameter, snappedValue, createParameterBinding} from "./parameter-binding.mjs";
+
+const logRail = Object.freeze({
+  toPosition:hz=>Math.log2(hz/20)/Math.log2(20000/20),
+  fromPosition:p=>20*2**(p*Math.log2(20000/20))
+});
+const lineRail=(min,max)=>({toPosition:v=>(v-min)/(max-min),fromPosition:p=>min+p*(max-min)});
+const pitch=()=>defineParameter({id:"fundamental",min:20,max:20000,defaultValue:440,
+  units:["hz","note","percent"],rail:logRail,digits:5,
+  snap:{mode:"step",unit:"note",step:1,thresholdPx:8}});
+
+test("unit registry, typed per-parameter allowed units, and invalid declarations",()=>{
+  assert.equal(UNIT_REGISTRY.note.dimension,"frequency");
+  assert.equal(UNIT_REGISTRY.percent.requiresRail,true);
+  assert.deepEqual(pitch().units,["hz","note","percent"]);
+  assert.throws(()=>defineParameter({id:"invert",min:0,max:1,defaultValue:0.5,
+    units:["hz"],rail:lineRail(0,1)}),RangeError);
+  assert.throws(()=>defineParameter({id:"low",min:20,max:20000,defaultValue:100,
+    units:["hz","percent"]}),RangeError);
+  assert.throws(()=>defineParameter({id:"low",min:20000,max:20,defaultValue:100,
+    units:["hz"],rail:logRail}),RangeError);
+  assert.throws(()=>defineParameter({id:"fundamental",min:20,max:20000,defaultValue:100,
+    units:["hz","note"],rail:logRail,snap:{mode:"step",unit:"cents",step:1}}),RangeError);
+});
+
+test("switching views does not change the canonical value or emit DSP callbacks",()=>{
+  const changes=[];
+  const p=createParameterBinding(pitch(),{initialValue:443.123456789,onChange:e=>changes.push(e)});
+  const initial=p.value;
+  assert.equal(p.selectUnit("note"),"note");
+  assert.match(p.display(),/^[A-G]/);
+  p.selectUnit("percent");
+  assert.ok(Math.abs(p.display()-100*logRail.toPosition(initial))<.00001);
+  p.selectUnit("hz");
+  assert.equal(p.value,initial);
+  assert.equal(changes.length,0);
+  assert.throws(()=>p.selectUnit("cents"),RangeError);
+});
+
+test("nonlinear rail percentage uses actual transfer, not percentage of Hz",()=>{
+  const p=createParameterBinding(pitch(),{initialUnit:"percent"});
+  p.setView("50%");
+  assert.ok(Math.abs(p.value-Math.sqrt(20*20000))<1e-8);
+  assert.equal(p.display(),50);
+  assert.throws(()=>p.setView("101%"),RangeError);
+  assert.throws(()=>p.setView(""),RangeError);
+});
+
+test("0-Hz pivot is valid canonically but incompatible with note formatting",()=>{
+  const zeroRail={toPosition:v=>v===0?0:0.1+0.9*Math.log(v/.001)/Math.log(20000/.001),
+    fromPosition:t=>t===0?0:.001*(20000/.001)**((t-.1)/.9)};
+  const desc=defineParameter({id:"axis-pivot",min:0,max:20000,defaultValue:0,
+    units:["hz","note","percent"],rail:zeroRail});
+  const p=createParameterBinding(desc);
+  assert.equal(p.value,0);
+  assert.throws(()=>{p.selectUnit("note");p.display();},RangeError);
+  assert.equal(p.value,0);
+  p.selectUnit("hz");
+  assert.equal(p.display(),0);
+  assert.throws(()=>p.setView("xyz",{unit:"note",overflow:"reject"}),RangeError);
+});
+
+test("note+cents parses without rounding canonical state; overflow is explicit",()=>{
+  const p=createParameterBinding(pitch());
+  p.setView("A4+25c",{unit:"note"});
+  const expected=440*2**(25/1200);
+  assert.ok(Math.abs(p.value-expected)<1e-10);
+  p.setView("200000 Hz",{overflow:"clamp"});
+  assert.equal(p.value,20000);
+  assert.throws(()=>p.setView("200000",{overflow:"reject"}),RangeError);
+  assert.equal(p.value,20000);
+  assert.throws(()=>p.setView("xyz"),RangeError);
+  assert.equal(p.value,20000);
+});
+
+test("snap selects closest actual rail-pixel semitone, not a numeric Hz interval",()=>{
+  const desc=pitch();
+  const near=440*2**(5/1200); // 5 cents away
+  assert.equal(snappedValue(desc,near,{railPixels:350}),440);
+  assert.equal(snappedValue(desc,near,{railPixels:100000}),near);
+  assert.equal(snappedValue(desc,near,{origin:"typed",railPixels:350}),near);
+  assert.throws(()=>snappedValue(desc,near,{railPixels:0}),RangeError);
+  const events=[];
+  const p=createParameterBinding(desc,{onChange:e=>events.push(e)});
+  p.setCanonical(near,{origin:"slider",snap:true,railPixels:350});
+  assert.equal(p.value,440);
+  assert.equal(events.length,0); // same canonical as initial default
+  p.setCanonical(near,{origin:"typed"});
+  assert.equal(p.value,near);
+  assert.equal(events.length,1);
+  assert.equal(events[0].origin,"typed");
+});
+
+test("target snap, linked silent derivation, reset and single user transaction",()=>{
+  const desc=defineParameter({id:"axis-slope",min:-4,max:4,defaultValue:1,
+    units:["ratio","percent"],rail:lineRail(-4,4),
+    snap:{mode:"targets",unit:"ratio",targets:[-1,0,1],thresholdPx:10}});
+  const ev=[];
+  const p=createParameterBinding(desc,{onChange:e=>ev.push(e)});
+  p.setPosition((.03+4)/8,{railPixels:350});
+  assert.equal(p.value,0);
+  assert.equal(ev.length,1);
+  p.setCanonical(1.2,{notify:false});
+  assert.equal(ev.length,1);
+  p.reset();
+  assert.equal(p.value,1);
+  assert.equal(ev.length,2);
+  assert.equal(p.display(),1);
+});
+
+test("ratio/semitones/cents and display rounding preserve canonical state",()=>{
+  const desc=defineParameter({id:"pitch-ratio",min:.25,max:4,defaultValue:1,
+    units:["ratio","semitones","cents","percent"],rail:{
+      toPosition:v=>Math.log2(v/.25)/4,
+      fromPosition:t=>.25*2**(4*t)
+    }});
+  const p=createParameterBinding(desc);
+  p.setView("700",{unit:"cents"});
+  assert.ok(Math.abs(p.value-2**(7/12))<1e-12);
+  p.selectUnit("semitones");
+  assert.equal(p.display(),7);
+  const v=p.value;
+  p.selectUnit("ratio");p.display(2);
+  assert.equal(p.value,v);
+});
+
+test("reentrant user callbacks fail rather than recursively rescheduling",()=>{
+  let binding;
+  binding=createParameterBinding(pitch(),{onChange:()=>binding.setCanonical(660)});
+  assert.throws(()=>binding.setCanonical(442),/reentrant/);
+  assert.equal(binding.value,442);
+});
