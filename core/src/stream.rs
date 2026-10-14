@@ -379,7 +379,7 @@ impl Stream {
                     // Exact same signed/DC policy used by the peak-resynthesis
                     // engine. Previously FFT-bin mode *always killed* negative
                     // targets (and clamped pre-shift negatives to 1e-7).
-                    let (target,_gain)=match self.resolve_zero(target,step){
+                    let (target,_gain)=match self.resolve_all(anchor_f,target,step,source_anchor){
                         Some(v)=>v,None=>continue
                     };
                     if target>=self.sample_rate*0.5 {continue;}
@@ -483,7 +483,7 @@ impl Stream {
                     self.axis_pivot,self.axis_slope,
                     self.axis_reference,self.settings.curvature,self.axis_shift)
             };
-            let (target,fade_gain)=match self.resolve_zero(target,step){
+            let (target,fade_gain)=match self.resolve_all(frequency,target,step,source_anchor){
                 Some(v)=>v,None=>continue
             };
             if !(target>0.0&&target<self.sample_rate/2.0){continue;}
@@ -558,7 +558,7 @@ impl Stream {
                             self.axis_pivot,self.axis_slope,self.axis_reference,
                             self.settings.curvature,self.axis_shift)
                     };
-                    let (target,fade_gain)=match self.resolve_zero(target,step){
+                    let (target,fade_gain)=match self.resolve_all(f,target,step,source_anchor){
                         Some(v)=>v,None=>continue
                     };
                     if target>=self.sample_rate/2.0{continue;}
