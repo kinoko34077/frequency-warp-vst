@@ -612,7 +612,7 @@ const inline={
   "zero-decay-value":["zero-decay",v=>v,"zero-decay",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
-  "axis-slope-value":["axis-slope",v=>v,"axis-slope",0.1,4],
+  "axis-slope-value":["axis-slope",v=>v,"axis-slope",-4,4],
   "wet-value":["wet",v=>v/100,"wet",0,100],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
   "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,192000]
@@ -885,7 +885,7 @@ controls.download.addEventListener("click",()=>{
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
-    engine:"1",mode:"blend",outside:"pass",quality:"eco",
+    engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
