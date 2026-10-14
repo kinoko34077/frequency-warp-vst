@@ -1019,6 +1019,27 @@ mod tests{
         assert_eq!(st.carrier_hz,-1.0);
     }
     #[test]
+    fn synthesis_and_distance_reflection_are_independently_controlled(){
+        let mut st=Stream::new_extended(8192.0,1,settings(),1,1,1.0,0.0,0.0,0,4).unwrap();
+        st.set_transform(0.0,350.0,0,0).unwrap();
+        st.set_zero_reflect_gain(0.8).unwrap();
+        st.set_zero_reflect_decay(0.5).unwrap();
+        assert_eq!(st.resolve_zero(-350.0,8.0),Some((350.0,0.4)));
+        assert_eq!(st.resolve_zero(-700.0,8.0),Some((700.0,0.2)));
+        assert_eq!(st.resolve_zero(400.0,8.0),Some((400.0,1.0)));
+        assert!((zero_reflection_amplitude(175.0,0.8,0.5,350.0)-
+            0.8*(0.5f64).sqrt()).abs()<1e-12);
+        assert_eq!(zero_reflection_amplitude(700.0,0.8,0.0,350.0),0.8);
+        assert_eq!(zero_reflection_amplitude(700.0,0.8,1.0,350.0),0.0);
+        assert!(st.set_zero_reflect_decay(f64::NAN).is_err());
+        assert!(st.set_zero_reflect_decay(-0.1).is_err());
+        assert!(st.set_zero_reflect_decay(1.001).is_err());
+        assert_eq!(st.zero_reflect_decay,0.5);
+        let original=st.resolve_zero(-350.0,8.0);
+        assert_eq!(warp_zero_reflection_amplitude(350.0,0.8,0.5,350.0),
+            original.unwrap().1);
+    }
+    #[test]
     fn variable_negative_reflection_is_strictly_bounded_and_legacy_modes_unchanged(){
         let mut st=Stream::new_extended(8192.0,2,settings(),1,1,1.0,0.0,0.0,0,4).unwrap();
         assert_eq!(st.resolve_zero(-320.0,8.0),Some((320.0,1.0)));
