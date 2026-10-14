@@ -105,8 +105,15 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
             if e>0 {
                 let mut next=*settings;
                 for i in 0..e{modify(&mut next,EVENTS[i]);}
-                if engine.configure(next,OUTSIDE_PASS).is_err(){return -3;}
-                *settings=next;
+                // Physical host parameters can individually be in-range but
+                // jointly impossible (L>=H or H>=host Nyquist). These are
+                // ordinary DAW automation crossings, NOT a WASM runtime trap.
+                // Keep the last verified working settings until the next
+                // valid same-sample combination is received. The host sends
+                // full L/H snapshot on every new PCM packet for recovery.
+                if engine.configure(next,OUTSIDE_PASS).is_ok(){
+                    *settings=next;
+                }
             }
             return 0;
         }
@@ -118,8 +125,15 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
                 while ei<e&&(EVENTS[ei].offset as usize)==pos{
                     modify(&mut next,EVENTS[ei]);ei+=1;
                 }
-                if engine.configure(next,OUTSIDE_PASS).is_err(){return -3;}
-                *settings=next;
+                // Physical host parameters can individually be in-range but
+                // jointly impossible (L>=H or H>=host Nyquist). These are
+                // ordinary DAW automation crossings, NOT a WASM runtime trap.
+                // Keep the last verified working settings until the next
+                // valid same-sample combination is received. The host sends
+                // full L/H snapshot on every new PCM packet for recovery.
+                if engine.configure(next,OUTSIDE_PASS).is_ok(){
+                    *settings=next;
+                }
             }
             let end=if ei<e{EVENTS[ei].offset as usize}else{f};
             if end<=pos{return -4;}
