@@ -41,12 +41,17 @@ self.onmessage=async ({data})=>{
     // Offline file export through the SAME stream as realtime audition. No fake progress.
     self.postMessage({type:"progress",value:0});
     const options=data.settings;
+    // The playback AudioContext may resample a decoded file to a different
+    // device rate. Preserve the REQUESTED Hz when exporting at source rate.
+    const hold=options.crusherRateHz?
+      Math.max(1,Math.min(32,Math.round(data.sampleRate/options.crusherRateHz))):
+      options.crusherHold;
     const start=performance.now();
     const result=exports.warp_stream_render_f32_a_quality_ext(src,dst,frames,channels.length,
       data.sampleRate,options.low,options.high,options.curvature,options.invert,
       options.mode==="blend"?1:options.mode==="fold-l"?2:0,options.qualityIndex,
       options.outside==="pass"?1:0,options.engine,options.pitchRatio,options.shiftHz,
-      options.carrierHz,options.zeroMode,options.hopDiv,options.crusherBits,options.crusherHold,
+      options.carrierHz,options.zeroMode,options.hopDiv,options.crusherBits,hold,
       options.axisShift,options.axisReference,options.ringEnabled?1:0,options.rationalEnabled?1:0,
       options.axisPivot,options.axisSlope,options.aMinHz,options.aReverb,options.aBandBins,options.aQuality);
     if(result!==0)throw new Error("共通DSPの処理に失敗: status "+result);
