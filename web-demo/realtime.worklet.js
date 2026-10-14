@@ -41,7 +41,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         if (!e[name]) throw Error("Missing shared Rust ABI: " + name);
       }
       const options=data.settings;
-      const mode=options.mode==="blend"?1:options.mode==="fold-l"?2:0;
+      const mode=options.mode==="blend"?1:options.mode==="fold-l"?2:options.mode==="reciprocal"?3:0;
       const channels=data.channels;
       const stream=e.warp_stream_create_ext(
         sampleRate,channels,options.low,options.high,options.curvature,
@@ -112,7 +112,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         return;
       }
       const code=e.warp_stream_set_ext(this.stream,p.low,p.high,p.curvature,p.invert,
-        p.mode==="blend"?1:p.mode==="fold-l"?2:0,
+        p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0,
         p.qualityIndex,p.outside==="pass"?1:0,p.engine,p.pitchRatio,
         p.shiftHz,p.carrierHz,p.zeroMode);
       const axis=code===0?e.warp_stream_set_transform(this.stream,p.axisShift,
