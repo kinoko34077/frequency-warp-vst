@@ -43,9 +43,9 @@ self.onmessage=async ({data})=>{
     const options=data.settings;
     // The playback AudioContext may resample a decoded file to a different
     // device rate. Preserve the REQUESTED Hz when exporting at source rate.
-    const hold=options.crusherRateHz?
-      Math.max(1,Math.min(32,Math.round(data.sampleRate/options.crusherRateHz))):
-      options.crusherHold;
+    const hold=Number.isFinite(options.crusherRateHz)?
+      (options.crusherRateHz<=0?0:Math.max(1,Math.min(1_000_000_000,
+        Math.round(data.sampleRate/options.crusherRateHz)))):options.crusherHold;
     const start=performance.now();
     const result=exports.warp_stream_render_f32_zero_controls_ext(src,dst,frames,channels.length,
       data.sampleRate,options.low,options.high,options.curvature,options.invert,

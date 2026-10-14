@@ -204,7 +204,11 @@ impl Stream {
         Ok(())
     }
     pub fn set_crusher(&mut self,bits:u32,hold:u32)->Result<(),&'static str>{
-        if (bits!=0 && !(2..=16).contains(&bits)) || !(1..=32).contains(&hold) {
+        // hold=0 represents an actual 0 Hz update rate: quantise/hold
+        // only the first sample after reset; no divide-by-zero.
+        // A finite hold is an integer sample interval, not an
+        // arbitrary-integer or non-realizable float sampling rate.
+        if (bits!=0 && !(2..=16).contains(&bits)) || hold>1_000_000_000 {
             return Err("invalid bit-crusher settings");
         }
         self.crusher_bits=bits;self.crusher_hold=hold;Ok(())
@@ -232,7 +236,9 @@ impl Stream {
                         +tail/3.0*self.a_reverb_amount;
                 }
                  output[idx]=if self.crusher_bits==0{sample}else{
-                    if self.crusher_counter%(self.crusher_hold as u64)==0 {
+                    if (self.crusher_hold==0 && self.crusher_counter==0) ||
+                        (self.crusher_hold>0 &&
+                         self.crusher_counter%(self.crusher_hold as u64)==0) {
                         self.crusher_value[c]=
                             (sample.clamp(-1.0,1.0)*levels).round()/levels;
                     }
@@ -1068,6 +1074,32 @@ mod tests{
             assert_eq!(warp_stream_set_zero_reflect_gain(ptr,2.0),-2);
             warp_stream_free(ptr);
         }
+    }
+    #[test]
+    fn crusher_zero_hz_freezes_sample_and_large_intervals_without_division_by_zero(){
+        let mut stream=Stream::new(8192.0,2,settings(),1).unwrap();
+        assert!(stream.set_crusher(8,0).is_ok());
+        let mut out=vec![0.0f32;256];
+        for i in 0..128 {
+            out[i]=if i==0{0.37}else{(i as f32/100.0).sin()};
+            out[128+i]=if i==0{-0.27}else{(i as f32/53.0).cos()};
+        }
+        stream.post_process(&mut out,128);
+        let q0=(0.37f32*128.0).round()/128.0;
+        let q1=(-0.27f32*128.0).round()/128.0;
+        for i in 0..128{
+            assert_eq!(out[i],q0);assert_eq!(out[128+i],q1);
+        }
+        for v in &mut out {*v=0.8;}
+        stream.post_process(&mut out,128);
+        assert!(out[..128].iter().all(|x|*x==q0));
+        assert!(out[128..].iter().all(|x|*x==q1));
+        stream.reset();
+        assert!(stream.set_crusher(8,500_000).is_ok());
+        assert!(stream.set_crusher(8,1_000_000_001).is_err());
+        let mut output=vec![0.21f32;2];
+        stream.post_process(&mut output,1);
+        assert!(output.iter().all(|x|*x!=0.0));
     }
     #[test]
     fn crusher_live_settings_and_sample_hold_are_effective(){
