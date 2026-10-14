@@ -350,6 +350,7 @@ $("#wave").addEventListener("keydown",e=>{
   }
 });
 async function context(){
+  try{if(navigator.audioSession)navigator.audioSession.type="playback";}catch{}
   if(!state.ctx)state.ctx=new AudioContext();
   await state.ctx.resume();return state.ctx;
 }
