@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(FrequencyWarpStateCodec LANGUAGES CXX)
+enable_testing()
+add_executable(fw_project_state_test state_image_test.cpp)
+target_compile_features(fw_project_state_test PRIVATE cxx_std_17)
+add_test(NAME fw_project_state_test COMMAND fw_project_state_test)
