@@ -387,7 +387,7 @@ test("signed physical slope and zero-slope collapse work across WASM mapping, re
    for(let i=0;i<frames;i++)samples[i]=.45*Math.cos(2*Math.PI*500*i/rate);
    for(const engine of [0,1]){
      const rc=e.warp_stream_render_f32_geometry_ext(src,dst,frames,1,rate,
-       20,3000,1,0,3,0,0,engine,1,0,0,0,4,0,1,0,350,600,-1);
+       20,3000,1,0,3,0,0,engine,1,0,0,0,4,0,1,0,350,0,0,600,-1);
      assert.equal(rc,0,"signed slope should be accepted by native/WASM render engine "+engine);
      const pcm=new Float32Array(e.memory.buffer,dst,frames);
      const projection=hz=>{
