@@ -1,6 +1,7 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
+import {installDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
@@ -120,6 +121,8 @@ function labels(id=""){
   showNumber("invert-value",100*p.invert);
   showNumber("zero-reflect-value",100*p.zeroReflectGain);
   showNumber("zero-decay-value",100*p.zeroReflectDecay);
+  reflectionDual.draw(); // Includes typed precision updates & reset, not just drags.
+  boundsDual.draw();
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
     "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
   $("#zero-reflect-formula").textContent="反射成分の音量="+displayNumber(100*p.zeroReflectGain)+
@@ -645,18 +648,11 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
 }
-// The two handles share a physical track. Touching the bare rail selects
-// whichever endpoint is closest; the handles themselves remain draggable.
-$("#dual-range").addEventListener("pointerdown",event=>{
-  if(event.target!==$("#dual-range"))return;
-  const box=event.currentTarget.getBoundingClientRect();
-  const normalized=clamp((event.clientX-box.left)/box.width,0,1);
-  const target=normalized*1000;
-  const low=Number($("#low").value),high=Number($("#high").value);
-  const slider=Math.abs(target-low)<=Math.abs(target-high)?$("#low"):$("#high");
-  slider.value=String(Math.round(target));
-  slider.dispatchEvent(new Event("input",{bubbles:true}));
-});
+// One reusable pointer-capture gesture contract for the two meaningful
+// pairs with identical scales: synthesis/reflection % and L/H Hz bounds.
+// Do not combine unrelated DSP controls such as pitch slope & Mix.
+const reflectionDual=installDualThumb($("#reflection-dual"),$("#zero-reflect"),$("#zero-decay"));
+const boundsDual=installDualThumb($("#dual-range"),$("#low"),$("#high"));
 $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;drawCurve();});
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
