@@ -87,7 +87,8 @@ function settings(){
     crusherHold:scalar("crusher-hold",()=>Number($("#crusher-hold").value)),
     aMinHz:scalar("a-min",()=>hzFromScale($("#a-min").value)),
     aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100),
-    aBandBins:Number($("#a-band").value)
+    aBandBins:Number($("#a-band").value),
+    aQuality:Number($("#a-quality").value)
   };
   // Evaluate the effective curve that is drawn, not just the raw invert
   // mapping. Signed 0-Hz Reflect can reverse the displayed slope even when
@@ -113,6 +114,11 @@ function labels(id=""){
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
   showNumber("a-band-value",p.aBandBins);
+  showNumber("a-quality-value",p.aQuality);
+  const profile=[{count:6,floor:.09},{count:10,floor:.045},{count:18,floor:.025}][p.qualityIndex];
+  const budget=profile.count+Math.floor(profile.count*3*p.aQuality/100);
+  const floor=(profile.floor*(1-.9*p.aQuality/100)*100).toFixed(2);
+  $("#a-quality-info").textContent="品質 "+p.aQuality+"/100 · 最大ピーク "+budget+"本/窓（基準 "+profile.count+"本）・候補閾値 "+floor+"%（窓内最大値比）。算術演算量の上限は基準の約 "+(budget/profile.count).toFixed(1)+"倍。実CPU時間は再生中のステータスへ表示。ノイズ・アタックの完全復元を保証しません。";
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
   showNumber("crusher-hold-value",p.crusherHold);
@@ -508,6 +514,7 @@ function updateParams(changed){
 const inline={
   "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",20,20000],
   "a-band-value":["a-band",v=>v,"a-band",1,8],
+  "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
   "low-value":["low",v=>scaleFromHz(v),"low",20,20000],
   "high-value":["high",v=>scaleFromHz(v),"high",20,20000],
@@ -522,7 +529,7 @@ const inline={
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   const field=$("#"+id);
-  const integer=range==="crusher-bits"||range==="crusher-hold"||range==="a-band";
+  const integer=range==="crusher-bits"||range==="crusher-hold"||range==="a-band"||range==="a-quality";
   const normalized=value=>{
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
@@ -577,7 +584,7 @@ $("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;dr
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
 });
-for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-reverb","ring-enabled","rational-enabled"]){
+for(const name of ["low","high","curvature","invert","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{delete state.precise[name];updateParams(name);updateEngineInfo();});
 }
 // Native mobile selectors dispatch CHANGE; do not wait for a slider gesture.
@@ -787,14 +794,14 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"0",high:"968",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"414","axis-slope":"1",
     engine:"1",mode:"blend",outside:"pass",quality:"eco",
-    overlap:"4","zero-mode":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1"
+    overlap:"4","zero-mode":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#engine-auto").checked=false;
   $("#a-min").value="0";$("#a-reverb").value="0";
-  $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";
+  $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="4";
   $("#crusher-bits-value").value="8";
