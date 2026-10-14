@@ -379,3 +379,9 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
    processing has already switched to the opposite actual Rust engine. */
 .settings-body [hidden]{display:none!important}
 .settings-body .engine-auto-result{display:block;padding:6px 8px;border:1px solid #426c61;border-radius:6px;background:#152f2c;color:#bdf6df;font-size:12px;font-weight:700;margin-top:3px}
+
+/* Experimental bitcrusher visual: independent synthetic time-domain example. */
+.crusher-wave-view{margin:5px 0 0;padding:6px 7px;border:1px solid #284247;border-radius:7px;background:#091c20}
+.crusher-wave-view figcaption{font-size:10px;color:#a9bdb9;margin-bottom:5px;line-height:1.5}
+.crusher-wave-view canvas{width:100%;height:90px;display:block;border-radius:4px;background:#091a1d}
+#crusher-rate-explainer{overflow-wrap:anywhere}
