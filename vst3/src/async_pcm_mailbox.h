@@ -185,6 +185,9 @@ public:
         input_.resetStopped();output_.resetStopped();
         nextInputTime_=0;haveCurrent_=currentStarted_=false;
         current_=Output{};
+        workerProcess_=nullptr;workerContext_=nullptr;workerLatency_=0;
+        workerGeneration_=1;activeGeneration_.store(1,std::memory_order_relaxed);
+        workerReady_.store(false,std::memory_order_release);
     }
 private:
     SpscPackets<Input,kQueueSize> input_{};
