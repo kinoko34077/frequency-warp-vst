@@ -23,3 +23,7 @@ add_test(NAME fw_shell_delay_test COMMAND fw_shell_delay_test)
 add_executable(fw_shell_automation_test tests/automation_registry_test.cpp)
 target_compile_features(fw_shell_automation_test PRIVATE cxx_std_17)
 add_test(NAME fw_shell_automation_test COMMAND fw_shell_automation_test)
+
+add_executable(fw_native_abi_header_test tests/ffi_abi_header_test.cpp)
+target_compile_features(fw_native_abi_header_test PRIVATE cxx_std_17)
+add_test(NAME fw_native_abi_header_test COMMAND fw_native_abi_header_test)
