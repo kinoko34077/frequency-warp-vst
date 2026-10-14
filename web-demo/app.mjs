@@ -1,6 +1,7 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
+import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
