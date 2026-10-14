@@ -238,12 +238,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#zero-reflect-value",el=>{
       el.value="100";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
-    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/合成 100% \/ 減衰 0%/);
+    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/合成 100% \/ 反射 0%/);
     assert.equal(await page.$eval("#zero-decay",el=>el.value),"0");
     await page.$eval("#zero-decay",el=>{
       el.value="50";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/減衰 50%/);
+    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/反射 50%/);
     assert.match(await page.$eval("#zero-reflect-formula",el=>el.textContent),/350Hz/);
     const fadedGraph=await page.$eval("#curve",el=>el.toDataURL());
     assert.notEqual(reflectedFull,fadedGraph,"decay must change the drawn negative-target reflection");
