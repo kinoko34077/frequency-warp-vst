@@ -85,6 +85,24 @@ int main(int argc,char** argv) {
                "rejected candidate reported as accepted or lost its request token");
         proveWet(service,.4f,4095+256);
 
+        // Reject UNBOUND Stream ID4, but preserve the demo module's actual
+        // Gain ID64 automation. Two events on one worker packet.
+        std::array<float,128> proofLeft{},proofRight{};
+        proofLeft.fill(.8f);proofRight.fill(.8f);
+        const float* proofInputs[]={proofLeft.data(),proofRight.data()};
+        FWNativeEvent mixed[]={{4,0,.75},{64,0,.25}};
+        ensure(service.mailbox().rtSubmit(proofInputs,2,128,mixed,2),
+               "worker mixed-semantic packet rejected");
+        float filtered[2]{};
+        ensure(waitUntil([&]{return service.mailbox().rtReadWet(4095+384,2,filtered);}),
+               "Gain native WASM did not return filtered slot64 event");
+        ensure(std::abs(filtered[0]-.2f)<1.e-5f &&
+               std::abs(filtered[1]-.2f)<1.e-5f,
+               "Gain ID64 was stripped or unbound ID4 caused a trap");
+        for(std::uint64_t t=4095+385;t<4095+512;t++)
+            ensure(service.mailbox().rtReadWet(t,2,filtered),
+                   "filtered Gain block output missing");
+
         service.stop();
         ensure(service.status()==fw::NativeWorkerService::Status::Stopped,
                "worker failed to stop");
