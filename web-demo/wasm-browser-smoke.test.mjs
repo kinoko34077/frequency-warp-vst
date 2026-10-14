@@ -42,6 +42,22 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(r=>setTimeout(r,250));
     }
     assert.ok(okay,"page not served");
+    // Actual Pointer Events, capture and move: not merely programmatic
+    // input.value assignment. Same component underlies reflection and L/H.
+    const dragDual=async(selector,start,end,lane)=>{
+      await page.$eval(selector,el=>el.scrollIntoView({block:"center",inline:"nearest"}));
+      const box=await page.$eval(selector,el=>{
+        const r=el.getBoundingClientRect();
+        return {x:r.x,y:r.y,width:r.width,height:r.height};
+      });
+      const x=t=>box.x+10+(box.width-20)*t;
+      const y=box.y+box.height/2+(lane==="upper"?-10:10);
+      await page.mouse.move(x(start),y);
+      await page.mouse.down();
+      await page.mouse.move(x(end),y,{steps:6});
+      await page.mouse.up();
+    };
+
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
       document.querySelectorAll("#math-results math").length>=5 && document.querySelector("#mini-fundamental")?.textContent.includes("→"),{timeout:16000})
       .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
@@ -72,6 +88,38 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(await page.$eval("#low",el=>Number(el.value))>0,
       "tapping shared rail should move nearest threshold");
     await page.$eval("#low",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#reflection-dual",el=>el.querySelectorAll('input[type="range"]').length),2);
+    assert.equal(await page.$eval("#reflection-dual",el=>el.getAttribute("role")),"group");
+    // Two thumb targets must truly drag across the same physical rail,
+    // and preserve the selected thumb if their values cross.
+    await dragDual("#reflection-dual",1,.55,"upper");
+    assert.ok(Math.abs(await page.$eval("#zero-reflect",el=>Number(el.value))-55)<=2,
+      "upper thumb must move synthesis value and dispatch the Rust-facing input");
+    assert.equal(await page.$eval("#zero-decay",el=>el.value),"0",
+      "moving synthesis cannot inadvertently modify reflection");
+    await dragDual("#reflection-dual",0,.55,"lower");
+    assert.ok(Math.abs(await page.$eval("#zero-decay",el=>Number(el.value))-55)<=2);
+    await dragDual("#reflection-dual",.55,.2,"upper");
+    await dragDual("#reflection-dual",.55,.8,"lower");
+    assert.ok(Math.abs(await page.$eval("#zero-reflect",el=>Number(el.value))-20)<=2);
+    assert.ok(Math.abs(await page.$eval("#zero-decay",el=>Number(el.value))-80)<=2,
+      "two thumbs must be free to cross without exchanging meanings");
+    assert.match(await page.$eval("#zero-reflect-status",el=>el.textContent),/反射 80%/);
+    await page.$eval("#zero-reflect",el=>el.focus());
+    const previousUpper=await page.$eval("#zero-reflect",el=>Number(el.value));
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),previousUpper+1,
+      "native keyboard control must remain accessible on the dual rail");
+    assert.equal(await page.$eval("#zero-decay",el=>el.value),"80");
+    await page.$eval("#zero-reflect",el=>{el.value="100";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#zero-decay",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    // L/H is the other meaningful same-scale value pair. Reuse the same
+    // drag/pointercapture contract without duplicating source logic.
+    await dragDual("#dual-range",0,.32,"upper");
+    assert.ok(await page.$eval("#low",el=>Number(el.value))>=305);
+    assert.ok(await page.$eval("#high",el=>Number(el.value))>900);
+    await page.$eval("#low",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+
 
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.step)),0.05);
     for(const id of ["curvature","invert","wet"]){
@@ -311,6 +359,20 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
     }
+    // Verify a real shared-rail gesture reaches a LIVE AudioWorklet,
+    // instead of only repainting a slider/graph.
+    await dragDual("#reflection-dual",1,.7,"upper");
+    assert.ok(Math.abs(await page.$eval("#zero-reflect",el=>Number(el.value))-70)<=2);
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
+    await dragDual("#reflection-dual",0,.4,"lower");
+    assert.ok(Math.abs(await page.$eval("#zero-decay",el=>Number(el.value))-40)<=2);
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
+    await page.$eval("#zero-reflect",el=>{el.value="100";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#zero-decay",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
     const before=await page.$eval("#elapsed",n=>n.textContent);
     await page.$eval("#invert",node=>{
       node.value=".42";node.dispatchEvent(new Event("input",{bubbles:true}));
