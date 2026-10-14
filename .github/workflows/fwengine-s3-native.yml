@@ -1,0 +1,49 @@
+name: S3a native WASM engine isolation and module swap
+on:
+  pull_request:
+    paths:
+      - 'fwengine-runtime/**'
+      - 'fwengine-demo/**'
+      - 'fwengine-package/**'
+      - 'scripts/fwengine_pack.py'
+      - '.github/workflows/fwengine-s3-native.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'fwengine-runtime/**'
+      - 'fwengine-demo/**'
+      - 'fwengine-package/**'
+      - 'scripts/fwengine_pack.py'
+      - '.github/workflows/fwengine-s3-native.yml'
+permissions:
+  contents: read
+jobs:
+  runtime:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install wasm32 Rust target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Compile fixture Identity and Gain modules
+        shell: bash
+        run: |
+          cargo build --release --manifest-path fwengine-demo/Cargo.toml --target wasm32-unknown-unknown
+          mkdir -p _s3
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s3/identity.wasm
+          cargo build --release --manifest-path fwengine-demo/Cargo.toml --target wasm32-unknown-unknown --features gain-half
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s3/gain.wasm
+          python scripts/fwengine_pack.py _s3/identity.wasm _s3/identity.fwengine org.kinotch.identity
+          python scripts/fwengine_pack.py _s3/gain.wasm _s3/gain.fwengine org.kinotch.gainhalf
+      - name: Native interpreter compile and fuel/trap tests
+        shell: bash
+        run: cargo test --release --manifest-path fwengine-runtime/Cargo.toml
+      - name: Actual native PCM from independently compiled single-file modules
+        shell: bash
+        run: cargo run --release --manifest-path fwengine-runtime/Cargo.toml -- _s3/identity.fwengine _s3/gain.fwengine
