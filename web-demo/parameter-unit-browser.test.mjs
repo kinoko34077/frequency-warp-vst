@@ -615,6 +615,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#fundamental",el=>{
       el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
 
     // Three icon buttons retain four distinct ratio representations.
     await page.select("#pitch-ratio-unit","semitones");
