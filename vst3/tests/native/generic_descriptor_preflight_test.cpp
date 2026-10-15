@@ -52,7 +52,55 @@ int main(int argc,char** argv){
             g,digest.data(),digest.size(),engineName.data(),engineName.size());
         require(std::string(reinterpret_cast<const char*>(engineName.data()),len)=="org.kinotch.gainhalf",
                 "expected verified Gain fixture ID");
+        // R3C2D2: whole-document gate is all-or-nothing. A valid slot64
+        // alone cannot conceal a foreign/undefined 2nd slot in a UI file.
+        std::uint64_t attestedMask=0xabcdu;
+        auto attest=[&](const std::string& document)->bool {
+            return fw_native_attest_generic_descriptor_set(
+                g,reinterpret_cast<const std::uint8_t*>(document.data()),
+                document.size(),&attestedMask);
+        };
         const auto valid=doc(hashHex(digest));
+        require(attest(valid)&&attestedMask==1u,
+                "real Gain whole-descriptor attestation rejected");
+        auto invalidExtra=valid.substr(0,valid.size()-2) +
+            R"(,{"host_slot":65,"semantic_id":"extra","label":"Extra","dimension":"signedRatio","canonical_unit":"ratio","min":0,"max":4,"default":0.5,"scale":"linear","widget":"knob","display_units":["ratio"],"codec_revision":1}]})";
+        attestedMask=0xabcdu;
+        require(!attest(invalidExtra)&&attestedMask==0xabcdu,
+                "foreign extra UI binding must deny ALL, preserving output");
+        auto invalidRange=valid;
+        auto maxPos=invalidRange.find("\"max\":4");
+        require(maxPos!=std::string::npos,"range fixture mismatch");
+        invalidRange.replace(maxPos,7,"\"max\":3");
+        require(!attest(invalidRange)&&attestedMask==0xabcdu,
+                "mismatched WASM canonical range was accepted");
+        auto invalidSemantic=valid;
+        auto semPos=invalidSemantic.find("\"semantic_id\":\"gain\"");
+        require(semPos!=std::string::npos,"semantic fixture mismatch");
+        invalidSemantic.replace(semPos,20,"\"semantic_id\":\"fake\"");
+        require(!attest(invalidSemantic)&&attestedMask==0xabcdu,
+                "foreign UI semantic identity was accepted");
+        require(!attest(doc(std::string(64,'0')))&&attestedMask==0xabcdu,
+                "wrong package SHA must deny");
+        require(!fw_native_attest_generic_descriptor_set(
+            i,reinterpret_cast<const std::uint8_t*>(valid.data()),valid.size(),
+            &attestedMask) && attestedMask==0xabcdu,
+            "foreign native engine incorrectly accepted");
+        require(!fw_native_attest_generic_descriptor_set(
+            l,reinterpret_cast<const std::uint8_t*>(valid.data()),valid.size(),
+            &attestedMask) && attestedMask==0xabcdu,
+            "legacy unadvertised native contract incorrectly accepted");
+        require(!fw_native_attest_generic_descriptor_set(
+            g,nullptr,valid.size(),&attestedMask) && attestedMask==0xabcdu,
+            "missing JSON input must preserve mask");
+        require(!fw_native_attest_generic_descriptor_set(
+            g,reinterpret_cast<const std::uint8_t*>(valid.data()),65537,
+            &attestedMask) && attestedMask==0xabcdu,
+            "oversized JSON must deny prior to read");
+        require(!fw_native_attest_generic_descriptor_set(
+            g,reinterpret_cast<const std::uint8_t*>(valid.data()),valid.size(),
+            nullptr),"null mask output must deny");
+
         // Canonical semantic ID must come from the *live module*, not a
         // user-controlled descriptor's name. Read-only and non-RT.
         std::array<std::uint8_t,129> actualSemantic{};
