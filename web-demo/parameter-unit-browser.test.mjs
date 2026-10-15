@@ -415,6 +415,42 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<.005);
 
+    // Audit A24: Ctrl must have the same truly free ratio rail as Alt.
+    // The semitone snap toggle was already bypassed, but a stale step=0.05
+    // still quantized gestures while Ctrl was held.
+    await page.keyboard.down("Control");
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"any");
+    await page.$eval("#pitch-ratio-range",el=>{
+      el.value="1.037";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#pitch-ratio");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-1.037)<1e-12,
+      "Ctrl held must allow fractional ratio positions without 0.05 step");
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    await page.keyboard.up("Control");
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"0.05");
+    await page.focus("#pitch-ratio");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-1.037)<1e-12,
+      "releasing Ctrl may quantize the slider proxy, never canonical r");
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    // Two simultaneous held modifiers must remain fine until BOTH release.
+    await page.keyboard.down("Control");
+    await page.keyboard.down("Alt");
+    await page.keyboard.up("Alt");
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"any");
+    await page.keyboard.up("Control");
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"0.05");
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="1";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.match(await page.$eval(
+      "#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",el=>el.title),
+      /半音|セント/,"unit tooltip must not be replaced by snap help");
+    assert.match(await page.$eval(
+      "#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.getAttribute("aria-description")) ,/Alt|Ctrl/,
+      "snap gesture help remains accessible without replacing unit tooltip");
+
     // Linked P→F cannot lose fractional cents through historical round3().
     await page.select("#pivot-unit","note");
     await page.$eval("#axis-pivot-value",el=>{
@@ -477,10 +513,27 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#carrier",el=>el.disabled),true);
     assert.equal(await page.$eval("#carrier-range",el=>el.disabled),true);
     assert.equal(await page.$eval("#carrier-unit",el=>el.disabled),true);
+    assert.equal(await page.$$eval("#carrier-unit + .unit-switch button",
+      buttons=>buttons.every(button=>button.disabled)),true,
+      "Fold-linked carrier must lock visible unit icons, not only hidden select");
+    const lockedUnit=await page.$eval("#carrier-unit",el=>el.value);
+    await page.$eval("#carrier-unit + .unit-switch button[data-unit=note]",
+      el=>el.click());
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),lockedUnit,
+      "disabled visible unit buttons must not change the linked state");
     await page.$eval("#carrier-link",el=>{
       el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     assert.equal(await page.$eval("#carrier",el=>el.disabled),false);
+    assert.equal(await page.$$eval("#carrier-unit + .unit-switch button",
+      buttons=>buttons.every(button=>!button.disabled)),true,
+      "unlinking carrier must restore its visible unit icon controls");
+    await page.$eval("#carrier-unit + .unit-switch button[data-unit=note]",
+      el=>el.click());
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"note");
+    await page.$eval("#carrier-unit + .unit-switch button[data-unit=hz]",
+      el=>el.click());
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
     await page.focus("#carrier");
     assert.equal(Number(await page.$eval("#carrier",el=>el.value)),350);
     await page.$eval("#carrier",el=>el.blur());

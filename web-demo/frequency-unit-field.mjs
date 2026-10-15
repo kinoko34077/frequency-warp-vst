@@ -161,10 +161,13 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
   select.setAttribute("aria-hidden","true");
   select.insertAdjacentElement("afterend",unitButtons);
   if(descriptor.id==="pitch-ratio"){
-    // Alt temporarily disables BOTH note snap and the native 0.05 coarse step.
+    // Alt and Ctrl equally bypass the native 0.05 ratio rail step,
+    // as well as the independent semitone snap gate. Releasing one while
+    // the other is held must not prematurely re-enable coarse stepping.
     const updateFine=event=>{
-      slider.step=event.altKey?"any":"0.05";
-      if(!event.altKey)coarseSync();
+      const fine=event.altKey||event.ctrlKey;
+      slider.step=fine?"any":"0.05";
+      if(!fine)coarseSync();
     };
     window.addEventListener("keydown",updateFine,true);
     window.addEventListener("keyup",updateFine,true);
@@ -198,7 +201,10 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
       node.setAttribute("data-fw-snap-control","");
       const hint="吸着: "+(snapEnabled?"ON":"OFF")+
         "。長押し／右クリックで切替。AltまたはCtrlを押しながら操作すると一時OFF";
-      node.title=hint;node.setAttribute("aria-description",hint);
+      // Unit icon buttons already carry their meaningful unit/interval
+      // tooltip. Do not overwrite it with the snap gesture instructions.
+      if(!node.matches("button[data-unit]"))node.title=hint;
+      node.setAttribute("aria-description",hint);
     }
   };
   const setSnapEnabled=enabled=>{snapEnabled=Boolean(enabled);updateHints();};
@@ -254,6 +260,14 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     get unit(){return binding.unit;},
     get snapEnabled(){return snapEnabled;},
     setSnapEnabled,
+    setDisabled(disabled){
+      // #183 replaced the native select with visible buttons. Disabling only
+      // that hidden select leaves the actual carrier unit buttons editable.
+      const locked=Boolean(disabled);
+      for(const node of [field,slider,select])node.disabled=locked;
+      for(const button of unitButtons.querySelectorAll("button[data-unit]"))
+        button.disabled=locked;
+    },
     fromSlider,
     refresh:()=>{coarseSync();display();},
     setCanonical(value){
