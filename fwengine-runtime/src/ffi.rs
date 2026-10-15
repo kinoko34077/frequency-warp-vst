@@ -2,12 +2,13 @@
 //! Successful process path uses caller-supplied separate audio buffers.
 use crate::{ParamEvent,Runtime};
 use std::{panic::{catch_unwind,AssertUnwindSafe},ptr,slice};
+use sha2::{Digest,Sha256};
 
 // ABI handshake is called by VST3 Processor::initialize outside RT.
 #[no_mangle]
 pub extern "C" fn fw_native_abi_major() -> u32 { 1 }
 
-pub struct Opaque {runtime:Runtime,channels:usize}
+pub struct Opaque {runtime:Runtime,channels:usize,package_hash:[u8;32]}
 #[no_mangle]
 pub unsafe extern "C" fn fw_native_prepare(
     data:*const u8,length:usize,rate:f64,channels:u32,max_frames:u32
@@ -19,7 +20,11 @@ pub unsafe extern "C" fn fw_native_prepare(
     match catch_unwind(AssertUnwindSafe(||{
         let bytes=slice::from_raw_parts(data,length);
         Runtime::prepare(bytes,rate,channels as usize,max_frames as usize)
-            .ok().map(|runtime|Box::new(Opaque{runtime,channels:channels as usize}))
+            .ok().map(|runtime|{
+                let mut package_hash=[0u8;32];
+                package_hash.copy_from_slice(&Sha256::digest(bytes));
+                Box::new(Opaque{runtime,channels:channels as usize,package_hash})
+            })
     })){
         Ok(Some(engine))=>Box::into_raw(engine),
         _=>ptr::null_mut(),
@@ -45,6 +50,31 @@ pub unsafe extern "C" fn fw_native_supports_stream_controls(handle:*const Opaque
     // Worker-only module identity test. Generic ID64 demo modules must never
     // receive spectral IDs2..5 and trip their own strict parameter contract.
     !handle.is_null()&&(*handle).runtime.manifest.engine_id=="org.kinotch.stream"
+}
+/// NON-RT only, read-only identity from a successfully prepared and verified
+/// engine. Returns byte length of ASCII engine ID (no trailing NUL) or 0.
+//// Caller supplies disjoint writable buffers: 32 SHA256 bytes and at least
+/// 129 bytes for engine ID. Digest is of the exact entire .fwengine ZIP,
+/// not the manifest's hash of engine.wasm and not an authenticity signature.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_copy_verified_identity(
+    handle:*const Opaque, sha_out:*mut u8,sha_capacity:usize,
+    engine_out:*mut u8,engine_capacity:usize
+)->u32 {
+    if handle.is_null()||sha_out.is_null()||engine_out.is_null()||
+       sha_capacity<32||sha_capacity>32||engine_capacity==0||
+       engine_capacity>129{return 0;}
+    let e=(*handle).runtime.manifest.engine_id.as_bytes();
+    if e.is_empty()||e.len()>128||engine_capacity<=e.len() {return 0;}
+    if intersects(sha_out as usize,32,engine_out as usize,e.len()+1) {
+        return 0;
+    }
+    // The caller owns valid, non-aliasing writable buffers. The source
+    // Opaque and its immutable engine identity remain worker-owned.
+    ptr::copy_nonoverlapping((*handle).package_hash.as_ptr(),sha_out,32);
+    ptr::copy_nonoverlapping(e.as_ptr(),engine_out,e.len());
+    *engine_out.add(e.len())=0;
+    e.len() as u32
 }
 // Worker-only capability negotiation, value is a bitset of immutable ParamIDs.
 // Older single-file modules without the export are limited to IDs2..5.

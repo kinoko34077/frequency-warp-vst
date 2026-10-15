@@ -11,6 +11,7 @@ crate-type = ["rlib", "staticlib"]
 anyhow = "1.0"
 wasmi = "=2.0.0"
 fwengine-package = { path = "../fwengine-package" }
+sha2 = "0.10"
 
 [dev-dependencies]
 wat = "1.228.0"
