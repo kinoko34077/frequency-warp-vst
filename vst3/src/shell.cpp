@@ -783,6 +783,65 @@ public:
         }
         return request;
     }
+    // D7B native Controller orchestration only. Trusted UI may call these
+    // after an explicit user action; JavaScript never supplies a worker ID,
+    // package SHA, or permission ticket. These are non-audio host messages.
+    uint64_t sendPrepareNewGenericDescriptor(
+        const std::vector<uint8_t>& descriptor) {
+        if(!validGenericUiRequest(1,descriptor.data(),descriptor.size()))return 0;
+        const auto request=nextNewRequest_.fetch_add(
+            1,std::memory_order_relaxed)+1;
+        if(request==0||request>kGenericUiMaxRequest)return 0;
+        uint64_t empty=0;
+        if(!newInFlight_.compare_exchange_strong(
+               empty,request,std::memory_order_acq_rel))return 0;
+        auto* msg=allocateMessage();
+        if(!msg) {newInFlight_.store(0,std::memory_order_release);return 0;}
+        msg->setMessageID("FrequencyWarp.PrepareNewGenericV1");
+        auto* a=msg->getAttributes();
+        const bool good=a &&
+            a->setInt("request",static_cast<int64>(request))==kResultTrue &&
+            a->setInt("explicit",1)==kResultTrue &&
+            a->setBinary("descriptor",descriptor.data(),
+                         static_cast<uint32>(descriptor.size()))==kResultTrue;
+        const auto r=good?sendMessage(msg):kResultFalse;
+        msg->release();
+        if(r!=kResultTrue) {
+            uint64_t expected=request;
+            newInFlight_.compare_exchange_strong(
+                expected,0,std::memory_order_acq_rel);
+            return 0;
+        }
+        return request;
+    }
+    bool sendCommitNewGeneric(uint64_t request) {
+        if(!request||newInFlight_.load(std::memory_order_acquire)!=request||
+           lastNewPreparedWord_.load(std::memory_order_acquire)!=
+               ((request<<1)|1u))return false;
+        auto* msg=allocateMessage();
+        if(!msg)return false;
+        msg->setMessageID("FrequencyWarp.CommitNewGenericV1");
+        auto* a=msg->getAttributes();
+        const bool ok=a &&
+            a->setInt("request",static_cast<int64>(request))==kResultTrue &&
+            a->setInt("explicit",1)==kResultTrue;
+        const auto r=ok?sendMessage(msg):kResultFalse;
+        msg->release();
+        return r==kResultTrue;
+    }
+    void queryNewGenericStatus() {
+        auto* msg=allocateMessage();
+        if(!msg)return;
+        msg->setMessageID("FrequencyWarp.QueryNewGenericV1");
+        sendMessage(msg);
+        msg->release();
+    }
+    bool lastNewGenericSavedSnapshot() const noexcept {
+        return lastNewSaved_.load(std::memory_order_acquire);
+    }
+    bool lastNewGenericActiveSnapshot() const noexcept {
+        return lastNewActive_.load(std::memory_order_acquire);
+    }
     // Query/ack remains on the VST3 host lifecycle, never from process().
     uint64_t lastSavedGenericAuthorizationWord() const noexcept {
         return lastSavedGenericStatus_.load(std::memory_order_acquire);
@@ -810,6 +869,40 @@ public:
 #endif
     tresult PLUGIN_API notify(IMessage* message) override {
         if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.NewGenericStatusV1")==0) {
+            auto* a=message->getAttributes();
+            if(!a)return kResultFalse;
+            int64 preparedRequest=0,prepared=0,commitRequest=0,committed=0;
+            int64 saved=0,active=0;
+            if(a->getInt("preparedRequest",preparedRequest)!=kResultTrue ||
+               a->getInt("prepared",prepared)!=kResultTrue ||
+               a->getInt("committedRequest",commitRequest)!=kResultTrue ||
+               a->getInt("committed",committed)!=kResultTrue ||
+               a->getInt("saved",saved)!=kResultTrue ||
+               a->getInt("active",active)!=kResultTrue ||
+               preparedRequest<0||commitRequest<0||
+               (prepared!=0&&prepared!=1)||
+               (committed!=0&&committed!=1)||
+               (saved!=0&&saved!=1)||(active!=0&&active!=1)||
+               (active&&!saved))return kResultFalse;
+            lastNewPreparedWord_.store(
+                (static_cast<uint64_t>(preparedRequest)<<1) |
+                static_cast<uint64_t>(prepared),std::memory_order_release);
+            lastNewCommittedWord_.store(
+                (static_cast<uint64_t>(commitRequest)<<1) |
+                static_cast<uint64_t>(committed),std::memory_order_release);
+            lastNewSaved_.store(saved!=0,std::memory_order_release);
+            lastNewActive_.store(active!=0,std::memory_order_release);
+            const auto inFlight=newInFlight_.load(std::memory_order_acquire);
+            if(inFlight && (static_cast<uint64_t>(commitRequest)==inFlight ||
+               (static_cast<uint64_t>(preparedRequest)==inFlight && !prepared))) {
+                auto expected=inFlight;
+                newInFlight_.compare_exchange_strong(
+                    expected,0,std::memory_order_acq_rel);
+            }
+            return kResultOk;
+        }
         if(std::strcmp(message->getMessageID(),
                        "FrequencyWarp.SavedGenericStatusV1")==0) {
             auto* attrs=message->getAttributes();
@@ -882,6 +975,9 @@ private:
     std::atomic<uint64_t> nextAuthRequest_{0},genericInFlight_{0},
                           lastSavedGenericStatus_{0};
     std::atomic<bool> lastSavedGenericActive_{false};
+    std::atomic<uint64_t> nextNewRequest_{0},newInFlight_{0},
+                          lastNewPreparedWord_{0},lastNewCommittedWord_{0};
+    std::atomic<bool> lastNewSaved_{false},lastNewActive_{false};
 #ifdef _WIN32
     std::mutex snapshotMutex_{};
     EngineStatusSnapshot lastSnapshot_{};
