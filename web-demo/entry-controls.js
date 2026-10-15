@@ -17,6 +17,31 @@
     catch{dialog.removeAttribute("open");}
     opener.focus();
   };
+  const debug=$("#debug-mode");
+  const debugKey="frequency-warp:debug-mode:v1";
+  const initiallyRequested=new URL(location.href).searchParams.get("layout_editor")==="1";
+  try{debug.checked=initiallyRequested||localStorage.getItem(debugKey)==="1";}
+  catch{debug.checked=initiallyRequested;}
+  debug.addEventListener("change",async()=>{
+    const enabled=debug.checked;
+    try{localStorage.setItem(debugKey,enabled?"1":"0");}catch{}
+    if(!enabled){
+      // Explicit settings switch takes precedence over a stale URL opt-in.
+      const url=new URL(location.href);
+      url.searchParams.delete("layout_editor");
+      history.replaceState(history.state,"",url);
+      window.dispatchEvent(new CustomEvent("fw:debug-change",{detail:{enabled:false}}));
+      return;
+    }
+    try{
+      await import("./visual-editor.mjs");
+      window.dispatchEvent(new CustomEvent("fw:debug-change",{detail:{enabled:true}}));
+    }catch(error){
+      debug.checked=false;
+      try{localStorage.setItem(debugKey,"0");}catch{}
+      console.warn("Frequency Warp debug editor could not load",error);
+    }
+  });
   opener.addEventListener("click",show);
   $("#settings-inline").addEventListener("click",show);
   $("#settings-close").addEventListener("click",close);

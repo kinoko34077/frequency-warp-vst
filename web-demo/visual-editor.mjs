@@ -1,6 +1,7 @@
 import {STORAGE_KEY,sanitizeRule,normalizeChanges,cssForChanges,moveSibling} from './visual-editor-core.mjs';
+import {initEditorInteractions} from './visual-editor-interactions.mjs';
 /** Only loaded with ?layout_editor=1. Changes remain on this browser until exported. */
-if(new URL(location.href).searchParams.get('layout_editor')==='1'){
+if(new URL(location.href).searchParams.get('layout_editor')==='1'||localStorage.getItem('frequency-warp:debug-mode:v1')==='1'){
   const host=document.createElement('aside');host.id='fw-layout-inspector';document.body.append(host);
   const shadow=host.attachShadow({mode:'open'});
   const style=document.createElement('style');style.id='fw-layout-overrides';document.head.append(style);
@@ -18,7 +19,7 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'){
    'input,select{width:100%;min-width:0;color:#e9fff6;background:#091c21;border:1px solid #46655c;border-radius:6px;padding:7px;font:inherit}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #a0e8ff}'+
    'label{display:flex;flex-direction:column;gap:3px;color:#b4d7ce}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}'+
    '.path{font:11px ui-monospace,monospace;background:#081e23;padding:7px;border-radius:5px;overflow-wrap:anywhere;max-height:65px;overflow:auto}.scope{display:flex;align-items:center;gap:8px}.scope span{flex:1}.scope select{flex:2}'+
-   '.status{font-size:11px;color:#81e4bc;min-height:16px}.hint{font-size:10px;color:#9ac0b8}.collapsed .panel>:not(.head){display:none}.collapsed .panel{width:180px}'+
+   '.status{font-size:11px;color:#81e4bc;min-height:16px}.hint{font-size:10px;color:#9ac0b8}:host(.collapsed) .panel>:not(.head){display:none!important}:host(.collapsed) .panel{width:180px;max-height:none}'+
    '@media(max-width:480px){:host{bottom:8px;right:8px}.panel{max-height:60dvh}}'+
    '</style><div class="panel"><div class="head"><strong>∿ Layout Inspector</strong><button data-action="collapse" aria-label="最小化">−</button></div>'+
    '<div class="actions"><button data-action="pick" aria-pressed="true">要素を選択</button><button data-action="preview" aria-pressed="false">動作確認</button><button data-action="parent">親要素 ↑</button></div>'+
@@ -95,6 +96,10 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'){
     if(selected)selected.setAttribute('data-fw-edit-selected','');
     refresh();
   }
+  function isSettingsAction(event){
+    const target=event.target;
+    return target instanceof Element&&Boolean(target.closest('#settings-dialog,#settings-open,#settings-inline'));
+  }
   function pick(enabled){
     picking=enabled;
     shadow.querySelector('[data-action=pick]').setAttribute('aria-pressed',String(enabled));
@@ -103,12 +108,12 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'){
     status(enabled?'要素をクリックして編集してください。':'通常の音声操作ができます。');
   }
   document.addEventListener('click',event=>{
-    if(!picking||event.composedPath().includes(host))return;
+    if(!picking||host.hidden||event.composedPath().includes(host)||isSettingsAction(event))return;
     event.preventDefault();event.stopImmediatePropagation();
     choose(event.target instanceof Element?event.target:event.target.parentElement);
   },true);
   document.addEventListener('pointerover',event=>{
-    if(!picking||event.composedPath().includes(host))return;
+    if(!picking||host.hidden||event.composedPath().includes(host)||isSettingsAction(event))return;
     if(hovered)hovered.removeAttribute('data-fw-edit-hover');
     hovered=event.target instanceof Element?event.target:null;
     if(hovered&&hovered!==document.body)hovered.setAttribute('data-fw-edit-hover','');
@@ -151,6 +156,20 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'){
         const link=document.createElement('a');link.href=url;link.download='frequency-warp-layout-overrides.css';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);status('CSSファイルを保存しました。');
       }
     }
+  });
+  const interactions=initEditorInteractions({host,shadow,choose,getSelected:()=>selected,isPicking:()=>picking,status,selector,setRule,refresh});
+  window.addEventListener('fw:debug-change',event=>{
+    const enabled=Boolean(event.detail?.enabled);
+    host.hidden=!enabled;
+    // Keep saved edits, but return to the unmodified page while debug is OFF.
+    style.textContent=enabled?cssForChanges(changes):'';
+    if(!enabled){
+      pick(false);
+      interactions.hideMenu();
+      if(selected)selected.removeAttribute('data-fw-edit-selected');
+      if(hovered)hovered.removeAttribute('data-fw-edit-hover');
+      selected=null;hovered=null;
+    }else pick(true);
   });
   save();refresh();status('要素をクリックして編集できます。');
 }
