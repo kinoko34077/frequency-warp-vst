@@ -1267,9 +1267,11 @@ $("#settings-reset").addEventListener("click",()=>{
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.
-  const phase=state.player?.feedback.current.phase;
+  const phase=state.player?.feedback?.current?.phase;
   if(!state.player)
     message("操作値を初期値へ戻しました。再生位置は保持されます。");
+  else if(state.player.directDry)
+    message("操作値を初期値へ戻しました。原音は再生中（変換DSP未使用）です。");
   else if(phase==="pending"||phase==="rebuilding")
     message("操作値を初期値へ戻しました。音声への反映確認中…再生位置は保持されます。");
 });
