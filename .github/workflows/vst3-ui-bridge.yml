@@ -23,3 +23,6 @@ jobs:
         run: |
           node --check vst3/ui/host-bridge.mjs
           node --test vst3/ui/host-bridge.test.mjs
+          node --check vst3/ui/parameter-descriptors.mjs
+          node --test vst3/ui/parameter-descriptors.test.mjs
+          node -e "JSON.parse(require('node:fs').readFileSync('schemas/fw-ui-descriptors-v1.schema.json', 'utf8'))"
