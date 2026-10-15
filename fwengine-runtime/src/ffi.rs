@@ -144,6 +144,26 @@ pub unsafe extern "C" fn fw_native_copy_generic_codec(
     ptr::write(out,candidate);
     true
 }
+/// R3C2D1: copy the canonical semantic ID authored by the *same live*
+/// verified WASM module, not from replaceable HTML/UI descriptor JSON.
+/// Non-RT worker only. Positive return is an identity read, not DAW authority.
+/// Returns ASCII byte length (excluding NUL) or 0; out is untouched on deny.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_copy_generic_semantic_id(
+    handle:*const Opaque,slot:u32,out:*mut u8,capacity:usize
+)->u32 {
+    if handle.is_null()||out.is_null()||!(64..=127).contains(&slot){
+        return 0;
+    }
+    let runtime=&(*handle).runtime;
+    if runtime.generic_slot_mask()&(1u64<<(slot-64))==0{return 0;}
+    let Some(contract)=runtime.generic_contract(slot) else{return 0};
+    let id=contract.semantic_id.as_bytes();
+    if id.is_empty()||id.len()>128||capacity<id.len()+1{return 0;}
+    ptr::copy_nonoverlapping(id.as_ptr(),out,id.len());
+    ptr::write(out.add(id.len()),0);
+    id.len() as u32
+}
 /// R3B2 necessary-only NON-RT descriptor preflight, NOT DAW edit authority.
 /// Validate exact native worker-prepared engine/hash, declared capability mask,
 /// JSON schema/units/ranges and caller-requested semantic ID+codec.
