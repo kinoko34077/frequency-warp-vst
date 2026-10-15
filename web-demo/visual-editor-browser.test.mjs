@@ -54,13 +54,13 @@ test('layout inspector is opt-in, edits live DOM, restores local changes, and pr
       document.querySelector('.control-grid > .control').click();
       root.querySelector('[data-action=down]').click();
     });
-    const orders=await page.$eval('.control-grid > .control', els=>Array.from(els).slice(0,2).map(el=>getComputedStyle(el).order));
+    const orders=await page.evaluate(()=>Array.from(document.querySelectorAll('.control-grid > .control')).slice(0,2).map(el=>getComputedStyle(el).order));
     assert.deepEqual(orders,['1','0']);
     // Reset must restore both desktop and mobile rules, not merely the selected element.
     page.once('dialog',dialog=>dialog.accept());
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=reset]').click());
     assert.notEqual(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'27px');
-    assert.deepEqual(await page.$eval('.control-grid > .control',els=>Array.from(els).slice(0,2).map(el=>getComputedStyle(el).order)),['0','0']);
+    assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('.control-grid > .control')).slice(0,2).map(el=>getComputedStyle(el).order)),['0','0']);
     const resetState=await page.evaluate(()=>JSON.parse(localStorage.getItem('frequency-warp:layout-editor:v1')));
     assert.deepEqual(resetState,{version:1,global:{},mobile:{}});
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=preview]').click());
