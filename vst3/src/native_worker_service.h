@@ -26,6 +26,10 @@ public:
         std::array<uint8_t,32> packageSha256{};
         std::string engineId;
         uint64_t acceptedGeneration=0;
+        // Non-RT advisory status only. Controller MUST independently
+        // recheck active worker authority at each trusted GUI edit boundary.
+        uint64_t genericAllowedMask=0;
+        uint64_t genericTicket=0;
         // Active only if the worker reports Ready. A retained verified image
         // on stop/fault is not proof of currently running DSP.
         bool active=false;
@@ -80,6 +84,11 @@ public:
         snapshot.active=!snapshot.package.empty() &&
             !snapshot.engineId.empty() && snapshot.acceptedGeneration>0 &&
             status_.load(std::memory_order_acquire)==Status::Ready;
+        if(!snapshot.active || !snapshot.genericTicket ||
+           genericAuthorization_.workerCurrentTicket()!=snapshot.genericTicket) {
+            snapshot.genericAllowedMask=0;
+            snapshot.genericTicket=0;
+        }
         return snapshot;
     }
     bool clearVerifiedWhenStopped() {
@@ -321,6 +330,11 @@ private:
                                 snapshot.ticket=genericAuthorization_.workerCurrentTicket();
                                 workerAuthorized_=snapshot;
                                 workerNativeActive_=active;
+                                // Same verified identity mutex as package/hash
+                                // snapshot, not readable from the RT callback.
+                                std::lock_guard<std::mutex> guard(verifiedMutex_);
+                                verified_.genericAllowedMask=snapshot.allowedMask;
+                                verified_.genericTicket=snapshot.ticket;
                             }
                         }
                     }
