@@ -478,6 +478,22 @@ function playerMessage(node,p){
         indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
         message("共通DSP: "+data.message,"error");
       }
+      if(data.fatal&&!p.fatalDryRecovery){
+        // The Worklet discarded an untrustworthy partially-mutated stream.
+        // Always preserve the loaded original when no DSP recovery is safe.
+        p.fatalDryRecovery=true;
+        const where=playPosition();
+        void (async()=>{
+          if(state.player!==p)return;
+          await stop();
+          if(state.player)return;
+          await play("dry",where);
+          if(state.player?.directDry){
+            indicator("変換復旧失敗 · 原音再生中");
+            message("変換の復旧に失敗したため、原音再生へ退避しました。"+data.message,"error");
+          }
+        })();
+      }
     }
     if(data.type==="parameters-applied"){
       if(p.feedback.ack(data.revision)){
