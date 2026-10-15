@@ -139,8 +139,52 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#high-value",el=>el.blur());
     assert.equal(await page.$eval("#high-thumb",el=>el.getAttribute("aria-valuetext")),"880 Hz");
 
+    // P is a distinct physical frequency; zero is a special valid state
+    // with no musical-note representation, and note selection must recover.
+    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
+    await page.select("#pivot-unit","note");
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#pivot-unit","hz");
+    await page.focus("#axis-pivot-value");
+    const pivotExact=Number(await page.$eval("#axis-pivot-value",el=>el.value));
+    assert.ok(Math.abs(pivotExact-440*2**(25/1200))<1e-9);
+    await page.$eval("#axis-pivot-value",el=>el.blur());
+    await page.select("#pivot-unit","percent");
+    const pivotPct=Number(await page.$eval("#axis-pivot-value",el=>el.value));
+    const expectedPivotPct=100*(.2+.8*Math.log(pivotExact/20)/Math.log(1000));
+    assert.ok(Math.abs(pivotPct-expectedPivotPct)<.01);
+    await page.select("#pivot-unit","note");
+    await page.$eval("#axis-pivot",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz",
+      "zero pivot must revert musical-note view to Hz");
+    assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
+    await page.select("#pivot-unit","note");
+    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz",
+      "do not permit converting the physically meaningful 0Hz into a note");
+
+    // Existing opt-in harmonic link remains bidirectional after P migration.
+    await page.click(".harmonic-pivot-link");
+    assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),true);
+    await page.select("#pivot-unit","note");
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="A3";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-880)<.005,
+      "P=220Hz with m=4 and r=1 must solve F=880Hz");
+    await page.select("#pivot-unit","hz");
+    await page.$eval("#axis-pivot-value",el=>el.blur());
+
     await page.click("#settings-open");
     await page.click("#settings-reset");
+    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),350);
+    assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
     assert.equal(await page.$eval("#high-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#high-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#high-value",el=>Number(el.value)),16000);
