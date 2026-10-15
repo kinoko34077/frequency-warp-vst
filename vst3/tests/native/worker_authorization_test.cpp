@@ -59,6 +59,24 @@ int main(int argc,char** argv) {
         project.package=gain;
         project.bindingLedger=fw::encodeBindingLedger(ledger);
         auto doc=descriptor(accepted.packageSha256);
+        // Worker-side evidence only, before any authorization ticket exists.
+        need(worker.postPrepareNewLedger(doc,850),"queue nonRT candidate");
+        need(until([&]{return (worker.lastPreparedLedgerWord()>>1)==850;}),
+             "candidate acknowledgement");
+        need((worker.lastPreparedLedgerWord()&1)!=0,"live WASM candidate denied");
+        fw::NativeWorkerService::PreparedNewLedger prepared{};
+        need(worker.readPreparedNewLedger(850,prepared),"candidate unavailable");
+        fw::SlotBindingLedger candidateLedger{};
+        need(fw::decodeBindingLedger(prepared.encodedLedger.data(),
+                 prepared.encodedLedger.size(),candidateLedger) &&
+             candidateLedger.bindings.size()==1 &&
+             candidateLedger.bindings[0].hostSlot==64 &&
+             candidateLedger.bindings[0].semanticId=="gain" &&
+             prepared.packageSha256==accepted.packageSha256 &&
+             prepared.acceptedGeneration==accepted.acceptedGeneration,
+             "candidate not tied to live WASM engine");
+        need(worker.genericAuthorization().workerCurrentTicket()==0,
+             "candidate must not authorize DAW audio");
         need(worker.postAuthorization(project,doc,902),"request real WASM proof");
         need(until([&]{return (worker.lastAuthorizationWord()>>1)==902;}),
              "authorization completion");
