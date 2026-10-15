@@ -531,6 +531,51 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await resetPage.$eval("#stop",el=>el.disabled),false);
     await resetPage.close();
 
+    // AUD-06: old HTMLMediaElement.play() can reject AFTER a new Dry player
+    // has attached a new MediaStream. Only the current player owns srcObject.
+    const bridgePage=await browser.newPage();
+    const bridgeErrors=[];
+    bridgePage.on("pageerror",e=>bridgeErrors.push(e.message));
+    await bridgePage.goto("http://127.0.0.1:8765/index.html");
+    await bridgePage.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",
+      {timeout:15000});
+    await (await bridgePage.$("#audio-file")).uploadFile(wavPath);
+    await bridgePage.waitForFunction(()=>!document.querySelector("#play-dry").disabled,
+      {timeout:20000});
+    await bridgePage.evaluate(()=>{
+      const el=document.querySelector("#background-output");
+      window.__bridgePlayCalls=0;
+      window.__rejectOldBridge=null;
+      el.play=function(){
+        window.__bridgePlayCalls++;
+        if(window.__bridgePlayCalls===1)
+          return new Promise((_,reject)=>{
+            window.__rejectOldBridge=()=>reject(Error("delayed stale bridge rejection"));
+          });
+        return Promise.resolve();
+      };
+    });
+    await bridgePage.click("#play-dry");
+    await bridgePage.waitForFunction(()=>typeof window.__rejectOldBridge==="function",
+      {timeout:10000});
+    await bridgePage.click("#stop");
+    await bridgePage.click("#play-dry");
+    await bridgePage.waitForFunction(()=>
+      window.__bridgePlayCalls===2 &&
+      !!document.querySelector("#background-output").srcObject &&
+      !document.querySelector("#stop").disabled,{timeout:10000});
+    await bridgePage.evaluate(()=>{
+      window.__currentBridgeStream=document.querySelector("#background-output").srcObject;
+      window.__rejectOldBridge();
+    });
+    await new Promise(resolve=>setTimeout(resolve,100));
+    assert.equal(await bridgePage.evaluate(()=>
+      document.querySelector("#background-output").srcObject===window.__currentBridgeStream
+    ),true,"late old bridge rejection must not detach the current player");
+    assert.equal(await bridgePage.$eval("#stop",el=>el.disabled),false);
+    assert.deepEqual(bridgeErrors,[]);
+    await bridgePage.close();
+
     // AUD-03: a stale wet request waiting on worklet module registration
     // must not start or replace a newer decoded file's original playback.
     // This deliberately holds the *first* audio-worklet module load.
