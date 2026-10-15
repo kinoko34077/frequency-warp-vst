@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {newDocument,EditError} from './core.mjs';
 import {resolvePageProfile} from './profiles.mjs';
-import {exportCss,createSourceProposal,exportStaticHtml} from './export.mjs';
+import {exportCss,createSourceProposal,exportStaticHtml,exportModelLayout} from './export.mjs';
 const target={appId:'fw',routeId:'main',templateId:'web-ui',sourceRevision:'layout-r1'};
 const profile=resolvePageProfile({target,ownership:'static-dom',
   sourceNodeMap:{'header.title':'headerTitle','footer.note':'footerNote'},requiredOperations:['style.safe']});
@@ -56,4 +56,20 @@ test('M5 source/export surfaces reject schema, target and profile violations',()
   const model=resolvePageProfile({target,ownership:'react-model',breakpoints:{}});
   assert.throws(()=>exportCss(document,model),{code:'UNSUPPORTED_EXPORT'});
   assert.throws(()=>resolvePageProfile({target,ownership:'static-dom',sourceNodeMap:{'header.title':'a','footer.note':'a'}}),{code:'DUPLICATE_SOURCE_TARGET'});
+});
+
+test('M5 React/scene export contains only layout metadata and rejects broken graph',()=>{
+ const selected=resolvePageProfile({target,ownership:'react-model'});
+ const model={rootId:'root',revision:2,nodes:{
+  root:{id:'root',type:'panel',parentId:null,children:['card'],secret:'NEVER_EXPORT'},
+  card:{id:'card',type:'text',parentId:'root',children:[],domainPayload:'NEVER_EXPORT'}
+ }};
+ const out=exportModelLayout(model,selected);
+ assert.equal(out.status,'REVIEW_REQUIRED');
+ assert.equal(out.layoutRevision,2);
+ assert.equal(JSON.stringify(out).includes('NEVER_EXPORT'),false);
+ assert.deepEqual(out.nodes.root.children,['card']);
+ const broken=structuredClone(model);broken.nodes.card.parentId='nonexistent';
+ assert.throws(()=>exportModelLayout(broken,selected),{code:'PARENT_MISMATCH'});
+ assert.throws(()=>exportModelLayout(model,profile),{code:'UNSUPPORTED_EXPORT'});
 });
