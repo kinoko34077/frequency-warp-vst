@@ -94,7 +94,21 @@ int main(int argc,char** argv) {
         rt.rtAdopt();
         need(rt.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
              "retry publication must become active");
-        need(worker.postPackage(identity,48000.,2,128,905),"replace module");
+        // Race audit: enqueue a fresh authorization, then race a replacement
+        // against its worker-side preflight/commit. Once the GUI replacement
+        // is accepted, no late old-generation publication may re-enable Gain.
+        need(worker.postAuthorization(project,doc,907),
+             "enqueue overlapping authorization proof");
+        bool replacementQueued=false;
+        const auto untilReplacement=std::chrono::steady_clock::now()+
+                                    std::chrono::seconds(8);
+        while(!replacementQueued) {
+            replacementQueued=worker.postPackage(identity,48000.,2,128,905);
+            if(replacementQueued)break;
+            need(std::chrono::steady_clock::now()<untilReplacement,
+                 "replacement remained pending too long");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         need(!rt.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
              "queued replacement failed to revoke old generic binding");
         need(until([&]{return worker.lastCompletedId()==905 &&
