@@ -118,6 +118,20 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),true);
     assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-240)<.005,
       "valid relink restores H=rF/m without changing F or P");
+    await page.$eval("#fundamental",el=>{
+      el.value="0.001";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),.001,
+      "sub-0.001Hz physical H must not force theoretical F to a different value");
+    assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
+    assert.match(await page.$eval("#harmonic-pivot-link-note",el=>el.textContent),
+      /連動解除.*0.001.*20,000.*Fの値と起点Pは保持/);
+    await page.$eval("#fundamental",el=>{
+      el.value="600";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
     await page.$eval("#harmonic-pivot-link",el=>{
       el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
     });
