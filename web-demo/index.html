@@ -111,7 +111,7 @@
           <div class="fx-item">
             <label class="fx-toggle"><input id="ring-enabled" type="checkbox"> リング変調</label><details class="info-tip"><summary aria-label="リング変調の説明" title="リング変調の説明">ⓘ</summary><div class="info-body">変換対象の音に搬送波を掛け、和・差の2つの側帯波を発生させます。搬送波は折返し点へ連動できます。</div></details>
             <div class="fx-body">
-              <div class="control-heading"><label for="carrier">搬送波</label><input id="carrier" class="inline-value" type="number" min="0" max="20000" step="0.001" value="350"> Hz</div>
+              <div class="control-heading"><label for="carrier">搬送波</label><span class="unit-value-tools"><input id="carrier" class="inline-value" type="text" value="350" spellcheck="false" autocapitalize="off" aria-label="搬送波の周波数・音名入力"><select id="carrier-unit" aria-label="搬送波の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select><label class="snap-toggle" for="carrier-snap"><input id="carrier-snap" type="checkbox" aria-label="搬送波の半音吸着">吸着</label></span></div>
               <input id="carrier-range" type="range" min="0" max="1000" step="1" value="592" aria-label="搬送波周波数"><label class="link-carrier"><input id="carrier-link" type="checkbox"> 折返し点に連動</label>
       
               <small id="carrier-linked-value" class="fx-help"></small>
