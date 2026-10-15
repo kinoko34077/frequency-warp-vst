@@ -32,6 +32,37 @@ test('layout inspector is opt-in, edits live DOM, restores local changes, and pr
     // The editor's own module can boot before the WebAudio app installs its handlers.
     await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready');
     assert.equal(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'27px');
+    // Mobile-only overrides must NOT leak into desktop dimensions.
+    await page.evaluate(()=>{
+      document.querySelector('.brand').click();
+      const root=document.querySelector('#fw-layout-inspector').shadowRoot;
+      const scope=root.querySelector('#scope');
+      scope.value='mobile';scope.dispatchEvent(new Event('change',{bubbles:true}));
+      const padding=root.querySelector('[data-prop=padding]');
+      padding.value='37';padding.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    assert.equal(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'27px');
+    await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
+    assert.equal(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'37px');
+    await page.setViewport({width:1280,height:900});
+    assert.equal(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'27px');
+    // Check actual CSS grid visual reordering rather than testing only the pure array helper.
+    await page.evaluate(()=>{
+      const root=document.querySelector('#fw-layout-inspector').shadowRoot;
+      const scope=root.querySelector('#scope');
+      scope.value='global';scope.dispatchEvent(new Event('change',{bubbles:true}));
+      document.querySelector('.control-grid > .control').click();
+      root.querySelector('[data-action=down]').click();
+    });
+    const orders=await page.$eval('.control-grid > .control', els=>els.slice(0,2).map(el=>getComputedStyle(el).order));
+    assert.deepEqual(orders,['1','0']);
+    // Reset must restore both desktop and mobile rules, not merely the selected element.
+    page.once('dialog',dialog=>dialog.accept());
+    await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=reset]').click());
+    assert.notEqual(await page.$eval('.brand',el=>getComputedStyle(el).paddingTop),'27px');
+    assert.deepEqual(await page.$eval('.control-grid > .control',els=>els.slice(0,2).map(el=>getComputedStyle(el).order)),['0','0']);
+    const resetState=await page.evaluate(()=>JSON.parse(localStorage.getItem('frequency-warp:layout-editor:v1')));
+    assert.deepEqual(resetState,{version:1,global:{},mobile:{}});
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=preview]').click());
     await page.click('#settings-open');
     assert.equal(await page.$eval('#settings-dialog',el=>el.open),true);
