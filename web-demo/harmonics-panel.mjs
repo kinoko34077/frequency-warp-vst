@@ -10,9 +10,10 @@ const fmt=value=>Number.isFinite(value)?Number(value.toFixed(precision())).toStr
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const preciseFields=new Map();
-let fundamentalUnitControl=null;
+let fundamentalUnitControl=null,carrierUnitControl=null;
 const round3=v=>Math.round((v+Number.EPSILON)*1000)/1000;
 const read=id=>id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl.value:
+  id==="carrier"&&carrierUnitControl?carrierUnitControl.value:
   preciseFields.has(id)?preciseFields.get(id):Number($("#"+id).value);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
@@ -55,6 +56,8 @@ export function setFundamentalFromPivot(pivot){
 }
 export function resetFundamentalUnit(){fundamentalUnitControl?.reset();}
 export function refreshFundamentalUnit(){fundamentalUnitControl?.refresh();}
+export function resetCarrierUnit(){carrierUnitControl?.reset();}
+export function refreshCarrierUnit(){carrierUnitControl?.refresh();}
 export function resolvedCarrierHz(foldPoint){
   const p=harmonicParameters();
   if(p.linked){
@@ -122,7 +125,8 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   $("#harmonic-table-title").textContent="第1〜"+count+"倍音の数値表を見る";
   const checkbox=$("#carrier-link"),readout=$("#carrier-linked-value");
   const valid=["fold-l","fold-h"].includes($("#mode").value);
-  for(const node of [$("#carrier"),$("#carrier-range")])node.disabled=checkbox.checked&&valid;
+  for(const node of [$("#carrier"),$("#carrier-range"),$("#carrier-unit"),$("#carrier-snap")])
+    node.disabled=checkbox.checked&&valid;
   if(!checkbox.checked){
     readout.textContent="";
   }else if(!valid){
@@ -152,12 +156,35 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
     railRoot:$("#fundamental-range"),getDigits:precision,initialValue:350,
     onValueChange:()=>respond("fundamental")
   });
+  // Carrier retains the old exact 0Hz thumb and 1..20000Hz gesture map.
+  // The former 0..1Hz typed-only subrange maps into the first 0.1% of the
+  // rail continuously; coarse integer thumb transport is never a DSP value.
+  const carrierToRail=hz=>hz<=0?0:hz<=1?hz/1000:
+    (1+999*Math.log(hz)/Math.log(20000))/1000;
+  const carrierFromRail=p=>p<=0?0:p<=.001?1000*p:
+    Math.exp(Math.log(20000)*(p*1000-1)/999);
+  carrierUnitControl=mountFrequencyUnitField({
+    descriptor:defineParameter({
+      id:"carrier",min:0,max:20000,defaultValue:350,
+      units:["hz","note","percent"],
+      rail:{toPosition:carrierToRail,fromPosition:carrierFromRail},
+      digits:3,
+      snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+    }),
+    field:$("#carrier"),select:$("#carrier-unit"),
+    snapToggle:$("#carrier-snap"),slider:$("#carrier-range"),
+    railRoot:$("#carrier-range"),getDigits:precision,initialValue:350,
+    onValueChange:()=>respond("carrier")
+  });
   for(const id of IDS){
     const number=$("#"+id),range=$("#"+id+"-range");
     if(id==="fundamental"){
-      // Reuse the exact same slider input path (including keyboard gestures),
-      // with no duplicate numeric listeners/preciseFields for F.
+      // The shared F binding is already the sole number/slider handler.
       range.addEventListener("input",()=>fundamentalUnitControl.fromSlider());
+      continue;
+    }
+    if(id==="carrier"){
+      range.addEventListener("input",()=>carrierUnitControl.fromSlider());
       continue;
     }
     // Preserve direct typing for exact values while making typical changes
