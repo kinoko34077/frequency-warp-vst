@@ -27,6 +27,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     this.recentWetEnergy = 0;
     this.recentSamples = 0;
     this.lastGoodSettings = null;
+    this.streamFailed = false;
     this.port.onmessage = ({data}) => this.command(data);
   }
   initialize(data) {
@@ -91,6 +92,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       this.recentInputEnergy=0;this.recentWetEnergy=0;this.recentSamples=0;
       // Created and configured in full before the first "ready" ACK.
       this.lastGoodSettings={...options};
+      this.streamFailed=false;
       this.port.postMessage({type:"ready",latencyFrames:this.latency,sampleRate});
     } catch(err) {
       this.port.postMessage({type:"error",message:String(err.message||err)});
@@ -98,6 +100,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
   }
   release() {
     this.lastGoodSettings=null;
+    this.streamFailed=false;
     if (!this.exports) return;
     const e=this.exports;
     if(this.stream)e.warp_stream_free(this.stream);
@@ -138,6 +141,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     if (!data) return;
     if (data.type==="init")return this.initialize(data);
     if (!this.stream)return;
+    // A nonzero block-process result quarantines this instance until dispose.
+    // Never accept more controls for a stream that is being retired.
+    if(this.streamFailed&&data.type!=="dispose")return;
     const e=this.exports;
     if (data.type==="reset") {
       e.warp_stream_reset(this.stream);
@@ -191,7 +197,10 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     const input=inputs[0]||[];
     for(const channel of wet)channel.fill(0);
     for(const channel of dry)channel.fill(0);
-    if(!this.stream||!this.exports)return true;
+    // In the event of a native runtime error, keep producing silence until
+    // the UI completes direct-original fallback; do not call Rust or flood
+    // the main thread with an error on every 128-frame callback.
+    if(!this.stream||!this.exports||this.streamFailed)return true;
     const e=this.exports;
     const frames=wet[0].length;
     if(frames!==128)return true;
@@ -205,7 +214,11 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     const t0=globalThis.performance?.now?.()||0;
     const status=e.warp_stream_process(this.stream,this.src,this.dst,frames);
     if(status!==0){
-      this.port.postMessage({type:"error",message:"Streaming core returned "+status});
+      this.streamFailed=true;
+      this.port.postMessage({
+        type:"error",fatal:true,message:"Streaming core returned "+status+
+          " · 変換を停止し原音へ退避"
+      });
       return true;
     }
     // A host-only delay compensates for Rust STFT lookahead on the dry path.
