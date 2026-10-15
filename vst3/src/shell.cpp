@@ -893,6 +893,20 @@ public:
         msg->release();
     }
 #ifdef _WIN32
+    NewBindingStatus pollNewGenericStatus() {
+        // Native UI poll is non-RT. An async processor query provides
+        // correlated prepared/committed/saved/live status and can report a
+        // safe engine-off state without aborting loaded original audio.
+        queryNewGenericStatus();
+        const auto prepared=lastNewPreparedWord_.load(std::memory_order_acquire);
+        const auto committed=lastNewCommittedWord_.load(std::memory_order_acquire);
+        return NewBindingStatus{
+            prepared>>1,committed>>1,
+            (prepared&1u)!=0,(committed&1u)!=0,
+            lastNewSaved_.load(std::memory_order_acquire),
+            lastNewActive_.load(std::memory_order_acquire)
+        };
+    }
     EngineStatusSnapshot pollWorkerStatus(){
         if(auto* message=allocateMessage()){
             message->setMessageID("FrequencyWarp.QueryEngineV1");
@@ -1016,7 +1030,12 @@ public:
 #endif
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
-        },[this](){return pollWorkerStatus();});
+        },[this](){return pollWorkerStatus();},
+        [this](const std::vector<uint8_t>& descriptor){
+            return sendPrepareNewGenericDescriptor(descriptor);
+        },[this](uint64_t request){
+            return sendCommitNewGeneric(request);
+        },[this](){return pollNewGenericStatus();});
 #else
         (void)type;
         return nullptr;
