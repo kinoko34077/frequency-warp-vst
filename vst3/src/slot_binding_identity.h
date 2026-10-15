@@ -52,7 +52,9 @@ inline bool legalName(const std::string& s,bool dotted) {
 inline bool legal(const SlotBindingIdentity& b) {
     return b.hostSlot>=64 && b.hostSlot<=127 &&
         b.codecRevision>=1 && b.codecRevision<=65535 &&
-        legalName(b.engineId,true) && legalName(b.semanticId,false);
+        legalName(b.engineId,true) && legalName(b.semanticId,false) &&
+        std::any_of(b.packageSha256.begin(),b.packageSha256.end(),
+                    [](std::uint8_t byte){return byte!=0;});
 }
 inline std::uint32_t crc32(const std::uint8_t* data,std::size_t size) noexcept {
     std::uint32_t c=0xffffffffu;
