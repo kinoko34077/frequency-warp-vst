@@ -89,6 +89,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#low-value");
     assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-440)<1e-8,
       "opt-in semitone snap must land exactly on A4 440 Hz");
+    assert.equal(await page.$eval("#low-thumb",el=>el.getAttribute("aria-valuetext")),"440 Hz",
+      "accessible physical tooltip must reflect snapped canonical DSP Hz");
     await page.$eval("#low-value",el=>el.blur());
 
     // Existing keyboard accessible thumb path must continue to emit native input.
