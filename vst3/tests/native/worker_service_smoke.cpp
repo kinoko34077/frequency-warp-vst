@@ -180,8 +180,17 @@ int main(int argc,char** argv) {
                    "modern Stream package not recognized by native WASM");
             std::uint64_t expectedMask=0;
             for(const auto id:fw::StreamHostEvents::kBindingIds)expectedMask|=(1ull<<id);
-            ensure(fw_native_stream_control_mask(modern)==expectedMask,
-                   "new Stream failed to announce exactly 14 immutable host ParamIDs");
+            const auto advertised=fw_native_stream_control_mask(modern);
+            ensure((advertised&expectedMask)==expectedMask &&
+                   (advertised&~((1ull<<31)-1ull))==0,
+                   "new Stream lost active host IDs or returned an invalid capability bit");
+            // A new .fwengine can advertise additional native capabilities
+            // before this stable host exposes them; worker intersects both.
+            ensure((advertised&(1ull<<27))!=0 &&
+                   (advertised&(1ull<<28))!=0 &&
+                   (advertised&(1ull<<29))!=0 &&
+                   (advertised&(1ull<<30))!=0,
+                   "new Engine A module capability bits not announced");
             fw_native_destroy(modern);
             ensure(service.start(),"spectral worker restart failed");
             const auto priorVersion=service.acceptedVersion();

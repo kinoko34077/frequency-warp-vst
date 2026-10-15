@@ -18,7 +18,8 @@ fn frame_input(start:usize,frames:usize)->Vec<f32>{
     result
 }
 fn native_chunk(stream:&mut Stream,src:&[f32],frames:usize,cut:usize,
-                changed:&mut Settings,geometry_change:bool,crusher_change:bool)->Result<Vec<f32>,Box<dyn Error>>{
+                changed:&mut Settings,geometry_change:bool,crusher_change:bool,
+                a_change:bool)->Result<Vec<f32>,Box<dyn Error>>{
     let mut dst=vec![0f32;2*frames];
     let mut pos=0;
     while pos<frames {
@@ -30,6 +31,11 @@ fn native_chunk(stream:&mut Stream,src:&[f32],frames:usize,cut:usize,
                 stream.set_geometry(500.,-0.6)?;
                 stream.set_zero_reflect_gain(0.65)?;
                 stream.set_zero_reflect_decay(0.4)?;
+            }else if a_change {
+                // Directly invoke Web's existing canonical Engine A setters.
+                stream.set_a_options(70.0,0.55)?;
+                stream.set_a_peak_band(3)?;
+                stream.set_a_quality(65)?;
             }else if crusher_change {
                 // Browser holdFromFrequency(12000 Hz,48000 Hz) = four frames.
                 stream.set_crusher(6,4)?;
@@ -72,13 +78,16 @@ fn main()->Result<(),Box<dyn Error>>{
     let mut biggest=0f32;let mut power=0f64;
     let mut after_diff=0f64;
     let mut crusher_diff=0f64;
+    let mut engine_a_diff=0f64;
+    let mut native_no_a=Stream::new(48000.,2,native_settings,0)?;
+    let mut no_a_settings=native_settings;
     let mut native_without_crusher=Stream::new(48000.,2,native_settings,0)?;
     let mut no_crusher_settings=native_settings;
     let dry_settings=native_settings;
     let mut unchanged=Stream::new(48000.,2,dry_settings,0)?;
     for block in 0..BLOCKS{
         let input=frame_input(block*F,F);
-        let cut=if block==64{32}else if block==80{40}else if block==96{24}else{F};
+        let cut=if block==64{32}else if block==80{40}else if block==96{24}else if block==112{20}else{F};
         let events=if block==64{
             vec![ParamEvent{id:4,offset:32,value:0.72},
                  ParamEvent{id:5,offset:32,value:0.35}]
@@ -94,12 +103,20 @@ fn main()->Result<(),Box<dyn Error>>{
             vec![ParamEvent{id:11,offset:24,value:1.0},
                  ParamEvent{id:16,offset:24,value:6.0},
                  ParamEvent{id:17,offset:24,value:12000.0}]
+        }else if block==112 {
+            vec![ParamEvent{id:27,offset:20,value:70.0},
+                 ParamEvent{id:28,offset:20,value:0.65},
+                 ParamEvent{id:29,offset:20,value:3.0},
+                 ParamEvent{id:30,offset:20,value:0.55}]
         }else{vec![]};
         let actual=wasm.process(&input,F,&events)?;
         let expected=native_chunk(&mut native,&input,F,cut,&mut native_settings,
-                                  block==80,block==96)?;
+                                  block==80,block==96,block==112)?;
+        let unmodified_a=native_chunk(&mut native_no_a,&input,F,
+             if block==112{F}else{cut},&mut no_a_settings,
+             block==80,block==96,false)?;
         let no_crusher=native_chunk(&mut native_without_crusher,&input,F,
-            if block==96{F}else{cut},&mut no_crusher_settings,block==80,false)?;
+            if block==96{F}else{cut},&mut no_crusher_settings,block==80,false,false)?;
         let mut baseline=vec![0.;2*F];
         unchanged.process(&input,&mut baseline,F)?;
         for ((a,b),z) in actual.iter().zip(expected.iter()).zip(baseline.iter()){
@@ -107,8 +124,12 @@ fn main()->Result<(),Box<dyn Error>>{
             power+=(*a as f64)*(*a as f64);
             if block>=72 {after_diff+=((a-z) as f64).abs();}
         }
-        if block>=104 {
+        if (104..112).contains(&block) {
             crusher_diff+=actual.iter().zip(no_crusher.iter())
+                .map(|(a,b)|((*a-*b) as f64).abs()).sum::<f64>();
+        }
+        if block>=122 {
+            engine_a_diff+=actual.iter().zip(unmodified_a.iter())
                 .map(|(a,b)|((*a-*b) as f64).abs()).sum::<f64>();
         }
         assert!(actual.iter().all(|v|v.is_finite()),"bad real WASM audio");
@@ -116,6 +137,7 @@ fn main()->Result<(),Box<dyn Error>>{
     assert!(power>1e-6,"shared Stream emitted no audio");
     assert!(after_diff>0.1,"canonical spectral and geometric events produced no PCM difference");
     assert!(crusher_diff>0.1,"crusher audio was a placebo after its sample-offset change");
+    assert!(engine_a_diff>0.01,"Engine A setters had no audible PCM effect");
     assert!(biggest<0.008,"WASM/native canonical spectral PCM diverged: max={biggest}");
     // A DAW is free to automate L and H independently. Even though each
     // canonical value fits its own range, their combination can be invalid.
@@ -196,6 +218,23 @@ fn main()->Result<(),Box<dyn Error>>{
     native.process(&disabled_input,&mut native_disabled,F)?;
     assert!(disabled_pcm.iter().zip(native_disabled.iter()).all(|(a,b)|(a-b).abs()<0.008),
         "crusher off changed canonical Rust audio");
+    // Stress full 100% Engine A selection without inventing new peak logic.
+    // Detect real Wasmi budget overrun or divergence at the public max rail.
+    assert!(wasm.process(&[],0,&[
+        ParamEvent{id:28,offset:0,value:1.0}])?.is_empty());
+    native.set_a_quality(100)?;
+    let mut highest_a_fuel=0u64;
+    for block in 0..8usize {
+        let quality_input=frame_input((BLOCKS+5+block)*F,F);
+        let quality_wasm=wasm.process(&quality_input,F,&[])?;
+        highest_a_fuel=highest_a_fuel.max(wasm.last_process_fuel());
+        let mut quality_native=vec![0f32;2*F];
+        native.process(&quality_input,&mut quality_native,F)?;
+        assert!(quality_wasm.iter().zip(quality_native.iter())
+            .all(|(a,b)|(a-b).abs()<0.008),
+            "full-quality Engine A native/WASM PCM parity failed");
+    }
+    println!("Engine A full-quality 100% max Wasmi fuel per 128 frames: {highest_a_fuel}");
     // Reject invalid new geometry values without compromising DSP.
     assert!(wasm.process(&frame_input(16896,F),F,&[
         ParamEvent{id:8,offset:0,value:4.1}]).is_err());
@@ -213,10 +252,21 @@ fn main()->Result<(),Box<dyn Error>>{
         assert!(!wasm.faulted(),
             "rejected noncanonical host event must not fault the valid engine");
     }
+    for invalid in [
+        ParamEvent{id:27,offset:0,value:0.0},
+        ParamEvent{id:28,offset:0,value:1.01},
+        ParamEvent{id:29,offset:0,value:2.5},
+        ParamEvent{id:29,offset:0,value:9.0},
+        ParamEvent{id:30,offset:0,value:-0.1},
+    ] {
+        assert!(wasm.process(&frame_input(17536,F),F,&[invalid]).is_err(),
+            "noncanonical Engine A event should be rejected");
+        assert!(!wasm.faulted(),"invalid host event cannot fault the Stream");
+    }
     // Unsupported host param (e.g. Gain ID64) MUST fail on actual Stream,
     // while demo Identity/Gain native regression still accepts ID64.
     let buf=frame_input(16384,F);
     assert!(wasm.process(&buf,F,&[ParamEvent{id:64,offset:0,value:0.5}]).is_err());
-    println!("PASS S4b3a native/WASM Stream: 16K PCM, L/H geometry/ring/reflection + crusher at sample24, 0Hz freeze/off, parity max_error={biggest:.7}, changed_diff={after_diff:.4}, crusher_diff={crusher_diff:.4}, latency=1023");
+    println!("PASS S4b4a native/WASM Stream: 16K PCM + Engine A four controls at sample20, parity max_error={biggest:.7}, crusher_diff={crusher_diff:.4}, engine_a_diff={engine_a_diff:.4}, latency=1023");
     Ok(())
 }
