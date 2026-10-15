@@ -266,7 +266,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // F is now the harmonic panel's one canonical number; its slider is
     // linear rather than logarithmic, and linked H/P uses this same value.
     await page.click("#tab-math");
-    assert.equal(await page.$eval("#fundamental-unit",el=>el.getBoundingClientRect().height>0),false);
+    assert.equal(await page.$eval("#fundamental-unit",el=>getComputedStyle(el).opacity!=="0"),false);
     assert.equal(await page.$$eval("#fundamental-unit + .unit-switch button",bs=>bs.length),3);
     assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
     await page.select("#fundamental-unit","note");
