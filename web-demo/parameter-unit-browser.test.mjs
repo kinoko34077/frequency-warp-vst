@@ -92,6 +92,63 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       "accessible physical tooltip must reflect snapped canonical DSP Hz");
     await page.$eval("#low-value",el=>el.blur());
 
+    // No permanent toggle: context menus own the per-control snap state.
+    assert.equal(await page.$eval(".snap-toggle",el=>el!==null).catch(()=>false),false,
+      "permanent snap checkboxes are removed");
+    await page.$eval("#low-thumb",el=>el.dispatchEvent(new MouseEvent("contextmenu",{
+      bubbles:true,cancelable:true,clientX:60,clientY:120
+    })));
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    assert.match(await page.$eval("#fw-unit-snap-menu button",el=>el.textContent),/オフ/);
+    await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+    assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"off");
+    await page.$eval("#low",(el,step)=>{
+      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },railStep);
+    await page.focus("#low-value");
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-440)>.05,
+      "manual snap OFF preserves the coarse physical slider frequency");
+    await page.$eval("#low-value",el=>el.blur());
+    // Keyboard context menu works without a mouse and can turn snap back ON.
+    await page.focus("#low-value");
+    await page.keyboard.down("Shift");await page.keyboard.press("F10");await page.keyboard.up("Shift");
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+    assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
+    // Holding either Ctrl or Alt bypasses snapping for that gesture only.
+    for(const modifier of ["Alt","Control"]){
+      await page.keyboard.down(modifier);
+      await page.$eval("#low",(el,step)=>{
+        el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+      },railStep);
+      await page.keyboard.up(modifier);
+      await page.focus("#low-value");
+      assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-440)>.05,
+        modifier+" must temporarily bypass ON snapping");
+      await page.$eval("#low-value",el=>el.blur());
+    }
+    await page.$eval("#low",(el,step)=>{
+      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },railStep);
+    await page.focus("#low-value");
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-440)<1e-8);
+    await page.$eval("#low-value",el=>el.blur());
+    // Fractional cents are parsed and preserved, but shown as whole cents.
+    await page.select("#low-unit","note");
+    await page.$eval("#low-value",el=>{
+      el.value="A4+25.375c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#low-value",el=>el.blur());
+    assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c");
+    await page.focus("#low-value");
+    assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c",
+      "focus must not reveal fractional cents");
+    await page.select("#low-unit","hz");
+    await page.focus("#low-value");
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-
+      440*2**(25.375/1200))<1e-9, "hidden fractional cents remain canonical");
+    await page.$eval("#low-value",el=>el.blur());
+
     // Existing keyboard accessible thumb path must continue to emit native input.
     await page.focus("#low-thumb");
     await page.keyboard.press("ArrowRight");
@@ -277,6 +334,23 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.select("#pitch-ratio-unit","cents");
     assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-700)<.001);
+    // Relative cent fields accept decimals while hiding them on display.
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="700.375";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    assert.equal(await page.$eval("#pitch-ratio",el=>el.value),"700");
+    await page.select("#pitch-ratio-unit","ratio");
+    await page.focus("#pitch-ratio");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+      2**(7.00375/12))<1e-12);
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    // Restore the round-number case used by the existing link contract.
+    await page.select("#pitch-ratio-unit","semitones");
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="7";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#pitch-ratio-unit","cents");
     await page.select("#pitch-ratio-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
       100*(ratioExact-.25)/3.75)<.01, "ratio% uses the physical linear rail");
@@ -436,6 +510,24 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     const sineExact=Number(await page.$eval("#sine-hz",el=>el.value));
     assert.ok(Math.abs(sineExact-440*2**(25/1200))<1e-9);
     assert.ok(Math.abs(Number(await page.$eval("#sine-cent",el=>el.value))-25)<.01);
+    await page.select("#sine-unit","note");
+    await page.$eval("#sine-hz",el=>{
+      el.value="A4+25.375c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#sine-hz",el=>el.blur());
+    assert.equal(await page.$eval("#sine-hz",el=>el.value),"A4+25c");
+    assert.equal(Number(await page.$eval("#sine-cent",el=>el.value)),25);
+    await page.select("#sine-unit","hz");
+    await page.focus("#sine-hz");
+    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
+      440*2**(25.375/1200))<1e-9);
+    await page.$eval("#sine-hz",el=>el.blur());
+    // Restore original +25c reference for the existing percent tests.
+    await page.select("#sine-unit","note");
+    await page.$eval("#sine-hz",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#sine-unit","hz");
     await page.$eval("#sine-hz",el=>el.blur());
     await page.select("#sine-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
