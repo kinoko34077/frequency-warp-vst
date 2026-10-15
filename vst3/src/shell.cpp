@@ -164,6 +164,72 @@ public:
     // invoked from the audio callback; it only queues bytes for the worker.
     tresult PLUGIN_API notify(IMessage* message) override {
         if(!message||!message->getMessageID())return kInvalidArgument;
+        // R3C2D0: message transport is NON-RT. The following status is
+        // advisory and MUST NOT alone authorize a host begin/perform/endEdit.
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.QueryGenericAuthorizationV1")==0) {
+            IMessage* reply=allocateMessage();
+            if(!reply)return kResultFalse;
+            reply->setMessageID("FrequencyWarp.GenericAuthorizationStatusV1");
+            auto* result=reply->getAttributes();
+            const auto verified=worker_.verifiedIdentitySnapshot();
+            const bool active=verified.active && verified.genericTicket!=0 &&
+                              verified.genericAllowedMask!=0;
+            const auto last=worker_.lastAuthorizationWord();
+            const uint64_t mask=active?verified.genericAllowedMask:0;
+            const bool ok=result &&
+                result->setInt("lastRequest",static_cast<int64>(last>>1))==kResultTrue &&
+                result->setInt("lastSucceeded",static_cast<int64>(last&1u))==kResultTrue &&
+                result->setInt("ticket",static_cast<int64>(
+                    active?verified.genericTicket:0))==kResultTrue &&
+                result->setInt("generation",static_cast<int64>(
+                    active?verified.acceptedGeneration:0))==kResultTrue &&
+                result->setInt("maskLo",static_cast<int64>(mask&0xffffffffull))==kResultTrue &&
+                result->setInt("maskHi",static_cast<int64>(mask>>32))==kResultTrue &&
+                result->setBinary("packageHash",verified.packageSha256.data(),
+                                  static_cast<uint32>(verified.packageSha256.size()))==kResultTrue;
+            const auto sent=ok?sendMessage(reply):kResultFalse;
+            reply->release();
+            return sent;
+        }
+        // The Controller supplies only a candidate display descriptor.
+        // Processor assembles the actual saved-FWS3 identity from its own
+        // current verified worker and ledger, refusing missing/stale intent.
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.AuthorizeGenericDescriptorV1")==0) {
+            auto* attrs=message->getAttributes();
+            if(!attrs)return kResultFalse;
+            const void* bytes=nullptr;
+            uint32 size=0;
+            int64 requestId=0;
+            if(attrs->getBinary("descriptor",bytes,size)!=kResultTrue ||
+               !bytes || !size || size>65536 ||
+               attrs->getInt("request",requestId)!=kResultTrue ||
+               requestId<=0 || requestId>(INT64_MAX>>1))return kResultFalse;
+            try {
+                std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
+                EngineProjectState project{};
+                const auto current=worker_.verifiedIdentitySnapshot();
+                if(!current.active || current.package.empty() ||
+                   savedBindingLedger_.empty())return kResultFalse;
+                project.package=current.package;
+                project.bindingLedger=savedBindingLedger_;
+                VerifiedProjectEngine verified{};
+                verified.package=current.package;
+                verified.engineId=current.engineId;
+                verified.sha256=current.packageSha256;
+                verified.acceptedGeneration=current.acceptedGeneration;
+                verified.active=current.active;
+                if(!matchSavedBindingToVerifiedEngine(project,verified))
+                    return kResultFalse;
+                const auto* src=static_cast<const std::uint8_t*>(bytes);
+                std::vector<std::uint8_t> descriptor(src,src+size);
+                return worker_.postAuthorization(std::move(project),
+                           std::move(descriptor),
+                           static_cast<std::uint64_t>(requestId))
+                    ? kResultOk:kResultFalse;
+            }catch(...){return kResultFalse;}
+        }
         if(std::strcmp(message->getMessageID(),"FrequencyWarp.QueryEngineV1")==0) {
             // Request and response remain on the host's non-audio message path.
             // Worker status is atomic; never send host messages from process().
