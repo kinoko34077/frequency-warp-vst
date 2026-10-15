@@ -25,6 +25,7 @@ pub struct Runtime {
     channels:usize,max_frames:usize,input:usize,output:usize,event:usize,
     capacity:usize,faulted:bool,sample_rate:f64,stream_mask:u64,generic_mask:u64,
     last_fuel_used:u64,
+    generic_contracts:Vec<module_contract::Canonical>,
 }
 fn section(start:usize,size:usize,limit:usize,align:usize)->Result<(usize,usize)>{
     ensure!(start>0&&start%align==0,"invalid ABI offset");
@@ -100,20 +101,46 @@ impl Runtime{
         // Capability mask bit0 = fixed Host ParamID64, ... bit63 = 127.
         // Old modules without this optional export are fail-closed (0).
         // A mask does not authorize a semantic descriptor or host automation.
-        let generic_mask=if p.manifest.engine_id=="org.kinotch.stream" {0}
+        let mut generic_mask=if p.manifest.engine_id=="org.kinotch.stream" {0}
             else {
                 match inst.get_typed_func::<(),i64>(&store,"fw_supported_generic_slot_mask") {
                     Ok(f)=>f.call(&mut store,())? as u64,
                     Err(_)=>0,
                 }
             };
+        // The WASM-owned contract bytes are copied and validated during
+        // non-RT preparation. A module with a mask but absent/invalid
+        // semantic contract remains PCM-playable, but has generic mask 0.
+        // The UI JSON cannot synthesize or enlarge this capability.
+        let generic_contracts=if generic_mask==0 {Vec::new()} else {
+            let candidate=(||->Result<Vec<module_contract::Canonical>> {
+                let offset=getter(&inst,&mut store,"fw_generic_contract_offset")?;
+                let len=getter(&inst,&mut store,"fw_generic_contract_length")?;
+                ensure!(offset>0&&len>0&&len<=4096,"generic WASM contract bounds");
+                let start=offset as usize;
+                let end=start.checked_add(len as usize)
+                    .context("generic WASM contract overflow")?;
+                let bytes=memory.data(&store);
+                ensure!(end<=bytes.len(),"generic WASM contract outside memory");
+                module_contract::parse(&bytes[start..end],generic_mask)
+                    .context("invalid module-owned semantics")
+            })();
+            match candidate {
+                Ok(contracts)=>contracts,
+                Err(_)=>{generic_mask=0;Vec::new()}
+            }
+        };
         Ok(Self{manifest:p.manifest,store,memory,run,handle,channels,max_frames,
             input,output,event,capacity:capacity as usize,faulted:false,
-            sample_rate:rate,stream_mask,generic_mask,last_fuel_used:0})
+            sample_rate:rate,stream_mask,generic_mask,last_fuel_used:0,
+            generic_contracts})
     }
     pub fn faulted(&self)->bool{self.faulted}
     pub fn stream_control_mask(&self)->u64{self.stream_mask}
     pub fn generic_slot_mask(&self)->u64{self.generic_mask}
+    pub fn generic_contract(&self,slot:u32)->Option<&module_contract::Canonical>{
+        self.generic_contracts.iter().find(|b|b.host_slot==slot)
+    }
     // NonRT diagnostics for bounded CPU/fuel investigation and regression.
     pub fn last_process_fuel(&self)->u64{self.last_fuel_used}
     /// Test/offline convenience function. Allocates a Vec; not for audio callbacks.
@@ -216,6 +243,7 @@ impl Runtime{
 
 pub mod ffi;
 pub mod descriptor;
+pub mod module_contract;
 #[cfg(test)]
 mod tests{
     use super::*;
