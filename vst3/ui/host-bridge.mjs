@@ -33,6 +33,61 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   let disposed = false, applying = false;
   const editing = new Set(), subscriptions = [];
   const controls = new Map();
+  // VST3-only DOM controls mirror the NATIVE Controller's latest active
+  // FWS3 mask. Browser metadata NEVER grants an edit: Win32 host rechecks
+  // its worker+ticket-derived mask for every incoming edit event.
+  const genericNodes = new Map();
+  let genericPanel = null, genericKey = "";
+  function syncNativeGenericSlots(ids) {
+    if (!Array.isArray(ids) || ids.length > 64 ||
+        !ids.every(id => Number.isInteger(id) && id >= 64 && id <= 127) ||
+        new Set(ids).size !== ids.length) return false;
+    const ordered = ids.slice().sort((a, b) => a - b);
+    const key = ordered.join(",");
+    if (key === genericKey) return true;
+    if (typeof document.createElement !== "function" ||
+        !document.body || typeof document.body.appendChild !== "function")
+      return false;
+    if (ordered.length && !genericPanel) {
+      genericPanel = document.createElement("section");
+      genericPanel.id = "fw-vst-generic-panel";
+      genericPanel.style.cssText =
+        "padding:10px;margin:8px;border:1px solid #777;border-radius:8px;" +
+        "background:#1e1f24;color:#fff;font:13px system-ui";
+      const heading = document.createElement("div");
+      heading.textContent = "Verified engine parameters (normalized)";
+      genericPanel.appendChild(heading);
+      document.body.appendChild(genericPanel);
+    }
+    for (const [id, group] of genericNodes) {
+      if (!ordered.includes(id)) {
+        group.remove();
+        genericNodes.delete(id);
+      }
+    }
+    for (const id of ordered) if (!genericNodes.has(id)) {
+      const group = document.createElement("label");
+      group.style.cssText = "display:flex;gap:8px;align-items:center;margin:5px 0";
+      group.textContent = `Engine Slot ${id}`;
+      const input = document.createElement("input");
+      input.id = `fw-vst-slot-${id}`;
+      input.type = "range"; input.min = "0"; input.max = "1";
+      input.step = "0.001"; input.value = "0.5";
+      group.appendChild(input);
+      genericPanel.appendChild(group);
+      genericNodes.set(id, group);
+    }
+    if (!ordered.length && genericPanel) {
+      genericPanel.remove();
+      genericPanel = null;
+    }
+    const bindings = DEFAULT_BINDINGS.concat(ordered.map(id => ({
+      id, selector: `#fw-vst-slot-${id}`, min: 0, max: 1
+    })));
+    if (!bindAll(bindings)) return false;
+    genericKey = key;
+    return true;
+  }
   function emit(kind, extra = {}) {
     if (!disposed) webview.postMessage({ protocol: PROTOCOL, kind, ...extra });
   }
@@ -98,6 +153,11 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
     if (msg.kind === "parameter") {
       if (Number.isInteger(msg.id)) applyValue(msg.id, msg.value);
     } else if (msg.kind === "snapshot") {
+      // Generic slider visibility is derived solely from the native host
+      // mask sent with this snapshot. Missing/unrecognized input never adds
+      // new permissions. Actual edit authority remains native.
+      if (own(msg, "genericSlots") && !syncNativeGenericSlots(msg.genericSlots))
+        return;
       if (!msg.values || typeof msg.values !== "object" ||
           Array.isArray(msg.values)) return;
       for (const [id, value] of Object.entries(msg.values)) {
@@ -123,6 +183,10 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       webview.removeEventListener?.("message", onMessage);
       for (const [node, kind, listener] of subscriptions) node.removeEventListener(kind, listener);
       subscriptions.length = 0; controls.clear();
+      for (const node of genericNodes.values()) node.remove();
+      genericNodes.clear();
+      if (genericPanel) genericPanel.remove();
+      genericPanel = null; genericKey = "";
     }
   };
 }
