@@ -35,7 +35,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:18000});
     assert.deepEqual(await page.$$eval("#low-unit option",options=>options.map(o=>o.value)),["hz","note","percent"]);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#low-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
     const selectorVisible=await page.$eval("#low-unit",el=>el.getBoundingClientRect().height>0);
     assert.equal(selectorVisible,true,"unit dropdown hidden at mobile width");
 
@@ -79,16 +79,15 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#low-value");
     assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-half)<1e-8);
 
-    // Snap is explicitly opt-in and uses the same source rail as dual thumbs.
+    // Snap is ON by default and uses the same source rail as dual thumbs.
     await page.$eval("#low-value",el=>el.blur());
-    await page.$eval("#low-snap",el=>{el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));});
     const railStep=Math.round(200+800*Math.log(440/20)/Math.log(1000));
     await page.$eval("#low", (el,step)=>{
       el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
     },railStep);
     await page.focus("#low-value");
     assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-440)<1e-8,
-      "opt-in semitone snap must land exactly on A4 440 Hz");
+      "default-on semitone snap must land exactly on A4 440 Hz");
     assert.equal(await page.$eval("#low-thumb",el=>el.getAttribute("aria-valuetext")),"440 Hz",
       "accessible physical tooltip must reflect snapped canonical DSP Hz");
     await page.$eval("#low-value",el=>el.blur());
@@ -101,7 +100,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // Upper H is a second independent binding with the same unit registry.
     assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll("#high-unit option")].map(i=>i.value)),
       ["hz","note","percent"]);
-    assert.equal(await page.$eval("#high-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#high",el=>el.dataset.fwSnap),"on");
     const highRailInitial=await page.$eval("#high",el=>el.value);
     await page.select("#high-unit","note");
     assert.equal(await page.$eval("#high",el=>el.value),highRailInitial,
@@ -128,8 +127,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Math.abs(Number(await page.$eval("#high-value",el=>el.value))-highExact)<1e-9);
     await page.$eval("#high-value",el=>el.blur());
 
-    // H opt-in snap and keyboard gestures are a peer, not a new DSP path.
-    await page.$eval("#high-snap",el=>{el.checked=true;});
+    // H default-on snap and keyboard gestures are a peer, not a new DSP path.
     const highStep=Math.round(200+800*Math.log(880/20)/Math.log(1000));
     await page.$eval("#high",(el,step)=>{
       el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -142,7 +140,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // P is a distinct physical frequency; zero is a special valid state
     // with no musical-note representation, and note selection must recover.
     assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#axis-pivot",el=>el.dataset.fwSnap),"on");
     await page.select("#pivot-unit","note");
     await page.$eval("#axis-pivot-value",el=>{
       el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -183,7 +181,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // linear rather than logarithmic, and linked H/P uses this same value.
     await page.click("#tab-math");
     assert.equal(await page.$eval("#fundamental-unit",el=>el.getBoundingClientRect().height>0),true);
-    assert.equal(await page.$eval("#fundamental-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
     await page.select("#fundamental-unit","note");
     await page.$eval("#fundamental",el=>{
       el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -204,7 +202,6 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     const linkedPivot=Number(await page.$eval("#axis-pivot-value",el=>el.value));
     assert.ok(Math.abs(linkedPivot-fExact/4)<.005,
       "harmonic H/P link must read shared exact F");
-    await page.$eval("#fundamental-snap",el=>{el.checked=true;});
     await page.$eval("#fundamental-range",el=>{
       el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -224,7 +221,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // frequency or semitone interval. Its real rail is -4..+4 linearly.
     assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll(
       "#axis-slope-unit option")].map(el=>el.value)),["ratio","percent"]);
-    assert.equal(await page.$eval("#axis-slope-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#axis-slope",el=>el.dataset.fwSnap),"on");
     const slopeRailInitial=await page.$eval("#axis-slope",el=>el.value);
     await page.select("#axis-slope-unit","percent");
     assert.equal(await page.$eval("#axis-slope",el=>el.value),slopeRailInitial);
@@ -242,7 +239,6 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#axis-slope-value");
     assert.equal(Number(await page.$eval("#axis-slope-value",el=>el.value)),-1.25);
     await page.$eval("#axis-slope-value",el=>el.blur());
-    await page.$eval("#axis-slope-snap",el=>{el.checked=true;});
     for(const [thumb,target] of [["-.98",-1],[".02",0],[".98",1]]){
       await page.$eval("#axis-slope",(el,t)=>{
         el.value=t;el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -267,7 +263,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll(
       "#pitch-ratio-unit option")].map(el=>el.value)),
       ["ratio","semitones","cents","percent"]);
-    assert.equal(await page.$eval("#pitch-ratio-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.dataset.fwSnap),"on");
     await page.select("#pitch-ratio-unit","semitones");
     assert.equal(await page.$eval("#pitch-ratio-range",el=>el.value),initialRThumb,
       "view-only changes must preserve the source ratio and DSP");
@@ -290,7 +286,6 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#pitch-ratio",el=>{
       el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    await page.$eval("#pitch-ratio-snap",el=>{el.checked=true;});
     await page.$eval("#pitch-ratio-range",el=>{
       el.value="1.05";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -329,7 +324,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     assert.equal(await page.$eval("#carrier-unit",el=>el.getBoundingClientRect().height>0),true);
-    assert.equal(await page.$eval("#carrier-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#carrier-range",el=>el.dataset.fwSnap),"on");
     await page.select("#carrier-unit","note");
     await page.$eval("#carrier",el=>{
       el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -385,7 +380,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
     assert.equal(await page.$eval("#a-min-unit",el=>el.getBoundingClientRect().height>0),true);
     assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#a-min-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#a-min",el=>el.dataset.fwSnap),"on");
     await page.select("#a-min-unit","note");
     await page.$eval("#a-min-value",el=>{
       el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -407,7 +402,6 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#a-min-value");
     assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.value))-aMinExact)<1e-9);
     await page.$eval("#a-min-value",el=>el.blur());
-    await page.$eval("#a-min-snap",el=>{el.checked=true;});
     const aMinStep=Math.round(200+800*Math.log(440/20)/Math.log(1000));
     await page.$eval("#a-min",(el,step)=>{
       el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -418,13 +412,13 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
 
     await page.click("#settings-reset");
     assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#a-min-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#a-min",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#a-min-value",el=>Number(el.value)),20);
     assert.equal(await page.$eval("#pitch-ratio-unit",el=>el.value),"ratio");
-    assert.equal(await page.$eval("#pitch-ratio-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#pitch-ratio",el=>Number(el.value)),1);
     assert.equal(await page.$eval("#axis-slope-unit",el=>el.value),"ratio");
-    assert.equal(await page.$eval("#axis-slope-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#axis-slope",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#axis-slope-value",el=>Number(el.value)),1);
     await page.click("#settings-done");
 
@@ -432,7 +426,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // the MIDI36..96 source track must keep its .01 semitone granularity.
     assert.equal(await page.$eval("#sine-unit",el=>el.getBoundingClientRect().height>0),true);
     assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#sine-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#sine-pitch",el=>el.dataset.fwSnap),"on");
     await page.select("#sine-unit","note");
     await page.$eval("#sine-hz",el=>{
       el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -447,9 +441,11 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
       100*(69.25-36)/60)<.01);
     await page.select("#sine-unit","hz");
+    await page.keyboard.down("Alt");
     await page.$eval("#sine-pitch",el=>{
       el.value="69.01";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
+    await page.keyboard.up("Alt");
     assert.equal(await page.$eval("#sine-pitch",el=>el.value),"69.01",
       "MIDI rail must not be rounded to integer semitones");
     await page.$eval("#sine-cent",el=>{
@@ -465,7 +461,6 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
       440*2**(.2/12))<1e-9);
     await page.$eval("#sine-hz",el=>el.blur());
-    await page.$eval("#sine-snap",el=>{el.checked=true;});
     await page.$eval("#sine-pitch",el=>{
       el.value="69.05";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -474,14 +469,14 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#sine-hz",el=>el.blur());
 
     assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#axis-pivot",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),350);
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
     assert.equal(await page.$eval("#high-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#high-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#high",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#high-value",el=>Number(el.value)),16000);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#low-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#low-value",el=>Number(el.value)),20);
     assert.equal(await page.$eval("#low",el=>el.value),"200");
     assert.deepEqual(errors,[],"browser JS errors: "+errors.join("; "));
