@@ -600,14 +600,14 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // #79-A21: changing L near H must move H in the *canonical binding*,
     // not only the coarse range proxy (which used to be undone by settings()).
     await page.$eval("#low-value",el=>{
-      el.value="15000";el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.value="15500";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#high-value");
-    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16200,
-      "an L edit to 15k must move canonical H to 16.2k");
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16740,
+      "an L edit to 15.5k must move canonical H to 16.74k");
     await page.$eval("#high-value",el=>el.blur());
     await page.focus("#low-value");
-    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),15000);
+    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),15500);
     await page.$eval("#low-value",el=>el.blur());
     // Even a display-only precision change triggers more graph/settings
     // render passes; these must not silently rewrite the previous edit.
