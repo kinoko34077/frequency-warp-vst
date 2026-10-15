@@ -38,7 +38,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
     const selectorVisible=await page.$eval("#low-unit",el=>getComputedStyle(el).opacity!=="0");
     assert.equal(selectorVisible,false,"unit select is hidden behind three icon controls");
-    assert.equal(await page.$eval("#low-unit + .unit-switch button",buttons=>buttons.length),3);
+    assert.equal(await page.$$eval("#low-unit + .unit-switch button",buttons=>buttons.length),3);
     assert.equal(await page.$eval("#low-unit + .unit-switch button[data-unit=hz]",b=>b.getAttribute("aria-pressed")),"true");
 
     // Existing start at L=20Hz. A unit-only view change must not change L.
@@ -267,7 +267,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // linear rather than logarithmic, and linked H/P uses this same value.
     await page.click("#tab-math");
     assert.equal(await page.$eval("#fundamental-unit",el=>el.getBoundingClientRect().height>0),false);
-    assert.equal(await page.$eval("#fundamental-unit + .unit-switch button",bs=>bs.length),3);
+    assert.equal(await page.$$eval("#fundamental-unit + .unit-switch button",bs=>bs.length),3);
     assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
     await page.select("#fundamental-unit","note");
     await page.$eval("#fundamental",el=>{
