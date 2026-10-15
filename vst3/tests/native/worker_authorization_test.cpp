@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -94,6 +95,42 @@ int main(int argc,char** argv) {
         rt.rtAdopt();
         need(rt.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
              "retry publication must become active");
+        // Real native WASM Gain is now driven by an authorization-tagged
+        // canonical slot64 packet; old external host slot aliases stay inert.
+        const auto* live=rt.rtLiveSnapshot();
+        need(live && live->ticket!=0,"RT authorized immutable snapshot");
+        fw::AsyncPcmMailbox::AuthorizationTag tag{};
+        tag.ticket=live->ticket;
+        tag.acceptedGeneration=live->acceptedGeneration;
+        tag.packageSha256=live->verifiedPackageSha256;
+        std::array<float,128> left{},right{};
+        left.fill(.8f);right.fill(.8f);
+        const float* audio[]={left.data(),right.data()};
+        const FWNativeEvent gainEvent{64,0,.25}; // Gain = .25, .8 * .25 = .2
+        need(worker.mailbox().rtSubmit(audio,2,128,&gainEvent,1,&tag),
+             "tagged Gain packet accepted");
+        float wet[2]{};
+        fw::AsyncPcmMailbox::AuthorizationTag returned{};
+        need(until([&]{return worker.mailbox().rtReadWet(4095,2,wet,&returned);}),
+             "real worker tagged PCM returned");
+        need(std::abs(wet[0]-.2f)<1e-5f &&
+             std::abs(wet[1]-.2f)<1e-5f &&
+             returned.ticket==tag.ticket &&
+             rt.rtTicketLive(returned.ticket),
+             "incorrect tagged Gain/identity/PCM");
+        for(std::uint64_t t=4096;t<4223;t++)
+            need(worker.mailbox().rtReadWet(t,2,wet,&returned),
+                 "tagged chunk wet continuity");
+        // A stale/tag-forged packet cannot invoke Wasmi or become audible.
+        const auto failuresBefore=worker.mailbox().stats().workerFailures;
+        auto stale=tag;
+        stale.ticket^=0x100;
+        need(worker.mailbox().rtSubmit(audio,2,128,&gainEvent,1,&stale),
+             "tagged stale packet accepted to worker rejection path");
+        need(until([&]{return worker.mailbox().stats().workerFailures>failuresBefore;}),
+             "worker did not detect stale ticket");
+        need(!worker.mailbox().rtReadWet(4223,2,wet,&returned),
+             "stale packet emitted audible unauthorized wet");
         // Race audit: enqueue a fresh authorization, then race a replacement
         // against its worker-side preflight/commit. Once the GUI replacement
         // is accepted, no late old-generation publication may re-enable Gain.

@@ -30,7 +30,10 @@ public:
         // on stop/fault is not proof of currently running DSP.
         bool active=false;
     };
-    NativeWorkerService()=default;
+    NativeWorkerService() {
+        // Same stable object lifetime as the worker, never configured by RT.
+        mailbox_.workerSetTaggedValidator(&NativeWorkerService::validateTagged,this);
+    }
     NativeWorkerService(const NativeWorkerService&)=delete;
     NativeWorkerService& operator=(const NativeWorkerService&)=delete;
     ~NativeWorkerService(){stop();}
@@ -184,6 +187,34 @@ private:
         EngineProjectState project{};
         std::vector<std::uint8_t> descriptor{};
     };
+    // Checked exclusively on the non-RT worker before AND after Wasmi.
+    // The FWS3 descriptor/codec was published on this same live handle.
+    static bool validateTagged(void* context,
+                               const AsyncPcmMailbox::Input& job) noexcept {
+        auto* self=static_cast<NativeWorkerService*>(context);
+        if(!self || !job.authorization.ticket || !self->workerNativeActive_ ||
+           self->status_.load(std::memory_order_acquire)!=Status::Ready ||
+           self->genericAuthorization_.workerCurrentTicket()!=
+               job.authorization.ticket ||
+           self->workerAuthorized_.ticket!=job.authorization.ticket ||
+           self->workerAuthorized_.acceptedGeneration!=
+               job.authorization.acceptedGeneration ||
+           self->workerAuthorized_.verifiedPackageSha256!=
+               job.authorization.packageSha256 ||
+           self->accepted_.load(std::memory_order_acquire)!=
+               job.authorization.acceptedGeneration)return false;
+        for(std::uint32_t i=0;i<job.eventCount;i++) {
+            const auto& event=job.events[i];
+            if(event.id<64)continue; // old physical semantics unaffected
+            if(event.id>127 ||
+               !(self->workerAuthorized_.allowedMask&
+                   (std::uint64_t{1}<<(event.id-64))) ||
+               !fw_native_generic_value_in_contract(
+                   self->workerNativeActive_,event.id,event.value))
+                return false;
+        }
+        return true;
+    }
     static int32_t processNative(void* context,const float* input,float* output,
                                  uint32_t frames,const FWNativeEvent* events,
                                  uint32_t count) noexcept {
@@ -193,7 +224,7 @@ private:
         // only, so never forward unrelated spectral host parameter events.
         const bool spectral=fw_native_supports_stream_controls(native);
         const uint64_t mask=spectral?fw_native_stream_control_mask(native):0;
-        const uint64_t genericMask=spectral?0:fw_native_generic_slot_mask(native);
+        const uint64_t genericMask=fw_native_generic_slot_mask(native);
         // Keep BOTH contracts valid: verified Stream IDs and demo Gain ID64.
         // Filtering is on this off-RT thread; no heap allocations or host
         // parameter semantic aliasing are introduced.
@@ -201,12 +232,14 @@ private:
         std::array<FWNativeEvent,AsyncPcmMailbox::kMaxEvents> filtered{};
         uint32_t used=0;
         for(uint32_t i=0;i<count;i++) {
-            const bool bound=spectral
-                ? (events[i].id<64 && StreamHostEvents::bound(events[i].id) &&
-                   ((mask>>events[i].id)&1ull)!=0)
-                // R3A only: ID64 demo if the verified WASM explicitly
-                // advertises bit0. R3B/R3C own other semantic permissions.
-                : (events[i].id==64 && (genericMask&1ull)!=0);
+            const bool physical=spectral && events[i].id<64 &&
+                StreamHostEvents::bound(events[i].id) &&
+                ((mask>>events[i].id)&1ull)!=0;
+            // WASM owns the capability; tagged packets additionally pass
+            // the FWS3 ticket+semantic+numeric contract in validateTagged.
+            const bool generic=events[i].id>=64 && events[i].id<=127 &&
+                (genericMask&(std::uint64_t{1}<<(events[i].id-64)))!=0;
+            const bool bound=physical||generic;
             if(bound)filtered[used++]=events[i];
         }
         return fw_native_process(native,input,output,frames,
@@ -230,6 +263,8 @@ private:
             }
             if(haveCommand && req.unload) {
                 genericAuthorization_.workerRevoke();
+                workerAuthorized_=GenericAuthorizationSnapshot{};
+                workerNativeActive_=nullptr;
                 mailbox_.workerConfigure(nullptr,nullptr,0);
                 if(active)fw_native_destroy(std::exchange(active,nullptr));
                 {
@@ -282,15 +317,24 @@ private:
                             approved=genericAuthorization_.workerPublish(
                                 snapshot,current.acceptedGeneration,
                                 current.packageSha256);
+                            if(approved) {
+                                snapshot.ticket=genericAuthorization_.workerCurrentTicket();
+                                workerAuthorized_=snapshot;
+                                workerNativeActive_=active;
+                            }
                         }
                     }
                 }
                 }catch(...) {approved=false;}
-                if(!approved)genericAuthorization_.workerRevoke();
+                if(!approved) {
+                    genericAuthorization_.workerRevoke();
+                    workerAuthorized_=GenericAuthorizationSnapshot{};
+                }
                 lastAuthorization_.store((req.requestId<<1)|(approved?1ull:0ull),
                                          std::memory_order_release);
             } else if(haveCommand) {
                 genericAuthorization_.workerRevoke();
+                workerAuthorized_=GenericAuthorizationSnapshot{};
                 bool activated=false;
                 status_.store(Status::Preparing,std::memory_order_release);
                 FWNativeOpaque* candidate=fw_native_prepare(
@@ -316,6 +360,7 @@ private:
                 if(candidate&&identityOk&&latency<=AsyncPcmMailbox::kHostPdc&&
                     mailbox_.workerConfigure(processNative,candidate,latency)) {
                     auto* retired=std::exchange(active,candidate);
+                    workerNativeActive_=active;
                     // Same worker thread cannot be inside workerStep and
                     // load/destroy at once; RT only holds copied PCM packets.
                     if(retired)fw_native_destroy(retired);
@@ -349,6 +394,8 @@ private:
             }
             if(active&&fw_native_faulted(active)) {
                 genericAuthorization_.workerRevoke();
+                workerAuthorized_=GenericAuthorizationSnapshot{};
+                workerNativeActive_=nullptr;
                 mailbox_.workerConfigure(nullptr,nullptr,0);
                 fw_native_destroy(std::exchange(active,nullptr));
                 status_.store(Status::Faulted,std::memory_order_release);
@@ -358,11 +405,16 @@ private:
         }
         // Worker quiescent: no C ABI call can overlap this destruction.
         genericAuthorization_.workerRevoke();
+        workerAuthorized_=GenericAuthorizationSnapshot{};
+        workerNativeActive_=nullptr;
         mailbox_.workerConfigure(nullptr,nullptr,0);
         if(active)fw_native_destroy(active);
     }
     AsyncPcmMailbox mailbox_{};
     GenericAuthorizationMailbox genericAuthorization_{};
+    // Only ever written/read by worker thread, never by audio callback.
+    GenericAuthorizationSnapshot workerAuthorized_{};
+    FWNativeOpaque* workerNativeActive_=nullptr;
     std::thread thread_{};
     std::mutex commandMutex_{};
     Request pending_{};
