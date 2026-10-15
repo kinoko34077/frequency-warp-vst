@@ -1,6 +1,7 @@
 #include "../../src/native_engine_abi.h"
 #include "../../src/async_pcm_mailbox.h"
 #include <array>
+#include <algorithm>
 #include <thread>
 #include <cmath>
 #include <cstdint>
@@ -26,6 +27,32 @@ int main(int argc,char** argv){
         auto* identity=fw_native_prepare(a.data(),a.size(),48000.,2,256);
         auto* half=fw_native_prepare(b.data(),b.size(),48000.,2,256);
         check(identity&&half,"native C ABI engine preparation failed");
+        std::array<std::uint8_t,32> packageHashA{},packageHashB{};
+        std::array<std::uint8_t,129> engineIdA{},engineIdB{};
+        const auto idALen=fw_native_copy_verified_identity(
+            identity,packageHashA.data(),packageHashA.size(),
+            engineIdA.data(),engineIdA.size());
+        const auto idBLen=fw_native_copy_verified_identity(
+            half,packageHashB.data(),packageHashB.size(),
+            engineIdB.data(),engineIdB.size());
+        check(idALen>0&&idALen<=128&&idBLen>0&&idBLen<=128,
+            "prepared engine must expose bounded verified identity");
+        check(engineIdA[idALen]==0&&engineIdB[idBLen]==0,
+            "native verified engine ID must be ASCII NUL terminated");
+        check(std::any_of(packageHashA.begin(),packageHashA.end(),
+                [](auto x){return x!=0;}) &&
+              std::any_of(packageHashB.begin(),packageHashB.end(),
+                [](auto x){return x!=0;}) &&
+              packageHashA!=packageHashB,
+            "different verified package bytes must have distinct nonzero hashes");
+        check(fw_native_copy_verified_identity(nullptr,packageHashA.data(),32,
+            engineIdA.data(),129)==0,"missing prepared handle denied");
+        check(fw_native_copy_verified_identity(identity,packageHashA.data(),31,
+            engineIdA.data(),129)==0,"short hash buffer denied");
+        check(fw_native_copy_verified_identity(identity,packageHashA.data(),32,
+            engineIdA.data(),1)==0,"short engine ID buffer denied");
+        check(fw_native_copy_verified_identity(identity,packageHashA.data(),32,
+            packageHashA.data(),32)==0,"overlapping destination buffers denied");
         check(fw_native_latency(identity)==0,"manifest latency mismatch");
         std::vector<float> in(512,0.8f),outA(512,0.f),outB(512,0.f);
         check(fw_native_process(identity,in.data(),outA.data(),256,nullptr,0)==0,
