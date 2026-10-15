@@ -145,6 +145,9 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     unitButtons.append(button);
   }
   select.classList.add("unit-select-source");
+  // Programmatic compatibility retained; visual and assistive controls are
+  // the accessible icon buttons. No invisible tab stop.
+  select.tabIndex=-1;select.setAttribute("aria-hidden","true");
   select.insertAdjacentElement("afterend",unitButtons);
   if(descriptor.id==="pitch-ratio"){
     // Alt temporarily disables BOTH note snap and the native 0.05 coarse step.
