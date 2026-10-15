@@ -28,6 +28,34 @@ elseif(UNIX)
   target_link_libraries(FrequencyWarpShell PRIVATE pthread dl m)
 endif()
 target_compile_features(FrequencyWarpShell PRIVATE cxx_std_17)
+# UI-2: explicit, pinned official WebView2 SDK prototype. This does not
+# migrate the VST3 audio shell, and without the SDK the original Win32 editor
+# remains the only compiled view. No network download occurs in CMake.
+if(WIN32 AND FW_WEBVIEW2_SDK_DIR)
+  if(NOT EXISTS "${FW_WEBVIEW2_SDK_DIR}/build/native/include/WebView2.h"
+     OR NOT EXISTS "${FW_WEBVIEW2_SDK_DIR}/build/native/x64/WebView2LoaderStatic.lib")
+    message(FATAL_ERROR "FW_WEBVIEW2_SDK_DIR must point to unpacked official WebView2 NuGet package")
+  endif()
+  target_compile_definitions(FrequencyWarpShell PRIVATE FW_ENABLE_WEBVIEW2=1)
+  target_include_directories(FrequencyWarpShell PRIVATE
+    "${FW_WEBVIEW2_SDK_DIR}/build/native/include")
+  target_link_libraries(FrequencyWarpShell PRIVATE
+    "${FW_WEBVIEW2_SDK_DIR}/build/native/x64/WebView2LoaderStatic.lib" ole32)
+  target_sources(FrequencyWarpShell PRIVATE src/win32_webview2_editor.h)
+  # Keep actual site HTML/CSS/JS external to the VST3 binary. Updating files
+  # under Resources/ui changes the interface without recompiling DSP or shell.
+  add_custom_command(TARGET FrequencyWarpShell POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+      "$<TARGET_FILE_DIR:FrequencyWarpShell>/../Resources/ui"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_CURRENT_SOURCE_DIR}/../web-demo"
+      "$<TARGET_FILE_DIR:FrequencyWarpShell>/../Resources/ui"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/ui/host-bridge.mjs"
+      "$<TARGET_FILE_DIR:FrequencyWarpShell>/../Resources/ui/host-bridge.mjs"
+    COMMENT "Bundle replaceable Frequency Warp HTML/CSS/JS with optional WebView2 VST3")
+endif()
+
 smtg_target_configure_version_file(FrequencyWarpShell)
 enable_testing()
 add_executable(fw_shell_delay_test tests/delay_test.cpp)
