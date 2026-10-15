@@ -21,6 +21,7 @@
 #include <iomanip>
 #include "web_ui_message.h"
 #include <memory>
+#include <functional>
 #include <string>
 #include "public.sdk/source/vst/vsteditcontroller.h"
 
@@ -37,6 +38,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2> view;
         std::filesystem::path siteRoot;
         Steinberg::Vst::EditController* host=nullptr;
+        // Invoked on GUI STA. Native Controller queries the Processor and
+        // returns a recent worker+saved-FWS3 mask or zero, never JS claims.
+        std::function<std::uint64_t()> verifiedGenericMask{};
         std::array<bool,128> editing{};
         bool uiReady=false;
     };
@@ -71,13 +75,23 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         json.precision(17);
         json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","values":{)";
         bool first=true;
-        for(uint32_t id=2;id<=5;id++){
-            if(state.editing[id])continue; // never fight an in-progress drag
+        const auto mask=state.verifiedGenericMask?
+            state.verifiedGenericMask():std::uint64_t{0};
+        auto append=[&](uint32_t id){
+            if(state.editing[id])return; // never fight an in-progress drag
             const auto value=state.host->getParamNormalized(id);
-            if(!std::isfinite(value)||value<0.||value>1.)continue;
+            if(!std::isfinite(value)||value<0.||value>1.)return;
             if(!first)json<<",";
             first=false;
             json<<R"(")"<<id<<R"(":)"<<value;
+        };
+        for(uint32_t id=2;id<=5;id++)append(id);
+        for(uint32_t id=64;id<=127;id++) {
+            const auto enabled=(mask&(std::uint64_t{1}<<(id-64)))!=0;
+            if(!enabled&&state.editing[id]) {
+                state.host->endEdit(id);state.editing[id]=false;
+            }
+            if(enabled)append(id);
         }
         json<<"}}";
         const std::string ascii=json.str();
@@ -93,11 +107,22 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             sendSnapshot(state);
             return;
         }
-        // Stage UI-3 intentionally permits ONLY the four canonical, already
-        // DSP-bound host controls; generic 64..127 MUST await semantic IDs,
-        // engine capability negotiation and saved project binding identity.
+        // Generic DAW edits are native-masked against the latest verified,
+        // same-project FWS3 and live worker permission, NEVER page metadata.
         const auto id=msg->id;
-        if(id<2||id>5)return;
+        const bool known=id>=2&&id<=5;
+        const auto mask=state.verifiedGenericMask?
+            state.verifiedGenericMask():std::uint64_t{0};
+        const bool generic=id>=64&&id<=127 &&
+             (mask&(std::uint64_t{1}<<(id-64)))!=0;
+        if(!known&&!generic) {
+            // A revoked ticket must terminate any in-progress gesture,
+            // even if the browser subsequently sends no matching edit-end.
+            if(id<128&&state.editing[id]) {
+                state.host->endEdit(id);state.editing[id]=false;
+            }
+            return;
+        }
         if(msg->kind==UiWireKind::Begin && !state.editing[id]){
             state.host->beginEdit(id);
             state.editing[id]=true;
@@ -243,8 +268,12 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(FAILED(hr)) showError(state,L"WebView2 runtime unavailable. Disable experimental UI.");
     }
 public:
-    explicit Win32WebView2Editor(Steinberg::Vst::EditController* controller)
-        :EditorView(controller,&kWebUiEditorRect),editController_(controller){}
+    explicit Win32WebView2Editor(
+        Steinberg::Vst::EditController* controller,
+        std::function<std::uint64_t()> verifiedGenericMask={})
+        :EditorView(controller,&kWebUiEditorRect),editController_(controller){
+        state_->verifiedGenericMask=std::move(verifiedGenericMask);
+    }
     static bool runtimeAvailable() noexcept {
         LPWSTR version=nullptr;
         const HRESULT hr=GetAvailableCoreWebView2BrowserVersionString(nullptr,&version);
@@ -293,7 +322,7 @@ public:
         RemoveWindowSubclass(state_->child,browserWindowProc,
             reinterpret_cast<UINT_PTR>(this));
         if(state_->host){
-            for(uint32_t id=2;id<=5;id++)
+            for(uint32_t id=0;id<128;id++)
                 if(state_->editing[id])state_->host->endEdit(id);
             state_->host=nullptr;
         }
