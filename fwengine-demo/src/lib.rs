@@ -31,6 +31,26 @@ static mut GAIN: f64 = INITIAL_GAIN;
 #[cfg(not(feature = "legacy-no-generic-mask"))]
 #[no_mangle] pub extern "C" fn fw_supported_generic_slot_mask() -> u64 { 1u64 }
 
+// R3B3: module-owned canonical semantics, independent from external UI labels
+// and from the full package digest (which cannot be embedded recursively).
+// All authored bytes are part of the previously verified WASM package.
+// Optional exports deliberately absent for old legacy demo packages.
+#[cfg(not(feature = "legacy-no-generic-mask"))]
+static GENERIC_CONTRACT:&[u8]=if cfg!(feature="gain-half") {
+    br#"{"schema":"frequency-warp-wasm-semantics-v1","bindings":[{"host_slot":64,"semantic_id":"gain","codec_revision":1,"dimension":"signedRatio","canonical_unit":"ratio","min":0,"max":4,"default":0.5,"scale":"linear"}]}"#
+} else {
+    br#"{"schema":"frequency-warp-wasm-semantics-v1","bindings":[{"host_slot":64,"semantic_id":"gain","codec_revision":1,"dimension":"signedRatio","canonical_unit":"ratio","min":0,"max":4,"default":1,"scale":"linear"}]}"#
+};
+#[cfg(not(feature = "legacy-no-generic-mask"))]
+#[no_mangle] pub extern "C" fn fw_generic_contract_offset()->u32 {
+    GENERIC_CONTRACT.as_ptr() as usize as u32
+}
+#[cfg(not(feature = "legacy-no-generic-mask"))]
+#[no_mangle] pub extern "C" fn fw_generic_contract_length()->u32 {
+    GENERIC_CONTRACT.len() as u32
+}
+
+
 #[no_mangle] pub extern "C" fn fw_input_offset() -> u32 { addr_of!(INPUT) as usize as u32 }
 #[no_mangle] pub extern "C" fn fw_output_offset() -> u32 { addr_of_mut!(OUTPUT) as usize as u32 }
 #[no_mangle] pub extern "C" fn fw_event_offset() -> u32 { addr_of_mut!(EVENTS) as usize as u32 }
