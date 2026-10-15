@@ -56,6 +56,8 @@ int main(int argc,char** argv) {
         auto a=read(argv[1]),b=read(argv[2]);
         fw::NativeWorkerService service;
         ensure(!service.mailbox().rtHasPreparedWorker(),"no module initially");
+        ensure(service.verifiedPackageSnapshot().empty(),
+               "cold worker must not claim verified project archive");
         ensure(service.start(),"worker failed to start");
         ensure(service.postPackage(a,48000.,2,128,17),"unable to request Identity");
         ensure(waitUntil([&]{return service.acceptedVersion()==1&&
@@ -64,6 +66,8 @@ int main(int argc,char** argv) {
                "Identity was not prepared by worker");
         ensure(service.lastCompletedId()==17&&service.lastCompletedSucceeded(),
                "verified Identity request outcome not correlated");
+        ensure(service.verifiedPackageSnapshot()==a,
+               "project snapshot differs from confirmed Identity archive");
         proveWet(service,.8f,4095,true);
 
         // Valid package replacement only, no rebuilding native C ABI.
@@ -72,6 +76,8 @@ int main(int argc,char** argv) {
                "Gain was not accepted");
         ensure(service.lastCompletedId()==18&&service.lastCompletedSucceeded(),
                "verified Gain request outcome not correlated");
+        ensure(service.verifiedPackageSnapshot()==b,
+               "project snapshot did not track confirmed replacement");
         proveWet(service,.4f,4095+128,true);
 
         const auto prior=service.acceptedVersion();
@@ -83,6 +89,8 @@ int main(int argc,char** argv) {
         ensure(service.acceptedVersion()==prior,"rejected module replaced valid module");
         ensure(service.lastCompletedId()==19&&!service.lastCompletedSucceeded(),
                "rejected candidate reported as accepted or lost its request token");
+        ensure(service.verifiedPackageSnapshot()==b,
+               "rejected module contaminated verified project archive");
         proveWet(service,.4f,4095+256);
 
         // Reject UNBOUND Stream ID4, but preserve the demo module's actual
@@ -110,6 +118,8 @@ int main(int argc,char** argv) {
                "stopped plugin retained live worker pointer");
         ensure(service.mailbox().rtNextTime()==0,
                "stopped plugin retained stale source timeline");
+        ensure(service.verifiedPackageSnapshot()==b,
+               "worker teardown lost last confirmed bytes needed for host reactivation");
         ensure(service.start(),"worker restart failed");
         ensure(service.postPackage(a,48000.,2,128,20),"restart package refused");
         ensure(waitUntil([&]{return service.acceptedVersion()==prior+1&&service.lastCompletedId()==20;}),
@@ -117,6 +127,18 @@ int main(int argc,char** argv) {
         ensure(service.lastCompletedId()==20&&service.lastCompletedSucceeded(),
                "restart request token was not acknowledged");
         proveWet(service,.8f,4095);
+        ensure(service.verifiedPackageSnapshot()==a,
+               "worker restart should retain newly verified Identity bytes");
+        const auto beforeClear=service.handledRequests();
+        ensure(service.postClear(22),"project zero-module unload command refused");
+        ensure(waitUntil([&]{return service.handledRequests()==beforeClear+1;}),
+               "worker did not commit project unload");
+        ensure(service.lastCompletedId()==22&&service.lastCompletedSucceeded(),
+               "project unload acknowledgment mismatched");
+        ensure(service.verifiedPackageSnapshot().empty(),
+               "zero-package project incorrectly retained prior verified engine");
+        ensure(!service.mailbox().rtHasPreparedWorker(),
+               "unload retained active DSP in audio mailbox");
         service.stop();
         if(argc==4){
             // Real S4 shared Stream package through native VST3 worker filter,
