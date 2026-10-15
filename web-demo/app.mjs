@@ -113,13 +113,24 @@ function bounds(changed=""){
   return state.effective;
 }
 const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
+function linkFeedback(reason=""){
+  const note=$("#harmonic-pivot-link-note");
+  note.hidden=!reason;
+  note.textContent=reason;
+}
 function syncHarmonicToPivot(){
   const {F,m,r}=harmonicParameters(),H=r*F/m;
+  if(!Number.isFinite(H)||H<0||(H>0&&H<.001)||H>20000){
+    // Theoretical F may exceed the physical pivot rail; F belongs to the
+    // harmonic controls, and must NEVER be rewritten to make P fit.
+    $("#harmonic-pivot-link").checked=false;
+    linkFeedback("連動解除：仮想基音 H="+Number(H.toPrecision(12))+
+      " Hz は物理起点Pの操作可能域（0Hz、または0.001〜20,000 Hz）の範囲外です。Fの値と起点Pは保持しました。");
+    return scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
+  }
+  linkFeedback("");
   if(pivotUnitControl){
     pivotUnitControl.setCanonical(H);
-    // When the theoretical F goes beyond the physical 20kHz pivot rail,
-    // reconcile BOTH values instead of silently breaking the lock.
-    if(!Object.is(pivotUnitControl.value,H))setFundamentalFromPivot(pivotUnitControl.value);
     return pivotUnitControl.value;
   }
   state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));
@@ -1191,6 +1202,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#carrier-link").checked=false;
   $("#harmonic-pivot-link").checked=false;
+  linkFeedback("");
   $("#engine-auto").checked=false;
   $("#a-reverb").value="0";
   $("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
@@ -1301,11 +1313,14 @@ window.addEventListener("pagehide",stopSine);
 updateSineLabel();
 $("#harmonic-pivot-link").addEventListener("change",()=>{
   if(isHarmonicPivotLinked())syncHarmonicToPivot();
+  else linkFeedback("");
   updateParams("harmonic-pivot-link");updateEngineInfo();
 });
 attachHarmonicPanel(id=>{
   if(isHarmonicPivotLinked()&&["fundamental","denominator","pitch-ratio"].includes(id)){
     syncHarmonicToPivot();
+  }else if(["fundamental","denominator","pitch-ratio"].includes(id)){
+    linkFeedback("");
   }
   updateParams(id);updateEngineInfo();
 },foldPoint,axisMarker,settings);
