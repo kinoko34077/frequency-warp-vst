@@ -199,6 +199,20 @@ fn main()->Result<(),Box<dyn Error>>{
     // Reject invalid new geometry values without compromising DSP.
     assert!(wasm.process(&frame_input(16896,F),F,&[
         ParamEvent{id:8,offset:0,value:4.1}]).is_err());
+    // Malformed physical crusher automation must be refused before the
+    // interpreter, never reinterpreted as quantized/discrete host values.
+    for invalid in [
+        ParamEvent{id:11,offset:0,value:0.5},
+        ParamEvent{id:16,offset:0,value:1.0},
+        ParamEvent{id:16,offset:0,value:8.5},
+        ParamEvent{id:17,offset:0,value:48001.0},
+        ParamEvent{id:17,offset:0,value:-1.0},
+    ] {
+        assert!(wasm.process(&frame_input(17024,F),F,&[invalid]).is_err(),
+            "invalid crusher physical event reached shared Rust Stream");
+        assert!(!wasm.faulted(),
+            "rejected noncanonical host event must not fault the valid engine");
+    }
     // Unsupported host param (e.g. Gain ID64) MUST fail on actual Stream,
     // while demo Identity/Gain native regression still accepts ID64.
     let buf=frame_input(16384,F);
