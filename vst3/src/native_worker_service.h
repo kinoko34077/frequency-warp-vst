@@ -130,6 +130,7 @@ private:
         // Explicit semantic guard: generic Identity/Gain module has slot64
         // only, so never forward unrelated spectral host parameter events.
         const bool spectral=fw_native_supports_stream_controls(native);
+        const uint64_t mask=spectral?fw_native_stream_control_mask(native):0;
         // Keep BOTH contracts valid: verified Stream IDs and demo Gain ID64.
         // Filtering is on this off-RT thread; no heap allocations or host
         // parameter semantic aliasing are introduced.
@@ -138,7 +139,8 @@ private:
         uint32_t used=0;
         for(uint32_t i=0;i<count;i++) {
             const bool bound=spectral
-                ? StreamHostEvents::bound(events[i].id)
+                ? (events[i].id<64 && StreamHostEvents::bound(events[i].id) &&
+                   ((mask>>events[i].id)&1ull)!=0)
                 : events[i].id==64;
             if(bound)filtered[used++]=events[i];
         }

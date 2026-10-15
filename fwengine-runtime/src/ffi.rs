@@ -46,6 +46,13 @@ pub unsafe extern "C" fn fw_native_supports_stream_controls(handle:*const Opaque
     // receive spectral IDs2..5 and trip their own strict parameter contract.
     !handle.is_null()&&(*handle).runtime.manifest.engine_id=="org.kinotch.stream"
 }
+// Worker-only capability negotiation, value is a bitset of immutable ParamIDs.
+// Older single-file modules without the export are limited to IDs2..5.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_stream_control_mask(handle:*const Opaque)->u64 {
+    if handle.is_null(){return 0;}
+    (*handle).runtime.stream_control_mask()
+}
 fn intersects(a:usize,a_len:usize,b:usize,b_len:usize)->bool {
     match (a.checked_add(a_len),b.checked_add(b_len)){
         (Some(a_end),Some(b_end))=>a<b_end && b<a_end,

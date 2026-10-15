@@ -5,6 +5,11 @@ use wasmi::{Config, Engine, Instance, Linker, Memory, Module, Store, StoreLimits
 
 const FUEL_PREP: u64=15_000_000;
 const FUEL_BLOCK: u64=10_000_000;
+// Runtime fallback for old .fwengine packages that never declared support.
+const LEGACY_STREAM_MASK:u64=(1u64<<2)|(1u64<<3)|(1u64<<4)|(1u64<<5);
+const KNOWN_STREAM_MASK:u64=(1u64<<2)|(1u64<<3)|(1u64<<4)|(1u64<<5)|
+    (1u64<<6)|(1u64<<7)|(1u64<<8)|(1u64<<9)|(1u64<<10)|
+    (1u64<<11)|(1u64<<13)|(1u64<<16)|(1u64<<17)|(1u64<<18);
 #[repr(C)]
 #[derive(Clone,Copy)]
 pub struct ParamEvent {pub id:u32,pub offset:u32,pub value:f64}
@@ -13,7 +18,7 @@ pub struct Runtime {
     pub manifest:Manifest,
     store:Store<StoreLimits>,memory:Memory,run:ProcessFn,handle:i32,
     channels:usize,max_frames:usize,input:usize,output:usize,event:usize,
-    capacity:usize,faulted:bool,sample_rate:f64,
+    capacity:usize,faulted:bool,sample_rate:f64,stream_mask:u64,
 }
 fn section(start:usize,size:usize,limit:usize,align:usize)->Result<(usize,usize)>{
     ensure!(start>0&&start%align==0,"invalid ABI offset");
@@ -73,10 +78,25 @@ impl Runtime{
         let run=inst.get_typed_func::<(i32,i32,i32,i32,i32,i32),i32>(&store,"fw_process")?;
         let _=inst.get_typed_func::<i32,i32>(&store,"fw_reset")?;
         let _=inst.get_typed_func::<i32,()>(&store,"fw_destroy")?;
+        let stream_mask=if p.manifest.engine_id=="org.kinotch.stream" {
+            // Never assume every old module with this engine ID supports
+            // controls introduced after S4b1. Missing export => safe subset.
+            match inst.get_typed_func::<(),i64>(&store,"fw_supported_param_mask") {
+                Ok(f)=>{
+                    let mask=f.call(&mut store,())? as u64;
+                    ensure!((mask&LEGACY_STREAM_MASK)==LEGACY_STREAM_MASK &&
+                        (mask&!KNOWN_STREAM_MASK)==0,"unsupported Stream capability mask");
+                    mask
+                },
+                Err(_)=>LEGACY_STREAM_MASK,
+            }
+        }else{0};
         Ok(Self{manifest:p.manifest,store,memory,run,handle,channels,max_frames,
-            input,output,event,capacity:capacity as usize,faulted:false,sample_rate:rate})
+            input,output,event,capacity:capacity as usize,faulted:false,
+            sample_rate:rate,stream_mask})
     }
     pub fn faulted(&self)->bool{self.faulted}
+    pub fn stream_control_mask(&self)->u64{self.stream_mask}
     /// Test/offline convenience function. Allocates a Vec; not for audio callbacks.
     pub fn process(&mut self,pcm:&[f32],frames:usize,events:&[ParamEvent])->Result<Vec<f32>>{
         let mut output=vec![0.0;pcm.len()];
@@ -96,7 +116,8 @@ impl Runtime{
             // generic, shell-only and unbound param IDs remain excluded.
             // The demo Gain fixture retains its separate ID64 contract.
             let allowed=if self.manifest.engine_id=="org.kinotch.stream" {
-                match e.id {
+                let negotiated=e.id<64 && (self.stream_mask&(1u64<<e.id))!=0;
+                negotiated && match e.id {
                     2|3 => e.value.is_finite()&&(0.001..=20000.0).contains(&e.value),
                     4|5|9|13 => e.value.is_finite()&&(0.0..=1.0).contains(&e.value),
                     6 => e.value.is_finite()&&(-2.0..=2.0).contains(&e.value),

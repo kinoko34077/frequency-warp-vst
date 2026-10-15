@@ -111,3 +111,14 @@ No separate DSP mapping formula is implemented in the VST3. Web and native
 WASM use the same `Stream` setters; audio worker and Controller remain
 separate from the host RT thread. This does NOT attest FL Studio host
 automation playback; use S5 for actual host integration and listening.
+
+
+## S4b3-B — Bitcrusher physical controls and legacy module capabilities
+
+The stable host list adds three existing, separately automatable ParamIDs **without renumbering any ID**: 11 Crusher Enabled (0/1), 16 Crusher Bits (2–16 integer), and 17 Crusher Clock (0..host Fs Hz; exact zero means hold the first sample). The host forwards the normalized values through the shared `parameter_registry.h` converter to the same Rust `Stream::set_crusher` used by the browser. Relative clock conversion uses `round(Fs/min(Fs,Hz))` samples, clamped to 1..1e9; zero rate maps to sample-hold 0, and disabled crusher maps to 0 quantizer bits.
+
+The current **14 physically connected Stream IDs** are 2,3,4,5,6,7,8,9,10,11,13,16,17,18. Every host PCM segment begins with 14 snapshots in physical units. Additional offset events use stable IDs and dynamic 128-slot packet splitting. Remaining host-visible IDs still require independent semantic binding; generic Gain ID64 and shell Wet/Bypass remain separate.
+
+**Exchangeable legacy engine safeguard:** the optional WASM export `fw_supported_param_mask() -> i64` advertises a bitset indexed by immutable ParamIDs. The off-RT Rust runtime validates this capability mask and exposes it through native `fw_native_stream_control_mask`. The worker intersects the module-supported mask with the host's current 14 IDs before forwarding; an older `.fwengine` without that export gets only the original safe IDs2–5, while demo Identity/Gain retains ID64. This permits a fixed rebuilt-once VST3 shell to load older or newer modules without incorrectly sending unsupported automation. **Old engines may not audibly react to newly added parameters**; absence of support is not silently treated as an implementation of those DSP functions.
+
+Cross-platform checks: shared Rust native/WASM real audio parity, sample24 crusher event and non-placebo difference, zero-Hz freeze, malformed events, host 14-ID normalized conversion/128-event cap, legacy-module four-ID fallback through a real off-RT native worker, official Windows SDK Validator. This is *source/CI* acceptance only; actual FL Studio and second DAW automation/project reopen/CPU/long-playback remain S5.

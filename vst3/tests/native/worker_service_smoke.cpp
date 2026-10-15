@@ -53,7 +53,8 @@ static void proveWet(fw::NativeWorkerService& svc,float level,std::uint64_t due,
 }
 int main(int argc,char** argv) {
     try {
-        ensure(argc==3||argc==4,"need Identity.fwengine GainHalf.fwengine [Stream.fwengine]");
+        ensure(argc==3||argc==4||argc==5,
+               "need Identity.fwengine GainHalf.fwengine [Stream.fwengine [LegacyStream.fwengine]]");
         auto a=read(argv[1]),b=read(argv[2]);
         fw::NativeWorkerService service;
         ensure(!service.mailbox().rtHasPreparedWorker(),"no module initially");
@@ -168,12 +169,20 @@ int main(int argc,char** argv) {
         ensure(!service.mailbox().rtHasPreparedWorker(),
                "unload retained active DSP in audio mailbox");
         service.stop();
-        if(argc==4){
+        if(argc>=4){
             // Real S4 shared Stream package through native VST3 worker filter,
             // not just Wasmi's direct Rust test path. 24 x128f of stereo PCM
             // exercise FFT warmup, geometry event at exact offset40, PDC-1023
             // timestamps, and non-faulting valid package execution.
             auto spectral=read(argv[3]);
+            auto* modern=fw_native_prepare(spectral.data(),spectral.size(),48000.,2,128);
+            ensure(modern&&fw_native_supports_stream_controls(modern),
+                   "modern Stream package not recognized by native WASM");
+            std::uint64_t expectedMask=0;
+            for(const auto id:fw::StreamHostEvents::kBindingIds)expectedMask|=(1ull<<id);
+            ensure(fw_native_stream_control_mask(modern)==expectedMask,
+                   "new Stream failed to announce exactly 14 immutable host ParamIDs");
+            fw_native_destroy(modern);
             ensure(service.start(),"spectral worker restart failed");
             const auto priorVersion=service.acceptedVersion();
             ensure(service.postPackage(std::move(spectral),48000.,2,128,21),
@@ -196,9 +205,12 @@ int main(int argc,char** argv) {
                     {6,40,0.4},{7,40,500.0},{8,40,-0.6},
                     {9,40,0.65},{10,40,1.0},{13,40,0.4},{18,40,1.0}
                 };
-                const bool change=block==8;
+                FWNativeEvent crusher[]={
+                    {11,24,1.0},{16,24,6.0},{17,24,12000.0}
+                };
+                const bool change=block==8,crush=block==12;
                 ensure(service.mailbox().rtSubmit(src,2,128,
-                    change?geometry:nullptr,change?7:0),
+                    change?geometry:(crush?crusher:nullptr),change?7:(crush?3:0)),
                     "spectral native PCM ingress rejected");
                 const std::uint64_t due=block*128+fw::AsyncPcmMailbox::kHostPdc-1023;
                 float wet[2]{};
@@ -212,10 +224,59 @@ int main(int argc,char** argv) {
             }
             ensure(energy>0.01,"spectral .fwengine emitted no wet audio");
             ensure(service.mailbox().stats().workerFailures==0,
-                   "valid geometry host events faulted the Rust interpreter");
+                   "valid geometry/crusher host events faulted the Rust interpreter");
             service.stop();
+            if(argc==5){
+                // This package is built from the same core with capability
+                // export deliberately omitted, as in pre-negotiation archives.
+                // Runtime MUST advertise only safe original IDs2..5 and the
+                // off-RT worker MUST strip newer DAW host events before WASM.
+                auto legacy=read(argv[4]);
+                auto* probe=fw_native_prepare(legacy.data(),legacy.size(),48000.,2,128);
+                ensure(probe&&fw_native_supports_stream_controls(probe),
+                       "legacy Stream fixture rejected on project restore");
+                const std::uint64_t originalMask=(1ull<<2)|(1ull<<3)|
+                    (1ull<<4)|(1ull<<5);
+                ensure(fw_native_stream_control_mask(probe)==originalMask,
+                       "pre-capability Stream did not negotiate safe original subset");
+                fw_native_destroy(probe);
+                ensure(service.start(),"legacy project worker start failed");
+                const auto oldVersion=service.acceptedVersion();
+                ensure(service.postPackage(std::move(legacy),48000.,2,128,23),
+                       "legacy saved .fwengine package post failed");
+                ensure(waitUntil([&]{return service.acceptedVersion()==oldVersion+1&&
+                     service.lastCompletedId()==23&&service.lastCompletedSucceeded();}),
+                       "legacy saved .fwengine failed native prepare");
+                double legacyEnergy=0.;
+                for(std::uint64_t block=0;block<24;block++){
+                    std::array<float,128> left{},right{};
+                    for(std::size_t i=0;i<128;i++){
+                        const auto angle=6.283185307179586*330.*(block*128+i)/48000.;
+                        left[i]=static_cast<float>(.55*std::sin(angle));
+                        right[i]=static_cast<float>(.44*std::sin(angle));
+                    }
+                    const float* src[]={left.data(),right.data()};
+                    FWNativeEvent unsupported[]={
+                        {11,24,1.0},{16,24,6.0},{17,24,12000.0}
+                    };
+                    ensure(service.mailbox().rtSubmit(src,2,128,unsupported,3),
+                           "legacy PCM ingress rejected new host automation");
+                    const auto due=block*128+fw::AsyncPcmMailbox::kHostPdc-1023;
+                    float wet[2]{};
+                    ensure(waitUntil([&]{return service.mailbox().rtReadWet(due,2,wet);}),
+                           "legacy Stream failed to render after new unbound DAW events");
+                    for(std::uint64_t i=0;i<128;i++){
+                        if(i>0)ensure(service.mailbox().rtReadWet(due+i,2,wet),
+                                      "legacy Stream returned incomplete PCM");
+                        if(block>=16)legacyEnergy+=std::abs(wet[0])+std::abs(wet[1]);
+                    }
+                }
+                ensure(legacyEnergy>0.01&&service.mailbox().stats().workerFailures==0,
+                       "unsupported new controls faulted the verified legacy Stream");
+                service.stop();
+            }
         }
-        std::cout<<"PASS native worker: validated file swap, rollback, PDC, geometry controls, stop/restart\n";
+        std::cout<<"PASS native worker: verified project swap, 14 host controls, legacy capabilities, PDC, stop/restart\n";
         return 0;
     }catch(const std::exception& err){
         std::cerr<<"FAIL native worker: "<<err.what()<<"\n";return 1;
