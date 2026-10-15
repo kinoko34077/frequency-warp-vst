@@ -56,11 +56,14 @@ int main(int argc,char** argv){
         require(check(g,valid),"valid engine-bound descriptor rejected");
         // Same verified file hash and declared slot are NOT enough:
         // every canonical parameter field must match WASM-owned bytes.
-        const auto mismatchMax=valid.replace(valid.find("\"max\":4"),7,"\"max\":3");
+        auto mismatchMax=valid;
+        mismatchMax.replace(mismatchMax.find("\"max\":4"),7,"\"max\":3");
         require(!check(g,mismatchMax),"WASM canonical max disagreement passed");
-        const auto mismatchDefault=valid.replace(valid.find("\"default\":0.5"),13,"\"default\":1.0");
+        auto mismatchDefault=valid;
+        mismatchDefault.replace(mismatchDefault.find("\"default\":0.5"),13,"\"default\":1.0");
         require(!check(g,mismatchDefault),"WASM initial/default disagreement passed");
-        const auto mismatchScale=valid.replace(valid.find("\"scale\":\"linear\""),16,"\"scale\":\"log\"");
+        auto mismatchScale=valid;
+        mismatchScale.replace(mismatchScale.find("\"scale\":\"linear\""),16,"\"scale\":\"log\"");
         require(!check(g,mismatchScale),"WASM canonical scale disagreement passed");
         require(!check(i,valid),"foreign engine ID passed");
         require(!check(l,valid),"legacy engine missing mask passed");
