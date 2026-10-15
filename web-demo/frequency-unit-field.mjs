@@ -73,7 +73,7 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
       lastRendered=field.value;
     }
     if(unitButtons)for(const button of unitButtons.querySelectorAll("button[data-unit]"))
-      button.setAttribute("aria-pressed",String(button.dataset.unit===binding.unit));
+      button.setAttribute("aria-pressed",String(button.dataset.unit===binding.unit||button.dataset.unit==="semitones"&&binding.unit==="cents"));
   };
   let dirty=false;
   const commitTyped=()=>{
@@ -124,15 +124,22 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
   unitButtons=field.ownerDocument.createElement("div");
   unitButtons.className="unit-switch";unitButtons.setAttribute("role","group");
   unitButtons.setAttribute("aria-label",select.getAttribute("aria-label")||"単位");
+  // Ratio keeps four exact views but presents only three compact buttons:
+  // ×, ♪ (tap again to alternate semitone/cent), and %.
+  const intervalPair=descriptor.units.includes("semitones")&&descriptor.units.includes("cents");
   for(const option of select.options){
+    if(intervalPair&&option.value==="cents")continue;
     if(!option.value||option.disabled)continue;
     const button=field.ownerDocument.createElement("button");
     button.type="button";button.dataset.unit=option.value;
     button.textContent=glyph[option.value]||option.textContent;
-    button.title=option.textContent;button.setAttribute("aria-label",option.textContent);
+    button.title=intervalPair&&option.value==="semitones"?"半音／セント（再タップで切替）":option.textContent;
+    button.setAttribute("aria-label",button.title);
     button.setAttribute("aria-pressed",String(option.value===binding.unit));
     button.addEventListener("click",()=>{
-      select.value=option.value;
+      if(intervalPair&&option.value==="semitones")
+        select.value=binding.unit==="semitones"?"cents":"semitones";
+      else select.value=option.value;
       select.dispatchEvent(new Event("change",{bubbles:true}));
     });
     unitButtons.append(button);

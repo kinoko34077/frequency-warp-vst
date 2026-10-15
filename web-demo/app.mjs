@@ -925,7 +925,7 @@ async function decodeFileWithoutPlayback(file,token){
       const decoded=await withDecodeDeadline(ctx.decodeAudioData(bytes.slice(0)),20000,name+"デコード");
       return token===state.loadToken?decoded:null;
     }catch(error){failures.push(name+": "+(error?.message||String(error)));}
-    finally{if(ctx?.close)try{await ctx.close();}catch{}}
+    finally{if(ctx?.close)void ctx.close().catch(()=>{});}
   }
   throw Error("音声形式・コーデック・ブラウザの対応状況を確認してください。"+failures.join(" / "));
 }
