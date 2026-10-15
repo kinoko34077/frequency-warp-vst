@@ -504,6 +504,34 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
+    // Live stream must not silently accept theoretical out-of-Rust F values,
+    // even with rational mode OFF. Keep the chosen F, reject the audio update,
+    // then recover to the same real AudioWorklet via valid settings + ACK.
+    await page.$eval("#rational-enabled",el=>{
+      el.checked=false;el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#fundamental",el=>{
+      el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),100000,
+      "future oversampling F remains theoretical rather than secretly clamped");
+    assert.match(await page.$eval("#status",el=>el.textContent),
+      /音声処理へ未反映.*20,000Hz/,
+      "unsupported active Rust settings must surface their actual boundary");
+    assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/設定未反映/,
+      "preflight must not leave an apparently applied DSP value");
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
+    await page.$eval("#rational-enabled",el=>{
+      el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
     await page.click(".fx-more summary");
     await page.click("#rational-enabled");
