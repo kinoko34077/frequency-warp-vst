@@ -218,6 +218,23 @@ fn main()->Result<(),Box<dyn Error>>{
     native.process(&disabled_input,&mut native_disabled,F)?;
     assert!(disabled_pcm.iter().zip(native_disabled.iter()).all(|(a,b)|(a-b).abs()<0.008),
         "crusher off changed canonical Rust audio");
+    // Stress full 100% Engine A selection without inventing new peak logic.
+    // Detect real Wasmi budget overrun or divergence at the public max rail.
+    assert!(wasm.process(&[],0,&[
+        ParamEvent{id:28,offset:0,value:1.0}])?.is_empty());
+    native.set_a_quality(100)?;
+    let mut highest_a_fuel=0u64;
+    for block in 0..8usize {
+        let quality_input=frame_input((BLOCKS+5+block)*F,F);
+        let quality_wasm=wasm.process(&quality_input,F,&[])?;
+        highest_a_fuel=highest_a_fuel.max(wasm.last_process_fuel());
+        let mut quality_native=vec![0f32;2*F];
+        native.process(&quality_input,&mut quality_native,F)?;
+        assert!(quality_wasm.iter().zip(quality_native.iter())
+            .all(|(a,b)|(a-b).abs()<0.008),
+            "full-quality Engine A native/WASM PCM parity failed");
+    }
+    println!("Engine A full-quality 100% max Wasmi fuel per 128 frames: {highest_a_fuel}");
     // Reject invalid new geometry values without compromising DSP.
     assert!(wasm.process(&frame_input(16896,F),F,&[
         ParamEvent{id:8,offset:0,value:4.1}]).is_err());
