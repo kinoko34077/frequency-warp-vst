@@ -14,6 +14,7 @@ import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
 let graphMax=2000;
+let graphAlphaBeforeZoom=0;
 const controls={
   dry:$("#play-dry"),wet:$("#play-wet"),stop:$("#stop"),
   render:$("#render"),download:$("#download")
@@ -819,9 +820,20 @@ dualControls.shape=mountDualThumb($("#shape-dual"),
     v=>"反転 "+Number((v*100).toFixed(1))+"%",
     v=>"移動尺度 p="+v+"（0=対数、1=線形）"
   ]);
-$("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:graphMax===20000?20:2000;drawCurve();});
+function cycleGraphView(){
+  const next=graphMax===2000?20000:graphMax===20000?20:2000;
+  const scale=$("#graph-log");
+  if(next===20){
+    graphAlphaBeforeZoom=Number(scale.value);
+    scale.value="100"; // 0.001Hz to 20Hz requires logarithmic visual resolution.
+  }else if(graphMax===20){
+    scale.value=String(graphAlphaBeforeZoom);
+  }
+  graphMax=next;drawCurve();
+}
+$("#curve").addEventListener("click",()=>{cycleGraphView();});
 $("#curve").addEventListener("keydown",event=>{
-  if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:graphMax===20000?20:2000;drawCurve();}
+  if(event.key==="Enter"||event.key===" "){event.preventDefault();cycleGraphView();}
 });
 for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{
