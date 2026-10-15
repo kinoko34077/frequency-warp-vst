@@ -133,7 +133,7 @@
         <div class="section-header"><div><p class="eyebrow">REFERENCE SINE</p><h2 id="sine-heading">基準音</h2></div>
           <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
         <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
-        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="0.001" value="0" aria-label="基準音 セント"><input class="inline-value" id="sine-hz" type="number" min="65" max="2100" step="0.001" value="440" aria-label="基準音 Hz"></div>
+        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="0.001" value="0" aria-label="基準音 セント"><span class="unit-value-tools"><input class="inline-value" id="sine-hz" type="text" value="440" spellcheck="false" autocapitalize="off" aria-label="基準音周波数・音名入力"><select id="sine-unit" aria-label="基準音の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select><label class="snap-toggle" for="sine-snap"><input id="sine-snap" type="checkbox" aria-label="基準音の半音吸着">吸着</label></span></div>
         
       </section>
     </div>
