@@ -556,3 +556,8 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .equation-lines math{display:block;font-size:15px;overflow-x:auto;max-width:100%}
 .equation-lines p{margin:3px 0 0;font-size:10px;color:#b2cfca}
 .slider-formula,.math-caption{font-family:system-ui,sans-serif}
+
+/* Semantic mathematical notation remains selectable and readable. */
+.slider-formula math{display:inline-block;font-size:12px;vertical-align:middle;padding:1px 3px;max-width:100%;overflow-x:auto}
+.slider-formula math + math{margin-left:5px}
+.help-inline[open]{z-index:10}

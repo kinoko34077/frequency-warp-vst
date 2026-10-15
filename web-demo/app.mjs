@@ -189,9 +189,12 @@ function labels(id=""){
   dualControls.shape?.sync();
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
     "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
-  $("#zero-reflect-formula").textContent="振幅="+displayNumber(100*p.zeroReflectGain)+
-    "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(反射点からの周波数距離/"+
-    displayNumber(p.axisReference)+"Hz)。L/Hの折返し枝と0Hz越えの成分だけに適用。単なる周波数反転・負の傾きには適用しません。";
+  // Trusted finite scalars only; mathematical notation is native MathML.
+  $("#zero-reflect-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>'+
+    '<mi>A</mi><mo>=</mo><mn>'+displayNumber(p.zeroReflectGain)+'</mn>'+
+    '<msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mn>'+displayNumber(p.zeroReflectDecay)+'</mn><mo>)</mo></mrow>'+
+    '<mfrac><mi>d</mi><mn>'+displayNumber(p.axisReference)+'</mn></mfrac></msup>'+
+    '</mrow></math> 折返し点からの距離 d に適用（単なる負の傾きは対象外）。';
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
@@ -217,7 +220,13 @@ function labels(id=""){
     (p.mode==="reciprocal"?"反転固定点 ":p.mode==="fold-l"?"L折返し ":"H折返し ")+
     (Number.isFinite(hz)?displayNumber(hz)+" Hz":"—");
   const pText=displayNumber(p.curvature);
-  $("#curvature-log-formula").textContent="p="+pText+" · S₀(f)=ln(f/L)、Sₚ(f)=((f/L)ᵖ−1)/p (p>0)。移動量は p=0: f×eᵘ、p=1: f+uR Hz（他の傾き/起点設定は別）。";
+  $("#curvature-log-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML">'+
+    '<mrow><mi>p</mi><mo>=</mo><mn>'+pText+'</mn><mo>;</mo>'+
+    '<msub><mi>S</mi><mn>0</mn></msub><mo>(</mo><mi>f</mi><mo>)</mo><mo>=</mo>'+
+    '<mi>ln</mi><mo>(</mo><mfrac><mi>f</mi><mi>L</mi></mfrac><mo>)</mo>'+
+    '</mrow></math>'+
+    '<math><mrow><msub><mi>S</mi><mi>p</mi></msub><mo>(</mo><mi>f</mi><mo>)</mo>'+
+    '<mo>=</mo><mfrac><mrow><msup><mrow><mo>(</mo><mfrac><mi>f</mi><mi>L</mi></mfrac><mo>)</mo></mrow><mi>p</mi></msup><mo>−</mo><mn>1</mn></mrow><mi>p</mi></mfrac></mrow></math>';
   $("#axis-explainer").textContent=p.curvature===0?
     "移動倍率 ×"+displayNumber(Math.exp(u)):p.curvature===1?
     "移動 "+displayNumber(u*ref)+" Hz":"移動 "+displayNumber(u)+"（中間尺度）";
@@ -302,7 +311,13 @@ function drawCurve(){
   $("#reflection-activity").textContent=hasReflect?
     "反射区間あり · 2つのつまみは音声・グラフに即時反映":
     "現在は反射区間なし。反転や移動で反射が発生すると有効になります。";
-  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+"（0＝線形、1＝対数）。表示のみ変更します。";
+  $("#graph-log-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>'+
+    '<mi>α</mi><mo>=</mo><mn>'+displayNumber(alpha)+'</mn>'+
+    '<mo>;</mo><mi>x</mi><mo>(</mo><mi>f</mi><mo>)</mo><mo>=</mo>'+
+    '<mo>(</mo><mn>1</mn><mo>−</mo><mi>α</mi><mo>)</mo>'+
+    '<mfrac><mi>f</mi><mi>M</mi></mfrac><mo>+</mo><mi>α</mi>'+
+    '<msub><mi>g</mi><mtext>log</mtext></msub><mo>(</mo><mi>f</mi><mo>)</mo>'+
+    '</mrow></math> M＝表示上限。低域拡大では 0.001Hz 起点の対数尺度。';
   const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=p.crusherBits===0;
