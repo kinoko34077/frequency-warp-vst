@@ -520,6 +520,15 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "unsupported active Rust settings must surface their actual boundary");
     assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/設定未反映/,
       "preflight must not leave an apparently applied DSP value");
+    // A14: real 128-frame Rust/WASM worklet emits stats every ~0.43s.
+    // Telemetry must remain visible without hiding persistent rejection.
+    await page.waitForFunction(()=>document.querySelector("#rt-telemetry").textContent.includes("ms/block"),
+      {timeout:15000});
+    await new Promise(resolve=>setTimeout(resolve,900));
+    assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/設定未反映/,
+      "periodic real worklet stats must not overwrite a rejected edit");
+    assert.match(await page.$eval("#status",el=>el.textContent),/音声処理へ未反映/,
+      "unapplied setting remains explicit until a newer valid ACK");
     await page.$eval("#fundamental",el=>{
       el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
