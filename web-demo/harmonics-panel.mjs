@@ -149,7 +149,7 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
       digits:3,
       snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
     }),
-    field:$("#fundamental"),select:$("#fundamental-unit"),snapToggle:$("#fundamental-snap"),
+    field:$("#fundamental"),select:$("#fundamental-unit"),
     slider:$("#fundamental-range"),railRoot:$("#fundamental-range"),
     getDigits:precision,initialValue:350,
     onValueChange:()=>respond("fundamental")
@@ -167,7 +167,7 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
       digits:3,
       snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
     }),
-    field:$("#carrier"),select:$("#carrier-unit"),snapToggle:$("#carrier-snap"),
+    field:$("#carrier"),select:$("#carrier-unit"),
     slider:$("#carrier-range"),railRoot:$("#carrier-range"),
     getDigits:precision,initialValue:350,
     onValueChange:()=>respond("carrier")
@@ -184,7 +184,7 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
       snap:{unit:"semitones",mode:"step",step:1,thresholdPx:6,during:["slider"]}
     }),
     field:$("#pitch-ratio"),select:$("#pitch-ratio-unit"),
-    snapToggle:$("#pitch-ratio-snap"),slider:$("#pitch-ratio-range"),
+    slider:$("#pitch-ratio-range"),
     railRoot:$("#pitch-ratio-range"),getDigits:precision,initialValue:1,
     onValueChange:()=>respond("pitch-ratio")
   });
