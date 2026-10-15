@@ -10,6 +10,7 @@
 #include "project_state_stream_reader.h"
 #include "project_binding_association.h"
 #include "generic_ui_authorization.h"
+#include "explicit_generic_ledger_commit_gate.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
 #include <cstdlib>
@@ -128,6 +129,10 @@ public:
         // Lifecycle is non-RT. Keep the last worker-verified exact archive
         // across host suspend/reactivation; pending project restore overrides it.
         if(!active) {
+            // Capture any already fully worker-committed new FWS3 before
+            // quiescent teardown. A pending proof without a ticket is inert.
+            try { if(savedBindingLedger_.empty())absorbCommittedNewLedger(); }
+            catch(...) { /* remain fail-closed, never invent bindings */ }
             workerActive_=false;
             worker_.stop();
             delay_.reset();
@@ -279,6 +284,11 @@ public:
         EngineProjectState image{};
         if(!parameterMailbox_.uiSnapshot(image.values))return kResultFalse;
         try {
+            if(savedBindingLedger_.empty() &&
+               (worker_.lastCommittedLedgerWord()&1u)!=0 &&
+               worker_.genericAuthorization().workerCurrentTicket()!=0 &&
+               !absorbCommittedNewLedger())
+                return kResultFalse;
             auto accepted=worker_.verifiedIdentitySnapshot();
             image.package=accepted.package;
             if(!savedBindingLedger_.empty()) {
@@ -534,6 +544,36 @@ public:
         return kResultFalse;
     }
 private:
+    // Called only with projectStateMutex_ held on the NON-RT host thread.
+    // Worker commits the logical project ledger BEFORE ticket publication;
+    // this bridges exact current evidence to the existing FWS3 IBStream.
+    bool absorbCommittedNewLedger() {
+        if(!savedBindingLedger_.empty())return false;
+        NativeWorkerService::PreparedNewLedger acceptedLedger{};
+        if(!worker_.readCommittedNewLedger(acceptedLedger))return false;
+        const auto snapshot=worker_.verifiedIdentitySnapshot();
+        VerifiedProjectEngine verified{};
+        verified.package=snapshot.package;
+        verified.engineId=snapshot.engineId;
+        verified.sha256=snapshot.packageSha256;
+        verified.acceptedGeneration=snapshot.acceptedGeneration;
+        verified.active=snapshot.active;
+        GenericNewLedgerEvidence proof{};
+        proof.requestId=acceptedLedger.requestId;
+        proof.authorizedTicket=acceptedLedger.authorizedTicket;
+        proof.acceptedGeneration=acceptedLedger.acceptedGeneration;
+        proof.packageSha256=acceptedLedger.packageSha256;
+        proof.authorizedMask=acceptedLedger.stagedAuthorization.allowedMask;
+        proof.encodedLedger=acceptedLedger.encodedLedger;
+        std::vector<std::uint8_t> selected{};
+        if(!selectExplicitNewLedgerForCommit(
+               proof,verified,proof.requestId,
+               worker_.genericAuthorization().workerCurrentTicket(),
+               proof.authorizedMask,savedBindingLedger_,true,selected))
+            return false;
+        savedBindingLedger_=std::move(selected);
+        return true;
+    }
     Values values_=defaults(); // RT-owned; never accessed by UI/getState
     ParameterStateMailbox<kParamCount> parameterMailbox_{defaults()};
     Delay delay_;
