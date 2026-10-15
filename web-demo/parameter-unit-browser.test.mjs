@@ -575,6 +575,59 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       "monitor frequency preserved, but its snap preference returns to ON");
     await page.click("#settings-done");
 
+    // #183: Unlinked theoretical F must use its entire .001..5.12MHz rail
+    // rather than silently saturating at 20kHz.
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.tabIndex),-1);
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.getAttribute("aria-hidden")),"true");
+    await page.$eval("#fundamental",el=>{
+      el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","percent");
+    const theoreticalPct=Number(await page.$eval("#fundamental",el=>el.value));
+    assert.ok(Math.abs(theoreticalPct-
+      100*Math.log(100000/.001)/Math.log(5120000/.001))<.02,
+      "unlinked F rail travels across the declared physical F range");
+    const theoreticalThumb=Number(await page.$eval("#fundamental-range",el=>el.value));
+    assert.ok(theoreticalThumb>0&&theoreticalThumb<1000,
+      "F=100kHz must not collapse onto the upper thumb endpoint");
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),100000);
+    await page.$eval("#fundamental",el=>el.blur());
+
+    // Changing only the link mode projects F through H without rewriting F.
+    await page.$eval("#fundamental",el=>{
+      el.value="10000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.focus("#fundamental");
+    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),10000);
+    await page.$eval("#fundamental",el=>el.blur());
+    const linkedThumb=Number(await page.$eval("#fundamental-range",el=>el.value));
+    const expectedLinked=Math.round(1000*(.2+.8*Math.log(2500/20)/Math.log(1000)));
+    assert.ok(Math.abs(linkedThumb-expectedLinked)<2,
+      "linked F rail must align to physical H=2500Hz pivot scale");
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+
+    // Three icon buttons retain four distinct ratio representations.
+    await page.select("#pitch-ratio-unit","semitones");
+    assert.equal(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.textContent),"♩");
+    await page.click("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]");
+    assert.equal(await page.$eval("#pitch-ratio-unit",el=>el.value),"cents");
+    assert.equal(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.textContent),"¢");
+    assert.match(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.getAttribute("aria-label")),"セント");
+    await page.select("#pitch-ratio-unit","ratio");
+
     // Browser-only reference sine still has ONE physical Hz authority;
     // the MIDI36..96 source track must keep its .01 semitone granularity.
     assert.equal(await page.$eval("#sine-unit",el=>el.getBoundingClientRect().height>0),true);
