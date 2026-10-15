@@ -135,3 +135,11 @@ The harmonic source F `fundamental` (20..2000Hz, default 350) now has one `mount
 Unlike L/H/P, the existing F slider is LINEAR 20..2000Hz; thus F percent denotes `100 (F-20)/1980`. Note+cents and Hz use the same shared physical converters; opt-in 6px semitone snapping applies to the F slider only. F unit selection cannot trigger DAW or DSP automation. Existing global display precision remains formatting only and F input focus preserves the full canonical value.
 
 Staged Chrome regression must visit the actual mathematical panel, parse A4+25c, verify **linear** rail%, preserve F during notation changes, confirm H↔P from precise F, snap A4=440, and reject invalid text without changing canonical F. Existing P↔F inverse regression continues. Carrier/Fold remain distinct. No Pages release or main merge.
+
+## 12. M1 manual ring carrier c (staged in same harmonic-panel PR as F)
+
+Manual carrier `carrier` is now one `createParameterBinding` canonical Hz number, with Hz / note+cents / rail% and opt-in semitone snap. The existing carrier `0` rail position is an exact special 0Hz; positive native rail positions 1..1000 cover **1..20000Hz logarithmically**. The existing manual typed input may specify 0<Hz<1 independently of that coarse rail (positive values below 1Hz all display at the first positive rail position, without quantizing their canonical Hz unless an actual slider edit occurs). Note mode cannot represent 0Hz and automatically falls back to Hz.
+
+The independently opt-in `carrier-link` in a Fold L/H mode still overrides only the **effective** DSP carrier with the computed fold frequency; manual `carrier` remains stored unchanged so switching OFF recovers the previous manual carrier. While linked in a valid Fold mode, manual carrier input, range, unit select and snapping are disabled together. This link remains separate from H↔P; unit selectors do not silently change either link mode. No VST3 ParamID 14/15 or Rust DSP ABI changes.
+
+Staged Chrome acceptance includes visible Ring controls, exact note→Hz roundtrip, existing log+zero rail%, 0Hz note fallback, independent fold link disable/restore, and existing dual-thumb, graph/live/WAV regressions. Reference sine remains the final browser-only M1 frequency control.
