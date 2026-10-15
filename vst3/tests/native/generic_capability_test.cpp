@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <iterator>
 #include <stdexcept>
 #include <vector>
@@ -28,6 +29,21 @@ int main(int argc,char** argv) {
                "demo engines must explicitly advertise slot64");
         expect(fw_native_generic_slot_mask(c)==0,
                "old demo missing optional export must be fail-closed");
+        expect(fw_native_generic_value_in_contract(a,64,0.0),
+               "WASM-authored Identity gain zero must be allowed");
+        expect(fw_native_generic_value_in_contract(b,64,4.0),
+               "WASM-authored Gain maximum must be allowed");
+        expect(!fw_native_generic_value_in_contract(b,64,-0.01) &&
+               !fw_native_generic_value_in_contract(b,64,4.01),
+               "out-of-range canonical generic values must be denied");
+        expect(!fw_native_generic_value_in_contract(b,64,
+                std::numeric_limits<double>::quiet_NaN()),
+               "nonfinite generic value must be denied");
+        expect(!fw_native_generic_value_in_contract(b,65,0.5) &&
+               !fw_native_generic_value_in_contract(c,64,0.5) &&
+               !fw_native_generic_value_in_contract(nullptr,64,0.5),
+               "unattested or unsupported generic slot must remain inert");
+
         expect(fw_native_stream_control_mask(a)==0&&
                fw_native_stream_control_mask(c)==0,
                "demo engines cannot claim Stream fixed host semantics");

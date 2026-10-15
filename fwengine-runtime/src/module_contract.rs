@@ -18,6 +18,20 @@ pub struct Canonical {
     pub scale:String,
     pub steps:Option<u32>,
 }
+impl Canonical {
+    // Canonical event acceptance is independent of the UI display unit.
+    // This is not DAW permission: R3C2 must intersect saved FWS3 identity
+    // and worker-confirmed engine generation before forwarding an event.
+    pub fn contains_event_value(&self,value:f64)->bool {
+        if !value.is_finite()||value<self.min||value>self.max{return false}
+        if let Some(steps)=self.steps{
+            if steps==0{return false}
+            let position=(value-self.min)*steps as f64/(self.max-self.min);
+            if (position-position.round()).abs()>1e-8{return false}
+        }
+        true
+    }
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ModuleContract {schema:String,bindings:Vec<Canonical>}
@@ -85,6 +99,12 @@ mod tests {
         assert_eq!(a[0].semantic_id,"gain");
         assert_eq!(a[0].min,0.);
         assert_eq!(a[0].default,0.5);
+        assert!(a[0].contains_event_value(0.0));
+        assert!(a[0].contains_event_value(4.0));
+        assert!(!a[0].contains_event_value(-0.01));
+        assert!(!a[0].contains_event_value(4.1));
+        assert!(!a[0].contains_event_value(f64::NAN));
+        assert!(!a[0].contains_event_value(f64::INFINITY));
         assert!(parse(GOOD,0).is_none());
         assert!(parse(GOOD,2).is_none());
         assert!(parse(GOOD,3).is_none());

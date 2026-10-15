@@ -180,15 +180,15 @@ impl Runtime{
                     _=>false
                 }
             }else{
-                // R3A: demo Identity/Gain can act on explicit slot64 only.
-                // Other engines' advertised bits are NOT authoritative until
-                // R3B validates module-bound semantic descriptors/ranges.
+                // One data-driven canonical DSP event rule for generic 64..127.
+                // No new per-knob C++ switch or shell rebuild is required.
+                // This is a MODULE value-validity check only. VST3 DAW host
+                // permission still requires R3C2 saved FWS3+active identity
+                // and attested external descriptor authorization.
                 let advertised=(64..128).contains(&e.id) &&
                     (self.generic_mask & (1u64<<(e.id-64)))!=0;
-                let demo=self.manifest.engine_id=="org.kinotch.identity" ||
-                    self.manifest.engine_id=="org.kinotch.gainhalf";
-                advertised && demo && e.id==64 &&
-                    e.value.is_finite()&&(0.0..=4.0).contains(&e.value)
+                advertised && self.generic_contract(e.id)
+                    .is_some_and(|c|c.contains_event_value(e.value))
             };
             ensure!(allowed,"unbound or out-of-range canonical host parameter");
             ensure!(e.offset as usize<=if frames==0{0}else{frames-1},"event outside block");

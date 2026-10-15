@@ -34,6 +34,10 @@ std::uint64_t fw_native_stream_control_mask(const FWNativeOpaque* handle);
 // Optional generic slot64..127 WASM capabilities, bit0=ParamID64.
 // Off-RT only; identity/codec validation still required before host binding.
 std::uint64_t fw_native_generic_slot_mask(const FWNativeOpaque* handle);
+// Read-only non-RT canonical value check against WASM-authored range/granularity;
+// this is NOT DAW automation authorization (R3C2 is required).
+bool fw_native_generic_value_in_contract(
+    const FWNativeOpaque* handle,std::uint32_t host_slot,double canonical_value);
 // NON-RT necessary-only JSON descriptor preflight; positive result alone
 // NEVER authorizes new audio events or saved DAW generic automation.
 bool fw_native_preflight_generic_descriptor(
