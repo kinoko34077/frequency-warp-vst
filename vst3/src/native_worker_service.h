@@ -159,8 +159,10 @@ public:
     }
     // NonRT only. Host must quiesce audio process first.
     void stop() noexcept {
-        genericAuthorization_.workerRevoke();
+        // Flip the worker stop gate before revocation; a pending worker
+        // completion may never publish a permission after this boundary.
         stopping_.store(true,std::memory_order_release);
+        genericAuthorization_.workerRevoke();
         if(thread_.joinable())thread_.join();
         {
             std::lock_guard<std::mutex> lock(commandMutex_);
@@ -270,8 +272,17 @@ private:
                        status_.load(std::memory_order_acquire)==Status::Ready &&
                        accepted_.load(std::memory_order_acquire)==
                            snapshot.acceptedGeneration) {
-                        approved=genericAuthorization_.workerPublish(
-                            snapshot,current.acceptedGeneration,current.packageSha256);
+                        // The GUI producers postPackage/postClear/postAuthorization
+                        // revoke under this SAME mutex. Do not let a worker
+                        // finish old proof and then publish AFTER their revoke.
+                        // This is non-RT: processTyped never takes this lock.
+                        std::lock_guard<std::mutex> commitGuard(commandMutex_);
+                        if(!commandPending_ &&
+                           !stopping_.load(std::memory_order_acquire)) {
+                            approved=genericAuthorization_.workerPublish(
+                                snapshot,current.acceptedGeneration,
+                                current.packageSha256);
+                        }
                     }
                 }
                 }catch(...) {approved=false;}
