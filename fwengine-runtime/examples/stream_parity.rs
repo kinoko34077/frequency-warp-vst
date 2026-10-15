@@ -72,7 +72,7 @@ fn main()->Result<(),Box<dyn Error>>{
     let mut biggest=0f32;let mut power=0f64;
     let mut after_diff=0f64;
     let mut crusher_diff=0f64;
-    let mut native_without_crusher=Stream::new(48000.,2,native_settings)?;
+    let mut native_without_crusher=Stream::new(48000.,2,native_settings,0)?;
     let mut no_crusher_settings=native_settings;
     let dry_settings=native_settings;
     let mut unchanged=Stream::new(48000.,2,dry_settings,0)?;
