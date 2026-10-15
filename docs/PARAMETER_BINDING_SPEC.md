@@ -101,3 +101,11 @@ This pure-layer foundation is independent of the existing `app.mjs` / `harmonics
 - Constraint-induced adjustments when L/H or sample-rate cap collide silently synchronize the canonical binding and its coarse thumb (rather than showing a note label disagreeing with effective audio bounds). Reset returns L to 20Hz, Hz notation, snapping OFF.
 - `web-demo/parameter-unit-browser.test.mjs` exercises actual staged artifact in headless Chrome at 390px: parse/format, precision retention, true nonlinear %, invalid input rollback, optional snapping, keyboard thumb and reset. The existing Rust AudioWorklet/WAV/graph code and VST3 parameter IDs are unchanged.
 - **Acceptance gate:** exact head CI and review before further horizontal migration. M1 is not the full per-control unit rollout; #79 stays open.
+
+## 8. M1 upper H reuse (#79, staged, NOT released)
+
+Upper band H (`high`) reuses the same `mountFrequencyUnitField` / `defineParameter` / 6px opt-in semitone-snap path as lower band L, with canonical default H=16000Hz. Its own `#high-unit`, `#high-snap`, text input and accessible dual-thumb readout are independent of L unit/view state. Normalized rail travel is the same existing piecewise logarithmic 0.001..20..20000Hz mapping; read-only unit switching does not change the Rust/WASM controls.
+
+The shared `bounds()` logic still owns L/H separation and effective sample-rate caps; if moving one bound changes the other, its canonical binding and slider are silently updated before the single render/graph notification. H is not a globally fixed 20000Hz oscillator if a file sample rate limits the effective processing band. All original graph/AudioWorklet/WAV calls remain unchanged.
+
+Acceptance requires Chrome 390px note+cent roundtrip, rail-percent correctness, invalid H input rollback, optional snapped 880Hz, screen-reader thumb text, plus existing L and native/WASM regressions. This is a stacked Draft change, not the public site. Other frequency knobs remain #79 open work.
