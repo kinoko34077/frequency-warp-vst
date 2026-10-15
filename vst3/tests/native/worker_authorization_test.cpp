@@ -70,6 +70,9 @@ int main(int argc,char** argv) {
         rt.rtAdopt();
         need(rt.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
              "live worker epoch granted slot64");
+        const auto advisory=worker.verifiedIdentitySnapshot();
+        need(advisory.active && advisory.genericAllowedMask==1 &&
+             advisory.genericTicket!=0,"coherent verified generic status");
         const auto* codec=rt.rtCodec(64,accepted.acceptedGeneration,accepted.packageSha256);
         need(codec && codec->hostSlot==64 && codec->min==0. &&
              codec->max==4. && codec->defaultValue==0.5,
@@ -81,6 +84,8 @@ int main(int argc,char** argv) {
         need(worker.postAuthorization(wrong,doc,903),"enqueue invalid FWS3");
         need(!rt.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
              "request revokes before worker acknowledgement");
+        need(worker.verifiedIdentitySnapshot().genericAllowedMask==0,
+             "pending invalid descriptor retains published GUI authority");
         need(until([&]{return (worker.lastAuthorizationWord()>>1)==903;}),
              "rejected binding acknowledgement");
         need((worker.lastAuthorizationWord()&1)==0,
@@ -148,6 +153,8 @@ int main(int argc,char** argv) {
         }
         need(!rt.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
              "queued replacement failed to revoke old generic binding");
+        need(worker.verifiedIdentitySnapshot().genericAllowedMask==0,
+             "queued engine swap left stale GUI permission");
         need(until([&]{return worker.lastCompletedId()==905 &&
                        worker.lastCompletedSucceeded();}),"identity replacement");
         rt.rtAdopt();
