@@ -16,6 +16,8 @@
 #include <filesystem>
 #include <cstring>
 #include <array>
+#include <cstdint>
+#include <limits>
 #include <sstream>
 #include <locale>
 #include <iomanip>
@@ -42,6 +44,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // returns a recent worker+saved-FWS3 mask or zero, never JS claims.
         std::function<std::uint64_t()> verifiedGenericMask{};
         std::array<bool,128> editing{};
+        std::uint64_t lastMaskSent=std::numeric_limits<std::uint64_t>::max();
         bool uiReady=false;
     };
     std::shared_ptr<Shared> state_=std::make_shared<Shared>();
@@ -67,6 +70,28 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if (state && state->alive && IsWindow(state->child))
             SetWindowTextW(state->child,detail);
     }
+    // HTML mapping is generated ONLY from native, verified Worker/FWS3
+    // permission. The JS page cannot invent another DAW-authorized slot.
+    static void sendBindings(Shared& state,std::uint64_t mask) {
+        if(!state.view || !state.alive)return;
+        std::ostringstream output;
+        output<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"bindings","bindings":[)"
+              <<R"({"id":2,"selector":"#low","min":0,"max":1000},)"
+              <<R"({"id":3,"selector":"#high","min":0,"max":1000},)"
+              <<R"({"id":4,"selector":"#invert","min":0,"max":1},)"
+              <<R"({"id":5,"selector":"#curvature","min":0,"max":1})";
+        for(std::uint32_t id=64;id<=127;id++) {
+            if(!(mask&(std::uint64_t{1}<<(id-64))))continue;
+            output<<R"(,{"id":)"<<id
+                  <<R"(,"selector":"#fw-engine-)"<<id
+                  <<R"(","min":0,"max":1})";
+        }
+        output<<"]}";
+        const auto ascii=output.str();
+        const std::wstring wide(ascii.begin(),ascii.end());
+        state.view->PostWebMessageAsJson(wide.c_str());
+        state.lastMaskSent=mask;
+    }
     // Always run on the VST3 GUI/COM STA. Never touch audio callbacks here.
     static void sendSnapshot(Shared& state) {
         if(!state.alive||!state.uiReady||!state.view||!state.host)return;
@@ -77,6 +102,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         bool first=true;
         const auto mask=state.verifiedGenericMask?
             state.verifiedGenericMask():std::uint64_t{0};
+        if(mask!=state.lastMaskSent)sendBindings(state,mask);
         auto append=[&](uint32_t id){
             if(state.editing[id])return; // never fight an in-progress drag
             const auto value=state.host->getParamNormalized(id);
