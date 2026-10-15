@@ -90,6 +90,31 @@ pub unsafe extern "C" fn fw_native_generic_slot_mask(handle:*const Opaque)->u64 
     if handle.is_null(){return 0;}
     (*handle).runtime.generic_slot_mask()
 }
+/// R3B2 necessary-only NON-RT descriptor preflight, NOT DAW edit authority.
+/// Validate exact native worker-prepared engine/hash, declared capability mask,
+/// JSON schema/units/ranges and caller-requested semantic ID+codec.
+/// This cannot attest that WASM implements the descriptor's physical range;
+/// R3B3/3C must establish module-owned semantic proof and saved-FWS3 identity.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_preflight_generic_descriptor(
+    handle:*const Opaque, json:*const u8, json_len:usize,
+    slot:u32, semantic:*const u8, semantic_len:usize, codec_revision:u32
+)->bool {
+    if handle.is_null() || json.is_null() || semantic.is_null() ||
+       json_len==0 || json_len>65536 || semantic_len==0 ||
+       semantic_len>128 || !(64..=127).contains(&slot) ||
+       codec_revision==0 || codec_revision>65535 {return false;}
+    catch_unwind(AssertUnwindSafe(||{
+        let Some(id)=std::str::from_utf8(slice::from_raw_parts(semantic,semantic_len)).ok()
+        else{return false;};
+        let o=&*handle;
+        crate::descriptor::preflight(
+            slice::from_raw_parts(json,json_len),
+            &o.runtime.manifest.engine_id,
+            &o.package_hash,o.runtime.generic_slot_mask(),
+            slot,id,codec_revision)
+    })).unwrap_or(false)
+}
 fn intersects(a:usize,a_len:usize,b:usize,b_len:usize)->bool {
     match (a.checked_add(a_len),b.checked_add(b_len)){
         (Some(a_end),Some(b_end))=>a<b_end && b<a_end,
