@@ -23,7 +23,7 @@ pub struct Runtime {
     pub manifest:Manifest,
     store:Store<StoreLimits>,memory:Memory,run:ProcessFn,handle:i32,
     channels:usize,max_frames:usize,input:usize,output:usize,event:usize,
-    capacity:usize,faulted:bool,sample_rate:f64,stream_mask:u64,
+    capacity:usize,faulted:bool,sample_rate:f64,stream_mask:u64,generic_mask:u64,
     last_fuel_used:u64,
 }
 fn section(start:usize,size:usize,limit:usize,align:usize)->Result<(usize,usize)>{
@@ -97,12 +97,23 @@ impl Runtime{
                 Err(_)=>LEGACY_STREAM_MASK,
             }
         }else{0};
+        // Capability mask bit0 = fixed Host ParamID64, ... bit63 = 127.
+        // Old modules without this optional export are fail-closed (0).
+        // A mask does not authorize a semantic descriptor or host automation.
+        let generic_mask=if p.manifest.engine_id=="org.kinotch.stream" {0}
+            else {
+                match inst.get_typed_func::<(),i64>(&store,"fw_supported_generic_slot_mask") {
+                    Ok(f)=>f.call(&mut store,())? as u64,
+                    Err(_)=>0,
+                }
+            };
         Ok(Self{manifest:p.manifest,store,memory,run,handle,channels,max_frames,
             input,output,event,capacity:capacity as usize,faulted:false,
-            sample_rate:rate,stream_mask,last_fuel_used:0})
+            sample_rate:rate,stream_mask,generic_mask,last_fuel_used:0})
     }
     pub fn faulted(&self)->bool{self.faulted}
     pub fn stream_control_mask(&self)->u64{self.stream_mask}
+    pub fn generic_slot_mask(&self)->u64{self.generic_mask}
     // NonRT diagnostics for bounded CPU/fuel investigation and regression.
     pub fn last_process_fuel(&self)->u64{self.last_fuel_used}
     /// Test/offline convenience function. Allocates a Vec; not for audio callbacks.
@@ -141,7 +152,17 @@ impl Runtime{
                         &&e.value.fract()==0.0,
                     _=>false
                 }
-            }else{e.id==64&&e.value.is_finite()&&(0.0..=4.0).contains(&e.value)};
+            }else{
+                // R3A: demo Identity/Gain can act on explicit slot64 only.
+                // Other engines' advertised bits are NOT authoritative until
+                // R3B validates module-bound semantic descriptors/ranges.
+                let advertised=(64..128).contains(&e.id) &&
+                    (self.generic_mask & (1u64<<(e.id-64)))!=0;
+                let demo=self.manifest.engine_id=="org.kinotch.identity" ||
+                    self.manifest.engine_id=="org.kinotch.gainhalf";
+                advertised && demo && e.id==64 &&
+                    e.value.is_finite()&&(0.0..=4.0).contains(&e.value)
+            };
             ensure!(allowed,"unbound or out-of-range canonical host parameter");
             ensure!(e.offset as usize<=if frames==0{0}else{frames-1},"event outside block");
             ensure!(i==0||e.offset>=last,"unsorted automation");
