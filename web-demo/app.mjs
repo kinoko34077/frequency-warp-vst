@@ -599,14 +599,24 @@ async function mediaBridge(player){
       if(state.player===player)switchAudioRoute(player,state.ctx,true);
     };
     await element.play();
-    if(state.player!==player){element.pause();return;}
+    if(state.player!==player){
+      // stop/new play already owns the shared HTMLMediaElement. A delayed
+      // old play() completion must not pause or clear the NEW media stream.
+      try{player.bridgeRoute?.disconnect();}catch{}
+      player.bridgeRoute=null;
+      return;
+    }
     if(!element.paused)switchAudioRoute(player,state.ctx,true);
     player.mediaBridge=node;
   }catch{
     switchAudioRoute(player,state.ctx,false);
     try{player.bridgeRoute?.disconnect();}catch{}
     player.bridgeRoute=null;
-    try{element.pause();element.srcObject=null;}catch{}
+    // The rejected promise may belong to an obsolete player. Only its
+    // CURRENT owner may mutate this shared element's media output.
+    if(state.player===player){
+      try{element.pause();element.srcObject=null;}catch{}
+    }
   }
 }
 async function stop(){
