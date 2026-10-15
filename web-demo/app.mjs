@@ -18,7 +18,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
-let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null;
+let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null;
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -70,6 +70,7 @@ function showNumber(id,value){
   if(id==="high-value"&&highUnitControl){highUnitControl.refresh();return;}
   if(id==="axis-pivot-value"&&pivotUnitControl){pivotUnitControl.refresh();return;}
   if(id==="a-min-value"&&aMinUnitControl){aMinUnitControl.refresh();return;}
+  if(id==="sine-hz"&&sineUnitControl){sineUnitControl.refresh();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -1062,8 +1063,24 @@ for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
 }
 // WebAudio reference sine is a monitoring aid, not a competing DSP engine.
 const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
-const sinePitch=()=>state.sineExactPitch??Number($("#sine-pitch").value);
-const sineFrequency=()=>440*2**((sinePitch()-69)/12);
+const sineHzAtMidi=midi=>440*2**((midi-69)/12);
+const sineMidiAtHz=hz=>69+12*Math.log2(hz/440);
+sineUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"sine-hz",min:sineHzAtMidi(36),max:sineHzAtMidi(96),
+    defaultValue:440,units:["hz","note","percent"],
+    rail:{toPosition:hz=>(sineMidiAtHz(hz)-36)/60,
+          fromPosition:t=>sineHzAtMidi(36+60*t)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#sine-hz"),select:$("#sine-unit"),snapToggle:$("#sine-snap"),
+  slider:$("#sine-pitch"),railRoot:$("#sine-pitch"),
+  getDigits:displayDigits,initialValue:440,
+  onValueChange:()=>updateSineLabel()
+});
+const sinePitch=()=>sineMidiAtHz(sineUnitControl.value);
+const sineFrequency=()=>sineUnitControl.value;
 function updateSineLabel(){
   const value=sinePitch(),nearest=Math.round(value);
   const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
@@ -1078,28 +1095,16 @@ function stopSine(){
   if(!sine)return;
   try{sine.osc.stop();sine.osc.disconnect();sine.gain.disconnect();}catch{}
 }
-$("#sine-pitch").addEventListener("input",()=>{delete state.sineExactPitch;updateSineLabel();});
-$("#sine-hz").addEventListener("input",()=>{
-  const raw=Number($("#sine-hz").value);
-  if(!Number.isFinite(raw)||$("#sine-hz").value==="")return;
-  const hz=round3(clamp(raw,65,2100));
-  state.sineExactPitch=clamp(69+12*Math.log2(hz/440),36,96);
-  $("#sine-pitch").value=String(state.sineExactPitch);
-  updateSineLabel();
-});
-$("#sine-hz").addEventListener("focus",()=>{
-  $("#sine-hz").value=String(round3(sineFrequency()));$("#sine-hz").select();
-});
-$("#sine-hz").addEventListener("blur",()=>{
-  showNumber("sine-hz",sineFrequency());
-});
+// The reference oscillator, MIDI rail and cents field are views of exactly
+// one canonical Hz value. MIDI's .01 source step remains a coarse gesture.
+$("#sine-pitch").addEventListener("input",()=>sineUnitControl.fromSlider());
 $("#sine-cent").addEventListener("input",()=>{
   if($("#sine-cent").value==="")return;
   const cents=round3(clamp(Number($("#sine-cent").value),-50,50));
   if(!Number.isFinite(cents))return;
   const root=Math.round(sinePitch());
-  state.sineExactPitch=clamp(root+cents/100,36,96);
-  $("#sine-pitch").value=String(state.sineExactPitch);
+  const pitch=clamp(root+cents/100,36,96);
+  sineUnitControl.setCanonical(sineHzAtMidi(pitch));
   updateSineLabel();
 });
 $("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(round3((sinePitch()-Math.round(sinePitch()))*100));});
