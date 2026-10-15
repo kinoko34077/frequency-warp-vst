@@ -8,6 +8,9 @@ description = "Single-file WASM v1 adapter over canonical frequency-warp-core::S
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+legacy-no-mask = [] # Regression fixture: pre-capability Stream archives
+
 [dependencies]
 frequency-warp-core = { path = "../core" }
 
