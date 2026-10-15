@@ -167,3 +167,13 @@ The positive pitch ratio `pitch-ratio` (r) is the first M2 non-Hz migration. Its
 - Staged Chrome at 390px verifies +7 semitones ↔ 2^(7/12), 700 cents, real r-rail percent, linked P update, opt-in snap and reset. Rust/WASM/graph/audio parity remains mandatory, and this does not modify VST3 ParamIDs/engine ABI.
 
 Other M2 control families (signed slope, fractional percentages, counts and coordinate u) remain future independently bounded migrations. There is no public Pages deployment through this Draft branch.
+
+## 15. M2 signed slope s: negative/zero allowed, no musical interpretation
+
+The signed slope `axis-slope` retains its established canonical `-4 ≤ s ≤ 4`, default +1 and original linear slider step 0.01. This is a **signed scale / orientation** of the frequency-coordinate mapping: negative s reflects ordering and zero collapses to the pivot; do not convert s to Hz, an absolute pitch, cents or semitones. The allowed view subset is `ratio` (signed multiplier) and the **physical rail position** `percent = 100(s+4)/8`.
+
+Its value now lives in the same dimension-neutral Float64 binding as the positive ratio r, but the signed scope is a *different parameter descriptor* and explicitly retains negative and zero values. The old separate `state.precise["axis-slope"]` number/range listener is bypassed. Selection changes do not send DSP updates. Optional snapping to specific **scale anchor targets -1, 0 and +1** uses actual physical pixel distance (6px threshold) rather than an interval/semitone grid. Both normal slider changes and the existing `1へ` button drive the same canonical binding, without reentrant DOM events.
+
+Settings reset restores s=1, signed multiplier view and snap OFF. Staged Chrome at 390px verifies s=+1→62.5% rail; 25%→s=-2; typed -1.25 full-precision; snap to -1/0/+1; musical note names invalid; original reset button parity. This does not alter the Rust DSP/native host interface.
+
+Other M2 classes such as fractions/counts and the coordinate u remain unmodified.
