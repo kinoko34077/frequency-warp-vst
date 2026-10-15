@@ -1,7 +1,6 @@
 import {EditError,validateDocument,assertSafeId} from './core.mjs';
 import {resolvePageProfile} from './profiles.mjs';
 const fail=code=>{throw new EditError(code);};
-const escapeRegExp=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const attrSelector=(key,value)=>'['+key+'="'+value+'"]';
 function validated(document,profile){
   if(!profile||profile.ownership!=='static-dom'||profile.adapter!=='dom-style')fail('UNSUPPORTED_EXPORT');
