@@ -14,6 +14,7 @@
 #include "generic_ui_authority_gate.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
+#include <chrono>
 #include <cstdlib>
 #include "win32_engine_editor.h"
 #if defined(_WIN32) && defined(FW_ENABLE_WEBVIEW2)
@@ -867,6 +868,16 @@ public:
     bool lastNewGenericActiveSnapshot() const noexcept {
         return lastNewActive_.load(std::memory_order_acquire);
     }
+    std::uint64_t currentVerifiedGenericUiMask() const noexcept {
+        // Informational GUI authority is short-lived. RT and Worker still
+        // independently verify each packet's live ticket/epoch.
+        using Clock=std::chrono::steady_clock;
+        const auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(
+            Clock::now().time_since_epoch()).count();
+        const auto stamp=uiMaskVerifiedMs_.load(std::memory_order_acquire);
+        if(stamp<=0||ms<stamp||ms-stamp>300)return 0;
+        return lastUiMask_.load(std::memory_order_acquire);
+    }
     // Query/ack remains on the VST3 host lifecycle, never from process().
     uint64_t lastSavedGenericAuthorizationWord() const noexcept {
         return lastSavedGenericStatus_.load(std::memory_order_acquire);
@@ -899,8 +910,11 @@ public:
             auto* a=message->getAttributes();
             if(!a)return kResultFalse;
             int64 preparedRequest=0,prepared=0,commitRequest=0,committed=0;
-            int64 saved=0,active=0;
-            if(a->getInt("preparedRequest",preparedRequest)!=kResultTrue ||
+            int64 saved=0,active=0,lo=0,hi=0;
+            if(a->getInt("maskLo",lo)!=kResultTrue ||
+               a->getInt("maskHi",hi)!=kResultTrue ||
+               lo<0||lo>UINT32_MAX||hi<0||hi>UINT32_MAX ||
+               a->getInt("preparedRequest",preparedRequest)!=kResultTrue ||
                a->getInt("prepared",prepared)!=kResultTrue ||
                a->getInt("committedRequest",commitRequest)!=kResultTrue ||
                a->getInt("committed",committed)!=kResultTrue ||
@@ -911,6 +925,13 @@ public:
                (committed!=0&&committed!=1)||
                (saved!=0&&saved!=1)||(active!=0&&active!=1)||
                (active&&!saved))return kResultFalse;
+            const auto mask=static_cast<std::uint64_t>(lo) |
+                (static_cast<std::uint64_t>(hi)<<32);
+            if((active&&!mask)||(!active&&mask))return kResultFalse;
+            lastUiMask_.store(active?mask:0,std::memory_order_release);
+            const auto now=std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            uiMaskVerifiedMs_.store(now,std::memory_order_release);
             lastNewPreparedWord_.store(
                 (static_cast<uint64_t>(preparedRequest)<<1) |
                 static_cast<uint64_t>(prepared),std::memory_order_release);
@@ -1003,6 +1024,8 @@ private:
     std::atomic<uint64_t> nextNewRequest_{0},newInFlight_{0},
                           lastNewPreparedWord_{0},lastNewCommittedWord_{0};
     std::atomic<bool> lastNewSaved_{false},lastNewActive_{false};
+    std::atomic<std::uint64_t> lastUiMask_{0};
+    std::atomic<std::int64_t> uiMaskVerifiedMs_{0};
 #ifdef _WIN32
     std::mutex snapshotMutex_{};
     EngineStatusSnapshot lastSnapshot_{};
