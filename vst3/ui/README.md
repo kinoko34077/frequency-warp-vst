@@ -1,9 +1,11 @@
 # Reloadable Web UI / native VST3 bridge (Issue #145)
 
-This directory begins **UI-1**, an independently testable site-side contract.
-It does **not** yet render a WebView in the native VST3: that is the next
-bounded native stage. The live `web-demo/` files are deliberately untouched,
-so merging UI-1 does not trigger automatic GitHub Pages publication.
+This directory implements the independently tested site-side UI-1 bridge and
+R1/UI-4A generic parameter descriptor preflight. UI-2/3 native WebView2 and
+four fixed host ParamIDs 2–5 have been accepted elsewhere under #145; this
+directory alone does **not** authorize runtime generic DAW binding.
+The live `web-demo/` files are deliberately unchanged by this R1 unit,
+so no GitHub Pages publication is triggered.
 
 ## Protocol
 
@@ -52,3 +54,55 @@ DAW audio callback. `.fwengine` v1 manifest remains unchanged pending a
 separate compatible UI-asset/descriptor package design.
 
 S5 real FL Studio and a second host are still required before release.
+
+## R1 / UI-4A: generic parameter descriptor (not yet activated in DAW)
+
+- `../../schemas/fw-ui-descriptors-v1.schema.json`: versioned strict data
+  contract; unknown properties forbidden.
+- `parameter-descriptors.mjs`: bounded parsed payload (64 KiB), verified
+  engine id/version/hash, 0..64 unique generic ParamIDs **64..127 only**,
+  engine-scoped unique semantic IDs, compatible dimensions/display units,
+  finite min/max/default, scale and widget allowlists, integer/boolean
+  quantization, deterministic canonical↔normalized codecs, valid snap
+  targets and normalized snap capture radius, dependencies and cycle checks.
+- Unit types reuse `../../web-demo/parameter-units.mjs` (the same Web
+  presentation math); no rewritten audio algorithm or new VST3 native ID.
+- Known frequency-band 0.001→20→20000 Hz and zero-allowed-frequency
+  mapping align with accepted fixed host transfer functions. The native
+  slot identity and permissions must still be independently authenticated.
+
+Sample optional engine descriptor shape:
+
+```json
+{
+  "schema": "frequency-warp-ui-descriptors-v1",
+  "engine": {
+    "id": "org.example.processor",
+    "version": "0.1.0",
+    "sha256": "abababababababababababababababababababababababababababababababab"
+  },
+  "bindings": [{
+    "host_slot": 64,
+    "semantic_id": "gain",
+    "label": "Output gain",
+    "dimension": "fraction",
+    "canonical_unit": "fraction",
+    "min": 0,
+    "max": 1,
+    "default": 0.5,
+    "scale": "linear",
+    "widget": "knob",
+    "display_units": ["percent"],
+    "codec_revision": 1,
+    "snap": {"values": [0, 0.5, 1], "radius_normalized": 0.02}
+  }]
+}
+```
+
+This is an **external standalone candidate descriptor**, not an accepted
+change to the strict legacy `.fwengine` v1 manifest. R2 must separately
+persist verified engine/semantic-ID+codec identity in the DAW project before
+native code can authorize slots 64–127. A UI-provided descriptor alone
+must not cause host audio automation to target another module.
+
+Run `node --test vst3/ui/parameter-descriptors.test.mjs`.
