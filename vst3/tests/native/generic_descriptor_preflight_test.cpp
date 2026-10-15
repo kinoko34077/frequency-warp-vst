@@ -113,6 +113,46 @@ int main(int argc,char** argv){
             g,reinterpret_cast<const std::uint8_t*>(valid.data()),65537,
             64,reinterpret_cast<const std::uint8_t*>("gain"),4,1),
             "oversized descriptor passed before access");
+        const auto* validBytes=reinterpret_cast<const std::uint8_t*>(valid.data());
+        require(fw_native_attest_generic_descriptor_mask(g,validBytes,valid.size())==1,
+                "whole canonical Gain descriptor must produce exact slot64 mask");
+        require(fw_native_attest_generic_descriptor_mask(
+                    g,reinterpret_cast<const std::uint8_t*>(mismatchMax.data()),
+                    mismatchMax.size())==0,
+                "whole descriptor must deny mismatched WASM maximum");
+        require(fw_native_attest_generic_descriptor_mask(
+                    g,reinterpret_cast<const std::uint8_t*>(mismatchDefault.data()),
+                    mismatchDefault.size())==0,
+                "whole descriptor must deny mismatched WASM default");
+        require(fw_native_attest_generic_descriptor_mask(
+                    g,reinterpret_cast<const std::uint8_t*>(mismatchScale.data()),
+                    mismatchScale.size())==0,
+                "whole descriptor must deny mismatched scale");
+        require(fw_native_attest_generic_descriptor_mask(i,validBytes,valid.size())==0,
+                "foreign module cannot attest a Gain package descriptor");
+        require(fw_native_attest_generic_descriptor_mask(l,validBytes,valid.size())==0,
+                "legacy module has no attested generic descriptor mask");
+        auto extraSlot=valid;
+        const auto bindStart=extraSlot.find("{\"host_slot\":64");
+        const auto bindEnd=extraSlot.rfind("]}");
+        require(bindStart!=std::string::npos && bindEnd!=std::string::npos &&
+                bindEnd>bindStart,"whole descriptor test fixture layout");
+        auto additional=extraSlot.substr(bindStart,bindEnd-bindStart);
+        const auto hostPos=additional.find("\"host_slot\":64");
+        const auto semPos=additional.find("\"semantic_id\":\"gain\"");
+        require(hostPos!=std::string::npos && semPos!=std::string::npos,
+                "whole descriptor required binding fields");
+        additional.replace(semPos,20,"\"semantic_id\":\"other\"");
+        additional.replace(hostPos,14,"\"host_slot\":65");
+        extraSlot.insert(bindEnd,","+additional);
+        require(fw_native_attest_generic_descriptor_mask(
+                   g,reinterpret_cast<const std::uint8_t*>(extraSlot.data()),
+                   extraSlot.size())==0,
+                "whole descriptor must reject undeclared extra slot");
+        require(fw_native_attest_generic_descriptor_mask(nullptr,validBytes,valid.size())==0 &&
+                fw_native_attest_generic_descriptor_mask(g,nullptr,valid.size())==0 &&
+                fw_native_attest_generic_descriptor_mask(g,validBytes,65537)==0,
+                "missing or oversized descriptor must fail before memory access");
         fw_native_destroy(g);fw_native_destroy(i);fw_native_destroy(l);
         std::cout<<"R3B2 PASS: exact worker descriptor preflight, units, bounds, legacy denial\n";
     }catch(const std::exception& e){
