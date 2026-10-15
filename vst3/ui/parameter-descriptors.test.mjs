@@ -97,6 +97,9 @@ test("cross-descriptor duplicates, dependencies, cycles and unexpected JSON keys
   assert.equal(validateDescriptors(extra),false);
   const nested=JSON.stringify(pkg())+" ".repeat(66000);
   assert.throws(()=>parseDescriptors(nested),RangeError);
+  const utf8=JSON.stringify(pkg([make({label:"木".repeat(22000)})]));
+  assert.ok(utf8.length<65536 && new TextEncoder().encode(utf8).byteLength>65536);
+  assert.throws(()=>parseDescriptors(utf8),/descriptor byte limit/);
 });
 test("physical curve and zero-frequency handling match fixed host transfer",()=>{
   const band=make({dimension:"frequency",canonical_unit:"hz",
