@@ -10,7 +10,7 @@ import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHar
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
-import {validateStreamSettings} from "./stream-parameter-contract.mjs";
+import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
 
 const $=id=>document.querySelector(id);
@@ -84,8 +84,15 @@ const fmtTime=seconds=>{
   return Math.floor(s/60)+":"+(s%60).toFixed(1).padStart(4,"0");
 };
 const duration=()=>state.dry?.length?state.dry[0].length/state.decoded.sampleRate:0;
-function message(text,type="info"){$("#status").textContent=text;$("#status").dataset.kind=type;}
-function indicator(text){$("#rt-indicator").textContent=text;}
+function message(text,type="info"){
+  const node=$("#status");
+  if(node.textContent!==text)node.textContent=text;
+  if(node.dataset.kind!==type)node.dataset.kind=type;
+}
+function indicator(text){
+  const node=$("#rt-indicator");
+  if(node.textContent!==text)node.textContent=text;
+}
 function bounds(changed=""){
   const cap=state.decoded?Math.min(20000,state.decoded.sampleRate*.45):20000;
   // Reconcile physical Hz ONCE. Previously the computed peer correction was
@@ -509,8 +516,10 @@ function playerMessage(node,p){
     if(data.type==="parameters-applied"){
       if(p.feedback.ack(data.revision)){
         p.appliedRevision=data.revision;
-        indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
-        message("最新の音声設定を反映しました。");
+        // The worklet ACK is essential for state correctness, but changing
+        // the visible "pending/applied" banner on every slider move causes
+        // a noisy, reflowing UI. Only errors and actual capability notices
+        // update the floating status panel.
       }
     }
     if(data.type==="stats"){
@@ -621,7 +630,7 @@ async function play(mode="wet",offset=null){
   if(!state.dry)return;
   if(state.player?.directDry&&mode==="wet"){
     // A rejected wet request must not destroy a currently audible original.
-    const check=validateStreamSettings(settings());
+    const check=prepareStreamSettings(settings());
     if(!check.ok){
       indicator("原音再生中 · 変換設定未反映 · "+check.field);
       message("原音再生を継続中。変換設定は未反映: "+check.message,"error");
@@ -674,9 +683,9 @@ async function play(mode="wet",offset=null){
   indicator("共通Rust/WASM DSPの起動中…");
   try{
     const {ctx,module}=await prepareCore();
-    const current=settings();
-    const preflight=validateStreamSettings(current);
+    const preflight=prepareStreamSettings(settings());
     if(!preflight.ok)throw Error("設定が現行DSPに非対応: "+preflight.message);
+    const current=preflight.settings;
     const worklet=new AudioWorkletNode(ctx,"frequency-warp-rust",{
       numberOfInputs:1,numberOfOutputs:2,
       outputChannelCount:[state.dry.length,state.dry.length]
@@ -692,7 +701,8 @@ async function play(mode="wet",offset=null){
       worklet,dry,wet,master,directRoute,bridgeRoute:null,outputRoute:"direct",
       buffer:makeBuffer(),source:null,
       mode,quality:current.qualityIndex,engine:current.engine,hopDiv:current.hopDiv,at:ctx.currentTime,
-      offset:0,appliedRevision:0,feedback:createPlaybackFeedback()
+      offset:0,appliedRevision:0,feedback:createPlaybackFeedback(),
+      notice:preflight.warnings.join(" ")
     };
     state.player=player;
     worklet.port.onmessage=playerMessage(worklet,player);
@@ -718,11 +728,23 @@ async function play(mode="wet",offset=null){
     tuneWet();
     controls.stop.disabled=false;
     indicator("稼働中 · Rust/WASM AudioWorklet · "+(1000*result.latencyFrames/ctx.sampleRate).toFixed(1)+" ms DSP遅延");
-    message(mode==="wet"?"128サンプル単位でリアルタイム変換中。ツマミ操作で曲全体を再計算しません。":"原音再生中。");
+    message(player.notice ||
+      (mode==="wet"?"128サンプル単位でリアルタイム変換中。ツマミ操作で曲全体を再計算しません。":"原音再生中。"),
+      player.notice?"warning":"info");
   }catch(error){
+    // DSP failure must not prevent listening to the already loaded source.
+    // Retain the requested position and fall back to direct original audio.
+    const resume=state.player?playPosition():(offset===null?state.seek:offset);
     await stop();
-    message("再生準備失敗: "+error.message,"error");
-    indicator("起動失敗");
+    await play("dry",resume);
+    if(state.player?.directDry) {
+      indicator("原音再生中 · 変換DSPは一時不使用");
+      message("変換DSPは適用できませんでした。原音を継続再生します: "+
+        error.message,"warning");
+    }else{
+      message("音声再生準備失敗: "+error.message,"error");
+      indicator("起動失敗");
+    }
   }finally{
     controls.dry.disabled=!state.dry;
     controls.wet.disabled=!state.dry;
@@ -741,8 +763,8 @@ function updateParams(changed){
   }
   const p=state.player;
   if(!p)return;
-  const current=settings();
-  const preflight=validateStreamSettings(current);
+  const preflight=prepareStreamSettings(settings());
+  const current=preflight.settings;
   if(p.directDry){
     // Preview keeps playing; the user can fix the wet settings in place.
     if(!preflight.ok){
@@ -778,12 +800,18 @@ function updateParams(changed){
   // A rapid switch A→B→A (or FFT selection rollback) must not leave a
   // pending rebuild after the current processor already matches settings.
   if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
+  const nextNotice=preflight.warnings.join(" ");
+  if(p.notice!==nextNotice){
+    p.notice=nextNotice;
+    message(nextNotice||"リアルタイム音声処理中。",
+      nextNotice?"warning":"info");
+  }
   const revision=++state.settingsRevision;
   p.feedback.request(revision);
   p.worklet.port.postMessage({
     type:"params",settings:current,activeQualityIndex:p.quality,revision
   });
-  indicator("リアルタイム動作中 · パラメータ更新中…");
+  // ACK/pending state is tracked internally; no per-gesture banner churn.
 }
 // #79 M1 first vertical slice: one physical-Hz control using the shared
 // canonical binding. The existing #low source remains the dual-thumb gesture
@@ -1120,14 +1148,19 @@ controls.render.addEventListener("click",()=>{
     message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
     return;
   }
-  const renderSettings=settings();
-  const preflight=validateStreamSettings({...renderSettings,sampleRate:state.decoded.sampleRate});
+  const preflight=prepareStreamSettings({
+    ...settings(),sampleRate:state.decoded.sampleRate
+  });
+  const renderSettings=preflight.settings;
   if(!preflight.ok){
     message("WAV書出し設定未反映: "+preflight.message,"error");
     return;
   }
   state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
-  $("#progress").value=0;message("WAV書出し用オフライン処理中（試聴とは独立）…");
+  $("#progress").value=0;
+  message("WAV書出し用オフライン処理中（試聴とは独立）…"+
+    (preflight.warnings.length?" "+preflight.warnings.join(" "):""),
+    preflight.warnings.length?"warning":"info");
   const worker=new Worker(new URL("./processor.worker.mjs",import.meta.url),{type:"module"});
   state.offlineWorker=worker;
   worker.onmessage=({data})=>{
@@ -1138,7 +1171,9 @@ controls.render.addEventListener("click",()=>{
       controls.download.disabled=false;
       controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
       $("#progress").value=100;
-      message("オフライン書出し用の変換が完了しました。");
+      message("オフライン書出し用の変換が完了しました。"+
+        (preflight.warnings.length?" "+preflight.warnings.join(" "):""),
+        preflight.warnings.length?"warning":"info");
     }else if(data.type==="error"){
       controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
       message("オフライン書出し失敗: "+data.message,"error");
