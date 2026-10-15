@@ -1,4 +1,5 @@
 #include "../../src/native_worker_service.h"
+#include "../../src/engine_project_state.h"
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -78,6 +79,33 @@ int main(int argc,char** argv) {
                "verified Gain request outcome not correlated");
         ensure(service.verifiedPackageSnapshot()==b,
                "project snapshot did not track confirmed replacement");
+        // S4c2 synthetic project roundtrip: a second independent instance
+        // receives the exact saved verified package, not a filesystem path.
+        fw::EngineProjectState saved{};
+        saved.values.fill(.5);
+        saved.package=service.verifiedPackageSnapshot();
+        const auto serialized=fw::encodeEngineProjectState(saved);
+        fw::EngineProjectState restored{};
+        ensure(fw::decodeEngineProjectState(serialized.data(),serialized.size(),restored),
+               "encoded worker-confirmed DAW state rejected");
+        ensure(restored.package==b&&restored.values==saved.values,
+               "serialized state altered archive/host parameter slots");
+        fw::NativeWorkerService secondInstance;
+        ensure(secondInstance.start(),"second project instance failed to start");
+        ensure(secondInstance.postPackage(restored.package,48000.,2,128,30),
+               "new project instance did not accept saved module");
+        ensure(waitUntil([&]{return secondInstance.acceptedVersion()==1 &&
+            secondInstance.lastCompletedId()==30 && secondInstance.lastCompletedSucceeded();}),
+               "saved engine did not pass second-instance native verifier");
+        proveWet(secondInstance,.4f,4095,true);
+        ensure(service.verifiedPackageSnapshot()==b,
+               "second instance mutated the original project");
+        secondInstance.stop();
+        auto damaged=serialized;damaged.back()^=0x10;
+        fw::EngineProjectState guard=saved;
+        ensure(!fw::decodeEngineProjectState(damaged.data(),damaged.size(),guard) &&
+               guard.package==saved.package && guard.values==saved.values,
+               "corrupted project state modified accepted state");
         proveWet(service,.4f,4095+128,true);
 
         const auto prior=service.acceptedVersion();
