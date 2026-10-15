@@ -29,7 +29,7 @@ inline std::optional<UiWireMessage> parseUiWireMessage(std::wstring_view json) {
     auto tail=json.substr(end+1);
     if(kind==L"hello") {
         // Native sends initial snapshot only after a versioned local UI hello.
-        if(tail.substr(0,30)!=L",\"version\":1,\"visibleBindings\":[")
+        if(tail.substr(0,32)!=L",\"version\":1,\"visibleBindings\":[")
             return std::nullopt;
         if(tail.back()!=L'}'||tail.size()<33)return std::nullopt;
         return UiWireMessage{UiWireKind::Hello,0,0.0};
