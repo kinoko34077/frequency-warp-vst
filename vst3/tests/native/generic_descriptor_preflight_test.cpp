@@ -53,6 +53,35 @@ int main(int argc,char** argv){
         require(std::string(reinterpret_cast<const char*>(engineName.data()),len)=="org.kinotch.gainhalf",
                 "expected verified Gain fixture ID");
         const auto valid=doc(hashHex(digest));
+        // Canonical semantic ID must come from the *live module*, not a
+        // user-controlled descriptor's name. Read-only and non-RT.
+        std::array<std::uint8_t,129> actualSemantic{};
+        const auto semLen=fw_native_copy_generic_semantic_id(
+            g,64,actualSemantic.data(),actualSemantic.size());
+        require(semLen==4 &&
+                std::string(reinterpret_cast<const char*>(actualSemantic.data()),semLen)=="gain" &&
+                actualSemantic[semLen]==0,"real WASM semantic ID is not gain");
+        std::array<std::uint8_t,129> unchanged{};
+        unchanged.fill(0x66);
+        require(fw_native_copy_generic_semantic_id(g,64,unchanged.data(),4)==0 &&
+                unchanged[0]==0x66 && unchanged[4]==0x66,
+                "short semantic buffer must stay untouched");
+        require(fw_native_copy_generic_semantic_id(g,65,unchanged.data(),unchanged.size())==0,
+                "undeclared slot65 semantic ID leaked");
+        // The Identity demo intentionally advertises the SAME semantic
+        // token "gain" with a different canonical default and engine ID.
+        // A name match alone cannot authorize a foreign saved FWS3 project.
+        const auto otherLen=fw_native_copy_generic_semantic_id(
+            i,64,unchanged.data(),unchanged.size());
+        require(otherLen==4 &&
+                std::string(reinterpret_cast<const char*>(unchanged.data()),otherLen)=="gain",
+                "Identity demo canonical semantic ID mismatch");
+        require(fw_native_copy_generic_semantic_id(l,64,unchanged.data(),unchanged.size())==0,
+                "legacy module semantic ID leaked");
+        require(fw_native_copy_generic_semantic_id(nullptr,64,unchanged.data(),unchanged.size())==0,
+                "null native semantic handle incorrectly accepted");
+        require(fw_native_copy_generic_semantic_id(g,64,nullptr,unchanged.size())==0,
+                "null semantic destination incorrectly accepted");
         require(check(g,valid),"valid engine-bound descriptor rejected");
         // Same verified file hash and declared slot are NOT enough:
         // every canonical parameter field must match WASM-owned bytes.

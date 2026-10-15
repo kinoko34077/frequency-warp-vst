@@ -49,6 +49,13 @@ struct FWNativeGenericCodec {
 bool fw_native_copy_generic_codec(
     const FWNativeOpaque* handle,std::uint32_t hostSlot,
     FWNativeGenericCodec* out);
+// NON-RT read-only WASM-authored semantic name for slot64..127. Returns
+// 1..128 ASCII bytes plus trailing NUL, or 0 without writing. The buffer
+// must have at least returned-length+1 bytes; a positive read is NOT
+// authorization to edit DAW parameters or create a saved FWS3 ledger.
+std::uint32_t fw_native_copy_generic_semantic_id(
+    const FWNativeOpaque* handle,std::uint32_t hostSlot,
+    std::uint8_t* out,std::size_t capacity);
 // NON-RT necessary-only JSON descriptor preflight; positive result alone
 // NEVER authorizes new audio events or saved DAW generic automation.
 bool fw_native_preflight_generic_descriptor(
