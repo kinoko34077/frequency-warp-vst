@@ -1,3 +1,7 @@
+## Current source/release distinction (2026-10-15)
+
+Accepted public main at the start of this Web branch: ad34eb1992c67fe4a68057cc6a372c08e8506bc8 (visual editor M1–M5 via PR #181). Web UI PR #184 and stacked PR #185 added the newer graph, parameter units and layout code as **unmerged Draft candidates**, not yet published at that checkpoint. Their exact-head Browser/Rust/WASM and offline workflows passed; this does not prove real iPhone Safari decode of the reported failing user file. These docs describe candidate branch behavior; validate actual deployed main and Actions before claiming publication. >20kHz real processing is deferred as possible future oversampling, not a current Rust/VST3 implementation target. The in-band Web/Rust preflight work is separately tracked at #183, native generic DAW routing at #172.
+
 # Frequency Warp — VST3 / Web shared DSP research
 
 A frequency-domain audio-warp research project. The goal is a VST3

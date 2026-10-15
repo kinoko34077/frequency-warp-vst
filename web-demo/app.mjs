@@ -10,6 +10,7 @@ import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHar
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
+import {validateStreamSettings} from "./stream-parameter-contract.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -470,7 +471,10 @@ function tuneWet(){
 function playerMessage(node,p){
   return ({data})=>{
     if(state.player!==p)return;
-    if(data.type==="error")message("共通DSP: "+data.message,"error");
+    if(data.type==="error"){
+      indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
+      message("共通DSP: "+data.message,"error");
+    }
     if(data.type==="parameters-applied"){
       p.appliedRevision=data.revision;
       indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
@@ -590,6 +594,8 @@ async function play(mode="wet",offset=null){
   try{
     const {ctx,module}=await prepareCore();
     const current=settings();
+    const preflight=validateStreamSettings(current);
+    if(!preflight.ok)throw Error("設定が現行DSPに非対応: "+preflight.message);
     const worklet=new AudioWorkletNode(ctx,"frequency-warp-rust",{
       numberOfInputs:1,numberOfOutputs:2,
       outputChannelCount:[state.dry.length,state.dry.length]
@@ -654,6 +660,13 @@ function updateParams(changed){
   const p=state.player;
   if(!p)return;
   const current=settings();
+  const preflight=validateStreamSettings(current);
+  if(!preflight.ok){
+    if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
+    message("音声処理へ未反映: "+preflight.message,"error");
+    indicator("設定未反映 · "+preflight.field);
+    return;
+  }
   if(current.qualityIndex!==p.quality||current.hopDiv!==p.hopDiv||current.engine!==p.engine){
     // Debounce costly stream rebuilds while the user is selecting; keep
     // current playback position rather than stopping on every input event.
@@ -714,7 +727,7 @@ highUnitControl=mountFrequencyUnitField({
 });
 // Pivot P has an explicit 0-Hz rail position; positive frequencies begin at
 // 0.001 Hz and retain the original piecewise logarithmic gesture scale.
-// 0 Hz cannot be formatted as a musical note and falls back to Hz view.
+// 0 Hz has no musical pitch; keep the selected note view, displaying “—” instead.
 const pivotNormalizedFromHz=hz=>hz<=0?0:hz<=20?
   (1+199*Math.log(Math.max(.001,hz)/.001)/Math.log(20000))/1000:
   (200+800*Math.log(Math.min(20000,hz)/20)/Math.log(1000))/1000;
@@ -1011,9 +1024,14 @@ controls.render.addEventListener("click",()=>{
     message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
     return;
   }
+  const renderSettings=settings();
+  const preflight=validateStreamSettings({...renderSettings,sampleRate:state.decoded.sampleRate});
+  if(!preflight.ok){
+    message("WAV書出し設定未反映: "+preflight.message,"error");
+    return;
+  }
   state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;message("WAV書出し用オフライン処理中（試聴とは独立）…");
-  const renderSettings=settings();
   const worker=new Worker(new URL("./processor.worker.mjs",import.meta.url),{type:"module"});
   state.offlineWorker=worker;
   worker.onmessage=({data})=>{
