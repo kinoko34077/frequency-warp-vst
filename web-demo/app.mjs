@@ -491,7 +491,7 @@ function playerMessage(node,p){
       const wet=Number(data.outputRms)||0,dry=Number(data.inputRms)||0;
       $("#signal-diagnostic").textContent=dry>.002&&wet<dry*.01?
         "⚠ 変換音が小さい":wet>0.003?"変換音：出力中":"再生中";
-      $("#signal-diagnostic").title="入力 "+dry.toFixed(3)+" / 変換 "+wet.toFixed(3)+" RMS";
+      $("#signal-diagnostic").title="DSP処理の直近 "+Number(data.windowSeconds||0).toFixed(2)+" 秒｜入力 "+dry.toFixed(3)+" / 変換 "+wet.toFixed(3)+" RMS";
       $("#signal-diagnostic").dataset.silent=dry>.002&&wet<dry*.01?"yes":"no";
       const latency=1000*data.latencyFrames/state.ctx.sampleRate;
       // Periodic telemetry is passive: it must not overwrite pending,
