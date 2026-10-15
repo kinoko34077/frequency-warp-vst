@@ -39,8 +39,10 @@ jobs:
         run: node --test web-demo/core-wasm.test.mjs web-demo/all-reflections.test.mjs
       - name: Install headless Chrome client
         run: |
-          npm install --no-save --no-package-lock puppeteer-core@24
+          npm install --no-save --no-package-lock puppeteer-core@24 react@19 react-dom@19
           command -v google-chrome
+      - name: React and scene-model editor integration proof
+        run: node --test web-demo/visual-editor-platform/react-scene.test.mjs
       - name: Stage the exact public Pages artifact before Chrome tests
         run: |
           node web-demo/stage-pages.mjs web-demo/dsp_core.wasm
