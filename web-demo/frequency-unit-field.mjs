@@ -11,8 +11,16 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
     throw new TypeError("frequency unit field controls are required");
   const binding=createParameterBinding(descriptor,{initialValue});
   const position=()=>descriptor.rail.toPosition(binding.value);
-  const coarseSync=()=>{slider.value=String(Math.round(position()*
-    (Number(slider.max)-Number(slider.min))+Number(slider.min)));};
+  // The slider remains a gesture proxy. Respect its own physical step:
+  // harmonic F has step=1, reference sine has MIDI pitch step=.01.
+  const coarseSync=()=>{
+    const min=Number(slider.min),max=Number(slider.max),rawStep=Number(slider.step);
+    const step=Number.isFinite(rawStep)&&rawStep>0?rawStep:1;
+    const raw=min+position()*(max-min);
+    const quantized=Math.max(min,Math.min(max,
+      min+Math.round((raw-min)/step)*step));
+    slider.value=String(Number(quantized.toFixed(9)));
+  };
   let lastRendered="";
   const display=(force=false)=>{
     // A 0-Hz pivot has no musical-note spelling. Recover into a valid
