@@ -215,6 +215,7 @@ impl Runtime{
 }
 
 pub mod ffi;
+pub mod descriptor;
 #[cfg(test)]
 mod tests{
     use super::*;
