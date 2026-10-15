@@ -5,6 +5,7 @@
 #include "async_pcm_mailbox.h"
 #include "stream_host_events.h"
 #include "native_engine_abi.h"
+#include "generic_authorization_mailbox.h"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -36,6 +37,12 @@ public:
     // RT owns solely rtSubmit/rtReadWet; caller MUST stop DAW callback before
     // calling stop or destroying this object. Non-RT methods may allocate.
     AsyncPcmMailbox& mailbox() noexcept {return mailbox_;}
+    GenericAuthorizationMailbox& genericAuthorization() noexcept {
+        return genericAuthorization_;
+    }
+    std::uint64_t lastAuthorizationWord() const noexcept {
+        return lastAuthorization_.load(std::memory_order_acquire);
+    }
     Status status() const noexcept {return status_.load(std::memory_order_acquire);}
     uint64_t acceptedVersion() const noexcept {
         return accepted_.load(std::memory_order_acquire);
@@ -76,10 +83,12 @@ public:
         if(thread_.joinable())return false;
         std::lock_guard<std::mutex> guard(verifiedMutex_);
         verified_=VerifiedIdentitySnapshot{};
+        genericAuthorization_.workerRevoke();
         return true;
     }
     bool start() noexcept {
         if(thread_.joinable())return false;
+        genericAuthorization_.workerRevoke();
         stopping_.store(false,std::memory_order_release);
         status_.store(Status::Starting,std::memory_order_release);
         try {
@@ -108,6 +117,7 @@ public:
         pending_.frames=maxFrames;
         pending_.requestId=requestId;
         commandPending_=true;
+        genericAuthorization_.workerRevoke(); // pending replacement is inert
         return true;
     }
     // A project with no module must return to delayed Dry, not keep
@@ -122,10 +132,34 @@ public:
         pending_.unload=true;
         pending_.requestId=requestId;
         commandPending_=true;
+        genericAuthorization_.workerRevoke();
+        return true;
+    }
+    // Non-RT request only; currently no host/UI command invokes this.
+    // Project must be exact FWS3 bytes/ledger. Runtime re-verifies descriptor
+    // against the worker-owned LIVE Wasmi handle, never the UI's claim.
+    bool postAuthorization(EngineProjectState project,
+                           std::vector<std::uint8_t> descriptor,
+                           std::uint64_t requestId=0) {
+        if(!thread_.joinable() || requestId>(UINT64_MAX>>1) ||
+           project.package.empty() || project.package.size()>8*1024*1024 ||
+           project.bindingLedger.empty() || descriptor.empty() ||
+           descriptor.size()>65536)return false;
+        std::lock_guard<std::mutex> lock(commandMutex_);
+        if(commandPending_||stopping_.load(std::memory_order_acquire))
+            return false;
+        pending_=Request{};
+        pending_.project=std::move(project);
+        pending_.descriptor=std::move(descriptor);
+        pending_.authorize=true;
+        pending_.requestId=requestId;
+        commandPending_=true;
+        genericAuthorization_.workerRevoke();
         return true;
     }
     // NonRT only. Host must quiesce audio process first.
     void stop() noexcept {
+        genericAuthorization_.workerRevoke();
         stopping_.store(true,std::memory_order_release);
         if(thread_.joinable())thread_.join();
         {
@@ -134,6 +168,7 @@ public:
         }
         // No worker or audio callback remains; all pending PCM is discarded.
         mailbox_.detachWorkerWhenStopped();
+        genericAuthorization_.resetStopped();
         status_.store(Status::Stopped,std::memory_order_release);
     }
 private:
@@ -143,6 +178,9 @@ private:
         uint32_t channels=2,frames=128;
         uint64_t requestId=0;
         bool unload=false;
+        bool authorize=false;
+        EngineProjectState project{};
+        std::vector<std::uint8_t> descriptor{};
     };
     static int32_t processNative(void* context,const float* input,float* output,
                                  uint32_t frames,const FWNativeEvent* events,
@@ -189,6 +227,7 @@ private:
                 }
             }
             if(haveCommand && req.unload) {
+                genericAuthorization_.workerRevoke();
                 mailbox_.workerConfigure(nullptr,nullptr,0);
                 if(active)fw_native_destroy(std::exchange(active,nullptr));
                 {
@@ -198,7 +237,45 @@ private:
                 status_.store(Status::Missing,std::memory_order_release);
                 lastCompleted_.store((req.requestId<<1)|1ull,std::memory_order_release);
                 handled_.fetch_add(1,std::memory_order_release);
+            } else if(haveCommand && req.authorize) {
+                // Every authority check below is worker-owned and non-RT.
+                bool approved=false;
+                if(active && status_.load(std::memory_order_acquire)==Status::Ready) {
+                    const auto current=verifiedIdentitySnapshot();
+                    VerifiedProjectEngine verified{};
+                    verified.package=current.package;
+                    verified.engineId=current.engineId;
+                    verified.sha256=current.packageSha256;
+                    verified.acceptedGeneration=current.acceptedGeneration;
+                    verified.active=current.active;
+                    const auto plan=buildGenericAuthorizationPlan(
+                        req.project,verified,fw_native_generic_slot_mask(active),
+                        req.descriptor,
+                        [active](const SlotBindingIdentity& binding,
+                                 const std::vector<std::uint8_t>& json){
+                            return fw_native_preflight_generic_descriptor(
+                                active,json.data(),json.size(),binding.hostSlot,
+                                reinterpret_cast<const std::uint8_t*>(
+                                    binding.semanticId.data()),
+                                binding.semanticId.size(),binding.codecRevision);
+                        });
+                    GenericAuthorizationSnapshot snapshot{};
+                    if(buildGenericAuthorizationSnapshot(
+                           plan,[active](std::uint32_t slot,FWNativeGenericCodec& codec){
+                               return fw_native_copy_generic_codec(active,slot,&codec);
+                           },snapshot) &&
+                       status_.load(std::memory_order_acquire)==Status::Ready &&
+                       accepted_.load(std::memory_order_acquire)==
+                           snapshot.acceptedGeneration) {
+                        approved=genericAuthorization_.workerPublish(
+                            snapshot,current.acceptedGeneration,current.packageSha256);
+                    }
+                }
+                if(!approved)genericAuthorization_.workerRevoke();
+                lastAuthorization_.store((req.requestId<<1)|(approved?1ull:0ull),
+                                         std::memory_order_release);
             } else if(haveCommand) {
+                genericAuthorization_.workerRevoke();
                 bool activated=false;
                 status_.store(Status::Preparing,std::memory_order_release);
                 FWNativeOpaque* candidate=fw_native_prepare(
@@ -256,6 +333,7 @@ private:
                 work=true;
             }
             if(active&&fw_native_faulted(active)) {
+                genericAuthorization_.workerRevoke();
                 mailbox_.workerConfigure(nullptr,nullptr,0);
                 fw_native_destroy(std::exchange(active,nullptr));
                 status_.store(Status::Faulted,std::memory_order_release);
@@ -264,10 +342,12 @@ private:
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         // Worker quiescent: no C ABI call can overlap this destruction.
+        genericAuthorization_.workerRevoke();
         mailbox_.workerConfigure(nullptr,nullptr,0);
         if(active)fw_native_destroy(active);
     }
     AsyncPcmMailbox mailbox_{};
+    GenericAuthorizationMailbox genericAuthorization_{};
     std::thread thread_{};
     std::mutex commandMutex_{};
     Request pending_{};
@@ -277,6 +357,7 @@ private:
     std::atomic<uint64_t> accepted_{0};
     std::atomic<uint64_t> handled_{0};
     std::atomic<uint64_t> lastCompleted_{0};
+    std::atomic<uint64_t> lastAuthorization_{0};
     mutable std::mutex verifiedMutex_{};
     VerifiedIdentitySnapshot verified_{}; // success-confirmed only
 
