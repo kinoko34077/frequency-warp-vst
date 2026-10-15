@@ -75,6 +75,16 @@ int main(int argc,char** argv) {
              prepared.packageSha256==accepted.packageSha256 &&
              prepared.acceptedGeneration==accepted.acceptedGeneration,
              "candidate not tied to live WASM engine");
+        need(prepared.stagedAuthorization.ticket==0 &&
+             prepared.stagedAuthorization.allowedMask==1 &&
+             prepared.stagedAuthorization.acceptedGeneration==
+                 accepted.acceptedGeneration &&
+             prepared.stagedAuthorization.verifiedPackageSha256==
+                 accepted.packageSha256 &&
+             prepared.stagedAuthorization.codec[0].hostSlot==64 &&
+             prepared.stagedAuthorization.codec[0].min==0. &&
+             prepared.stagedAuthorization.codec[0].max==4.,
+             "D7A escrow must contain same-live-WASM numeric evidence, no ticket");
         need(worker.genericAuthorization().workerCurrentTicket()==0,
              "candidate must not authorize DAW audio");
         need(worker.postAuthorization(project,doc,902),"request real WASM proof");
