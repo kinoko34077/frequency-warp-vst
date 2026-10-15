@@ -92,6 +92,10 @@ add_executable(fw_verified_engine_history_test tests/verified_engine_history_tes
 target_compile_features(fw_verified_engine_history_test PRIVATE cxx_std_17)
 add_test(NAME fw_verified_engine_history_test COMMAND fw_verified_engine_history_test)
 
+add_executable(fw_slot_binding_identity_test tests/slot_binding_identity_test.cpp)
+target_compile_features(fw_slot_binding_identity_test PRIVATE cxx_std_17)
+add_test(NAME fw_slot_binding_identity_test COMMAND fw_slot_binding_identity_test)
+
 add_executable(fw_web_ui_message_test tests/web_ui_message_test.cpp)
 target_compile_features(fw_web_ui_message_test PRIVATE cxx_std_17)
 add_test(NAME fw_web_ui_message_test COMMAND fw_web_ui_message_test)
