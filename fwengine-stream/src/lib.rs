@@ -48,6 +48,7 @@ fn defaults(rate:f64)->Settings {
 // Optional capability export: legacy .fwengine without this symbol is
 // conservatively limited by the host to original physical IDs2..5.
 // Bit positions are permanent DAW ParamIDs, not a new remapping.
+#[cfg(not(feature="legacy-no-mask"))]
 #[no_mangle]pub extern "C" fn fw_supported_param_mask()->i64 {
     let mut mask=0u64;
     for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18] {
