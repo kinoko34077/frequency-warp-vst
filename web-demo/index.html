@@ -255,7 +255,18 @@
 // Layout inspector is strictly opt-in: normal page visitors never load its code.
 let debugMode = false;
 try { debugMode = localStorage.getItem("frequency-warp:debug-mode:v1") === "1"; } catch {}
-if (new URL(location.href).searchParams.get("layout_editor") === "1" || debugMode) {
+const editorParams = new URL(location.href).searchParams;
+if (editorParams.get("visual_editor_v2") === "1") {
+  import("./visual-editor-platform/ui.mjs").then(({mountVisualEditor}) => mountVisualEditor({
+    nodeMap: {
+      "player.title": "player-title",
+      "controls.title": "control-title",
+      "graph.title": "graph-title",
+      "engine.summary": "engine-summary",
+      "listening.guide": "listening-guide"
+    }
+  })).catch(error => console.error("Visual editor module unavailable:", error));
+} else if (editorParams.get("layout_editor") === "1" || debugMode) {
   import("./visual-editor.mjs");
 }
 </script>
