@@ -399,11 +399,11 @@ public:
                 }else{
                     for(uint32_t k=0;k<StreamHostEvents::kBindingCount;k++)if(changed[k]){
                         const uint32_t id=StreamHostEvents::idAt(k);
-                        StreamHostEvents converted{};
-                        // Make a verified numeric translation without new
-                        // per-knob code or any heap/Wasmi calls on RT.
-                        if(!converted.append(id,frames,values_[id],hostSampleRate_) ||
-                           !controls.appendPhysical(converted.data()[0]))
+                        // Reuse the already-fixed physical registry; the
+                        // builder enforces a shared capacity and finite PCM.
+                        if(!controls.appendPhysical({
+                              id,frames,physicalFromNormalized(
+                                  kParams[id],values_[id],hostSampleRate_)}))
                             return kResultFalse;
                     }
                     if(auth)for(std::uint32_t bit=0;bit<64;bit++)if(changedGeneric[bit]){
