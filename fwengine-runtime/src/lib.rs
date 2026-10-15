@@ -14,7 +14,8 @@ const LEGACY_STREAM_MASK:u64=(1u64<<2)|(1u64<<3)|(1u64<<4)|(1u64<<5);
 const KNOWN_STREAM_MASK:u64=(1u64<<2)|(1u64<<3)|(1u64<<4)|(1u64<<5)|
     (1u64<<6)|(1u64<<7)|(1u64<<8)|(1u64<<9)|(1u64<<10)|
     (1u64<<11)|(1u64<<13)|(1u64<<16)|(1u64<<17)|(1u64<<18)|
-    (1u64<<27)|(1u64<<28)|(1u64<<29)|(1u64<<30);
+    (1u64<<25)|(1u64<<27)|(1u64<<28)|(1u64<<29)|(1u64<<30)|
+    (1u64<<31)|(1u64<<32);
 #[repr(C)]
 #[derive(Clone,Copy)]
 pub struct ParamEvent {pub id:u32,pub offset:u32,pub value:f64}
@@ -138,6 +139,9 @@ impl Runtime{
                     27 => e.value.is_finite()&&(0.001..=20000.0).contains(&e.value),
                     28|30 => e.value.is_finite()&&(0.0..=1.0).contains(&e.value),
                     29 => e.value.is_finite()&&(1.0..=8.0).contains(&e.value)
+                        &&e.value.fract()==0.0,
+                    25|32 => e.value==0.0||e.value==1.0,
+                    31 => e.value.is_finite()&&(0.0..=2.0).contains(&e.value)
                         &&e.value.fract()==0.0,
                     _=>false
                 }
