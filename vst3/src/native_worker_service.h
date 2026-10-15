@@ -6,6 +6,7 @@
 #include "stream_host_events.h"
 #include "native_engine_abi.h"
 #include "generic_authorization_mailbox.h"
+#include "verified_generic_ledger_candidate.h"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -30,6 +31,31 @@ public:
         // on stop/fault is not proof of currently running DSP.
         bool active=false;
     };
+    struct PreparedNewLedger {
+        std::uint64_t requestId=0;
+        std::uint64_t acceptedGeneration=0;
+        std::array<std::uint8_t,32> packageSha256{};
+        std::vector<std::uint8_t> encodedLedger{};
+    };
+    // Non-RT read only: copy a prepared candidate only if it still belongs
+    // to the active worker generation. This is NEVER a persisted binding or
+    // permission to emit DAW edits; D7 must explicitly commit and authorize.
+    bool readPreparedNewLedger(std::uint64_t requestId,
+                               PreparedNewLedger& out) {
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(requestId==0||commandPending_||
+           stopping_.load(std::memory_order_acquire) ||
+           status_.load(std::memory_order_acquire)!=Status::Ready ||
+           prepared_.requestId!=requestId||
+           prepared_.encodedLedger.empty()||
+           prepared_.acceptedGeneration!=
+               accepted_.load(std::memory_order_acquire))return false;
+        out=prepared_;
+        return true;
+    }
+    std::uint64_t lastPreparedLedgerWord() const noexcept {
+        return lastPreparedLedger_.load(std::memory_order_acquire);
+    }
     NativeWorkerService() {
         // Same stable object lifetime as the worker, never configured by RT.
         mailbox_.workerSetTaggedValidator(&NativeWorkerService::validateTagged,this);
@@ -120,6 +146,7 @@ public:
         pending_.frames=maxFrames;
         pending_.requestId=requestId;
         commandPending_=true;
+        prepared_=PreparedNewLedger{};
         genericAuthorization_.workerRevoke(); // pending replacement is inert
         return true;
     }
@@ -135,6 +162,7 @@ public:
         pending_.unload=true;
         pending_.requestId=requestId;
         commandPending_=true;
+        prepared_=PreparedNewLedger{};
         genericAuthorization_.workerRevoke();
         return true;
     }
@@ -157,7 +185,27 @@ public:
         pending_.authorize=true;
         pending_.requestId=requestId;
         commandPending_=true;
+        prepared_=PreparedNewLedger{};
         genericAuthorization_.workerRevoke();
+        return true;
+    }
+    // Request fresh-FWS3 identity evidence from the currently LIVE Wasmi
+    // worker. Intentionally does NOT publish a ticket, update saved state,
+    // or revoke unrelated existing permission: this is read-only preparation.
+    bool postPrepareNewLedger(std::vector<std::uint8_t> descriptor,
+                              std::uint64_t requestId) {
+        if(!thread_.joinable()||requestId==0||
+           requestId>static_cast<std::uint64_t>(INT64_MAX)||
+           descriptor.empty()||descriptor.size()>65536)return false;
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(commandPending_||stopping_.load(std::memory_order_acquire)||
+           status_.load(std::memory_order_acquire)!=Status::Ready)return false;
+        pending_=Request{};
+        pending_.descriptor=std::move(descriptor);
+        pending_.requestId=requestId;
+        pending_.prepareLedger=true;
+        commandPending_=true;
+        prepared_=PreparedNewLedger{};
         return true;
     }
     // NonRT only. Host must quiesce audio process first.
@@ -170,6 +218,7 @@ public:
         {
             std::lock_guard<std::mutex> lock(commandMutex_);
             pending_=Request{};commandPending_=false;
+            prepared_=PreparedNewLedger{};
         }
         // No worker or audio callback remains; all pending PCM is discarded.
         mailbox_.detachWorkerWhenStopped();
@@ -184,6 +233,7 @@ private:
         uint64_t requestId=0;
         bool unload=false;
         bool authorize=false;
+        bool prepareLedger=false;
         EngineProjectState project{};
         std::vector<std::uint8_t> descriptor{};
     };
@@ -332,6 +382,45 @@ private:
                 }
                 lastAuthorization_.store((req.requestId<<1)|(approved?1ull:0ull),
                                          std::memory_order_release);
+            } else if(haveCommand && req.prepareLedger) {
+                PreparedNewLedger pending{};
+                bool prepared=false;
+                try {
+                    if(active && status_.load(std::memory_order_acquire)==Status::Ready) {
+                        const auto current=verifiedIdentitySnapshot();
+                        VerifiedProjectEngine verified{};
+                        verified.package=current.package;
+                        verified.engineId=current.engineId;
+                        verified.sha256=current.packageSha256;
+                        verified.acceptedGeneration=current.acceptedGeneration;
+                        verified.active=current.active;
+                        SlotBindingLedger candidate{};
+                        if(buildLiveWasmGenericLedgerCandidate(
+                               active,verified,req.descriptor.data(),
+                               req.descriptor.size(),candidate)) {
+                            pending.requestId=req.requestId;
+                            pending.acceptedGeneration=current.acceptedGeneration;
+                            pending.packageSha256=current.packageSha256;
+                            pending.encodedLedger=encodeBindingLedger(candidate);
+                            prepared=!pending.encodedLedger.empty();
+                        }
+                    }
+                }catch(...) {prepared=false;}
+                // Serialize final publication with GUI load/clear requests.
+                // An in-flight new command invalidates the stale candidate.
+                {
+                    std::lock_guard<std::mutex> guard(commandMutex_);
+                    if(prepared && !commandPending_ &&
+                       !stopping_.load(std::memory_order_acquire) &&
+                       status_.load(std::memory_order_acquire)==Status::Ready &&
+                       accepted_.load(std::memory_order_acquire)==
+                           pending.acceptedGeneration)
+                        prepared_=std::move(pending);
+                    else {prepared_=PreparedNewLedger{};prepared=false;}
+                    lastPreparedLedger_.store(
+                        (req.requestId<<1)|(prepared?1ull:0ull),
+                        std::memory_order_release);
+                }
             } else if(haveCommand) {
                 genericAuthorization_.workerRevoke();
                 workerAuthorized_=GenericAuthorizationSnapshot{};
@@ -396,6 +485,10 @@ private:
                 genericAuthorization_.workerRevoke();
                 workerAuthorized_=GenericAuthorizationSnapshot{};
                 workerNativeActive_=nullptr;
+                {
+                    std::lock_guard<std::mutex> guard(commandMutex_);
+                    prepared_=PreparedNewLedger{};
+                }
                 mailbox_.workerConfigure(nullptr,nullptr,0);
                 fw_native_destroy(std::exchange(active,nullptr));
                 status_.store(Status::Faulted,std::memory_order_release);
@@ -418,6 +511,7 @@ private:
     std::thread thread_{};
     std::mutex commandMutex_{};
     Request pending_{};
+    PreparedNewLedger prepared_{}; // commandMutex_ protected, never RT-owned
     bool commandPending_=false;
     std::atomic<bool> stopping_{true};
     std::atomic<Status> status_{Status::Stopped};
@@ -425,6 +519,7 @@ private:
     std::atomic<uint64_t> handled_{0};
     std::atomic<uint64_t> lastCompleted_{0};
     std::atomic<uint64_t> lastAuthorization_{0};
+    std::atomic<uint64_t> lastPreparedLedger_{0};
     mutable std::mutex verifiedMutex_{};
     VerifiedIdentitySnapshot verified_{}; // success-confirmed only
 
