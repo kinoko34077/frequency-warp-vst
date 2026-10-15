@@ -281,6 +281,33 @@ mod tests {
         assert!(!accept(&s.repeat(10000)));
         assert!(!accept("{"));
     }
+    #[test] fn complete_two_slot_wasm_attestation_or_total_denial(){
+        use crate::module_contract::Canonical;
+        let first=fixture("gain");
+        let second=r#",{"host_slot":65,"semantic_id":"drive","label":"Drive","dimension":"ratio","canonical_unit":"ratio","min":0.25,"max":4.0,"default":1.0,"scale":"log","widget":"knob","display_units":["ratio"],"codec_revision":1}"#;
+        let doc=format!("{}{}]}}",first.strip_suffix("]}").unwrap(),second);
+        let verify=|text:&str,declared:u64|{
+            attest_entire_descriptor_set(text.as_bytes(),"org.kinotch.gainhalf",
+                &[0x37;32],declared,|slot|{
+                    if slot!=64&&slot!=65{return None}
+                    Some(Canonical{
+                        host_slot:slot,
+                        semantic_id:if slot==64{"gain"}else{"drive"}.into(),
+                        codec_revision:1,dimension:"ratio".into(),
+                        canonical_unit:"ratio".into(),min:0.25,max:4.0,
+                        default:1.0,scale:"log".into(),steps:None,
+                    })
+                })
+        };
+        assert_eq!(verify(&doc,3),Some(3));
+        assert_eq!(verify(&doc,1),None); // cannot silently skip slot65
+        assert_eq!(verify(&doc.replace(r#""semantic_id":"drive""#,
+                                        r#""semantic_id":"foreign""#),3),None);
+        assert_eq!(verify(&doc.replace(r#""host_slot":65"#,
+                                        r#""host_slot":64"#),3),None);
+        assert_eq!(verify(&doc.replace(r#""max":4.0"#,
+                                        r#""max":3.0"#),3),None);
+    }
     #[test] fn dependencies_and_utf8_limit(){
         let s=fixture("gain");
         let dupe=s.replace("]}",r#",{"host_slot":65,"semantic_id":"gain","label":"Other","dimension":"ratio","canonical_unit":"ratio","min":0.25,"max":4,"default":1,"scale":"log","widget":"knob","display_units":["ratio"],"codec_revision":1}]}"#);
