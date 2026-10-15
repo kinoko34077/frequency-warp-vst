@@ -11,6 +11,7 @@
 #include "project_binding_association.h"
 #include "generic_ui_authorization.h"
 #include "explicit_generic_ledger_commit_gate.h"
+#include "generic_ui_authority_gate.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
 #include <cstdlib>
@@ -294,9 +295,29 @@ public:
             if(!saved&&(committed&1u)!=0) {
                 try {saved=absorbCommittedNewLedger();}catch(...){saved=false;}
             }
-            const bool active=saved&&worker_.status()==
-                NativeWorkerService::Status::Ready &&
-                worker_.genericAuthorization().workerCurrentTicket()!=0;
+            // GUI permission must be derived from the saved semantic
+            // ledger and CURRENT worker ticket. Never use last success word,
+            // HTML binding hints or raw WASM capability mask.
+            std::uint64_t uiMask=0;
+            try {
+                const auto ticket=worker_.genericAuthorization().workerCurrentTicket();
+                if(saved&&ticket && worker_.status()==NativeWorkerService::Status::Ready) {
+                    const auto actual=worker_.verifiedIdentitySnapshot();
+                    VerifiedProjectEngine verified{};
+                    verified.active=actual.active;
+                    verified.acceptedGeneration=actual.acceptedGeneration;
+                    verified.package=actual.package;
+                    verified.engineId=actual.engineId;
+                    verified.sha256=actual.packageSha256;
+                    EngineProjectState image{};
+                    image.package=actual.package;
+                    image.bindingLedger=savedBindingLedger_;
+                    uiMask=verifiedGenericUiMask(image,verified,ticket);
+                    if(worker_.genericAuthorization().workerCurrentTicket()!=ticket)
+                        uiMask=0; // revoke during query
+                }
+            } catch(...) {uiMask=0;}
+            const bool active=uiMask!=0;
             auto* reply=allocateMessage();
             if(!reply)return kResultFalse;
             reply->setMessageID("FrequencyWarp.NewGenericStatusV1");
@@ -307,7 +328,11 @@ public:
                 a->setInt("committedRequest",static_cast<int64>(committed>>1))==kResultTrue &&
                 a->setInt("committed",static_cast<int64>(committed&1u))==kResultTrue &&
                 a->setInt("saved",static_cast<int64>(saved))==kResultTrue &&
-                a->setInt("active",static_cast<int64>(active))==kResultTrue;
+                a->setInt("active",static_cast<int64>(active))==kResultTrue &&
+                a->setInt("maskLo",static_cast<int64>(
+                    static_cast<std::uint32_t>(uiMask)))==kResultTrue &&
+                a->setInt("maskHi",static_cast<int64>(
+                    static_cast<std::uint32_t>(uiMask>>32)))==kResultTrue;
             const auto result=ok?sendMessage(reply):kResultFalse;
             reply->release();
             return result;
