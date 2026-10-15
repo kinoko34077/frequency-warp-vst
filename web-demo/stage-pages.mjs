@@ -36,7 +36,8 @@ export async function collectAssets({sourceDir=here,wasmPath}={}){
     for(const pattern of [assetReference,cssReference]){
       pattern.lastIndex=0;
       for(const match of source.matchAll(pattern)){
-        if(!seen.has(match[1]))queue.push(match[1]);
+        const dependency=join(dirname(name),safePath(match[1]));
+        if(!seen.has(dependency))queue.push(dependency);
       }
     }
   }
