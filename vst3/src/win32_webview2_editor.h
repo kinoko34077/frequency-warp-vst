@@ -73,10 +73,20 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         std::ostringstream json;
         json.imbue(std::locale::classic());
         json.precision(17);
-        json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","values":{)";
-        bool first=true;
         const auto mask=state.verifiedGenericMask?
             state.verifiedGenericMask():std::uint64_t{0};
+        // The browser may render normalized generic sliders, but may never
+        // decide eligibility from external descriptor JSON or a raw WASM bit.
+        json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","genericSlots":[)";
+        bool firstSlot=true;
+        for(uint32_t id=64;id<=127;id++) {
+            if(!(mask&(std::uint64_t{1}<<(id-64))))continue;
+            if(!firstSlot)json<<",";
+            firstSlot=false;
+            json<<id;
+        }
+        json<<R"(],"values":{)";
+        bool first=true;
         auto append=[&](uint32_t id){
             if(state.editing[id])return; // never fight an in-progress drag
             const auto value=state.host->getParamNormalized(id);
@@ -248,7 +258,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                   style.textContent='.player{display:none!important}';
                                                   document.head.appendChild(style);
                                                   const note=document.createElement('div');
-                                                  note.textContent='VST3 embedded WebView2 prototype — DAW control binding pending';
+                                                  note.textContent='VST3 embedded WebView2 — generic controls appear only when native FWS3 authorization is active';
                                                   note.style.cssText='padding:8px;background:#462f15;color:#fff;font:14px system-ui';
                                                   document.body.prepend(note);
                                                   import('./host-bridge.mjs').then(m=>{
