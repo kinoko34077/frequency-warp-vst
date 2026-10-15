@@ -46,11 +46,15 @@ function syncPair(id){
 export function setFundamentalFromPivot(pivot){
   const {m,r}=harmonicParameters();
   if(!Number.isFinite(pivot))return null;
-  const F=clamp(round3(pivot*m/r),20,2000);
+  // Preserve the canonical fractional-cent precision after the F binding is
+  // active. Legacy pre-attach initialization retains its previous rounding.
+  const F=clamp(fundamentalUnitControl?pivot*m/r:round3(pivot*m/r),20,2000);
   if(fundamentalUnitControl)fundamentalUnitControl.setCanonical(F);
   else {preciseFields.set("fundamental",F);$("#fundamental").value=String(F);syncPair("fundamental");}
   return {F,H:r*F/m,clamped:Math.abs(r*F/m-pivot)>.001};
 }
+export function resetFundamentalUnit(){fundamentalUnitControl?.reset();}
+export function refreshFundamentalUnit(){fundamentalUnitControl?.refresh();}
 export function resolvedCarrierHz(foldPoint){
   const p=harmonicParameters();
   if(p.linked){
