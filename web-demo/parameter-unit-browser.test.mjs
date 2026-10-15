@@ -99,7 +99,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Number(await page.$eval("#low",el=>el.value))>=railStep);
 
     // Upper H is a second independent binding with the same unit registry.
-    assert.deepEqual(await page.$eval("#high-unit option",items=>items.map(i=>i.value)),
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll("#high-unit option")].map(i=>i.value)),
       ["hz","note","percent"]);
     assert.equal(await page.$eval("#high-snap",el=>el.checked),false);
     const highRailInitial=await page.$eval("#high",el=>el.value);
