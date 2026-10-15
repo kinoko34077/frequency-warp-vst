@@ -292,7 +292,7 @@ mod tests {
                     if slot!=64&&slot!=65{return None}
                     Some(Canonical{
                         host_slot:slot,
-                        semantic_id:if slot==64{"gain"}else{"drive"}.into(),
+                        semantic_id:(if slot==64{"gain"}else{"drive"}).into(),
                         codec_revision:1,dimension:"ratio".into(),
                         canonical_unit:"ratio".into(),min:0.25,max:4.0,
                         default:1.0,scale:"log".into(),steps:None,
