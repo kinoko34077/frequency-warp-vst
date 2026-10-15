@@ -56,11 +56,19 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     // Windows-style mouse context menu / static copy and paste.
     await page.click('.brand',{button:'right'});
     assert.equal(await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('#fw-context-menu').hidden),false);
+    // A real right-click selects the exact innermost child; explicitly target the
+    // parent brand block to test whole-element clone semantics.
+    await page.evaluate(()=>document.querySelector('.brand').dispatchEvent(new MouseEvent('contextmenu',{
+      bubbles:true,cancelable:true,clientX:120,clientY:100
+    })));
+    assert.equal(await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-context=copy]').disabled),false);
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-context=copy]').click());
     await page.evaluate(()=>document.querySelector('.brand').click());
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=preview]').click());
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=pick]').click());
-    await page.click('.brand',{button:'right'});
+    await page.evaluate(()=>document.querySelector('.brand').dispatchEvent(new MouseEvent('contextmenu',{
+      bubbles:true,cancelable:true,clientX:120,clientY:100
+    })));
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-context=paste]').click());
     assert.equal(await page.$$eval('.header > .brand',items=>items.length),2,'paste must duplicate a static node');
     assert.equal(await page.$eval('.header > .brand[data-fw-inspector-copy]',el=>el.hasAttribute('data-fw-inspector-copy')),true);
