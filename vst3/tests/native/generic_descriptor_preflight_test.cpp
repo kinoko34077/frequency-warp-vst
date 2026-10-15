@@ -187,10 +187,10 @@ int main(int argc,char** argv){
                 bindEnd>bindStart,"whole descriptor test fixture layout");
         auto additional=extraSlot.substr(bindStart,bindEnd-bindStart);
         const auto hostPos=additional.find("\"host_slot\":64");
-        const auto semPos=additional.find("\"semantic_id\":\"gain\"");
-        require(hostPos!=std::string::npos && semPos!=std::string::npos,
+        const auto otherSemPos=additional.find("\"semantic_id\":\"gain\"");
+        require(hostPos!=std::string::npos && otherSemPos!=std::string::npos,
                 "whole descriptor required binding fields");
-        additional.replace(semPos,20,"\"semantic_id\":\"other\"");
+        additional.replace(otherSemPos,20,"\"semantic_id\":\"other\"");
         additional.replace(hostPos,14,"\"host_slot\":65");
         extraSlot.insert(bindEnd,","+additional);
         require(fw_native_attest_generic_descriptor_mask(
