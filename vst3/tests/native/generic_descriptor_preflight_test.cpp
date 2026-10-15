@@ -1,4 +1,5 @@
 #include "../../src/native_engine_abi.h"
+#include "../../src/verified_generic_ledger_candidate.h"
 #include <array>
 #include <cstdint>
 #include <fstream>
@@ -130,6 +131,60 @@ int main(int argc,char** argv){
                 "null native semantic handle incorrectly accepted");
         require(fw_native_copy_generic_semantic_id(g,64,nullptr,unchanged.size())==0,
                 "null semantic destination incorrectly accepted");
+        // D4: real worker-only native Wasmi identity and full descriptor
+        // attest before composing a candidate FWS3. Nothing commits yet.
+        {
+            fw::VerifiedProjectEngine worker{};
+            worker.active=true;
+            worker.acceptedGeneration=7;
+            worker.engineId="org.kinotch.gainhalf";
+            worker.package=gain;
+            worker.sha256=digest;
+            fw::SlotBindingLedger ledger{};
+            const auto* d=reinterpret_cast<const std::uint8_t*>(valid.data());
+            require(fw::buildLiveWasmGenericLedgerCandidate(
+                        g,worker,d,valid.size(),ledger),
+                    "actual live native Gain did not compose candidate");
+            require(ledger.bindings.size()==1 &&
+                    ledger.bindings.front().hostSlot==64 &&
+                    ledger.bindings.front().semanticId=="gain" &&
+                    ledger.bindings.front().engineId==worker.engineId &&
+                    ledger.bindings.front().packageSha256==digest,
+                    "candidate identity must be copied from verified Wasmi");
+            fw::EngineProjectState future{};
+            future.package=worker.package;
+            future.bindingLedger=fw::encodeBindingLedger(ledger);
+            require(fw::matchSavedBindingToVerifiedEngine(future,worker),
+                    "candidate cannot serialize into a matching FWS3 ledger");
+            const auto accepted=ledger;
+            auto stale=worker;
+            stale.sha256[0]^=0x1;
+            require(!fw::buildLiveWasmGenericLedgerCandidate(
+                        g,stale,d,valid.size(),ledger) &&
+                    ledger.bindings==accepted.bindings,
+                    "foreign hash must deny without partial ledger update");
+            stale=worker;stale.engineId="org.kinotch.identity";
+            require(!fw::buildLiveWasmGenericLedgerCandidate(
+                        g,stale,d,valid.size(),ledger) &&
+                    ledger.bindings==accepted.bindings,
+                    "foreign module name must not rewrite ledger");
+            stale=worker;stale.acceptedGeneration=0;
+            require(!fw::buildLiveWasmGenericLedgerCandidate(
+                        g,stale,d,valid.size(),ledger),
+                    "generation zero must be inert");
+            require(!fw::buildLiveWasmGenericLedgerCandidate(
+                        l,worker,d,valid.size(),ledger),
+                    "legacy non-generic Wasmi must not compose ledger");
+            auto wrong=valid;
+            const auto location=wrong.find("\"max\":4");
+            require(location!=std::string::npos,"D4 fixture max not found");
+            wrong.replace(location,7,"\"max\":3");
+            require(!fw::buildLiveWasmGenericLedgerCandidate(
+                        g,worker,reinterpret_cast<const std::uint8_t*>(wrong.data()),
+                        wrong.size(),ledger) &&
+                    ledger.bindings==accepted.bindings,
+                    "full mismatched UI descriptor must reject new ledger");
+        }
         require(check(g,valid),"valid engine-bound descriptor rejected");
         // Same verified file hash and declared slot are NOT enough:
         // every canonical parameter field must match WASM-owned bytes.

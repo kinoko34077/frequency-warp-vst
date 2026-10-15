@@ -56,4 +56,43 @@ bool buildVerifiedGenericLedgerCandidate(
     out=std::move(pending);
     return true;
 }
+// Non-RT native-worker adapter for R3C2D4. The candidate is derived
+// exclusively from the SAME live verified Wasmi instance: package identity,
+// complete external descriptor preflight and canonical semantic/codec bytes.
+// The resulting ledger is STILL NOT committed to a DAW project, and this
+// function never publishes a permission ticket or alters audio processing.
+// Callers must recheck generation/identity at the eventual commit boundary.
+inline bool buildLiveWasmGenericLedgerCandidate(
+    const FWNativeOpaque* live,const VerifiedProjectEngine& verified,
+    const std::uint8_t* descriptor,std::size_t descriptorSize,
+    SlotBindingLedger& output) {
+    if(!live||!verified.active||verified.acceptedGeneration==0||
+       verified.package.empty()||!descriptor||descriptorSize==0||
+       descriptorSize>65536)return false;
+    std::array<std::uint8_t,32> digest{};
+    std::array<std::uint8_t,129> engine{};
+    const auto nameLength=fw_native_copy_verified_identity(
+        live,digest.data(),digest.size(),engine.data(),engine.size());
+    if(nameLength==0||nameLength>128||
+       digest!=verified.sha256 ||
+       std::string(reinterpret_cast<const char*>(engine.data()),
+                   nameLength)!=verified.engineId)return false;
+    std::uint64_t selected=0;
+    if(!fw_native_attest_generic_descriptor_set(
+           live,descriptor,descriptorSize,&selected) || !selected)
+        return false;
+    return buildVerifiedGenericLedgerCandidate(
+        verified,selected,
+        [live](std::uint32_t slot,std::string& semantic){
+            std::array<std::uint8_t,129> bytes{};
+            const auto len=fw_native_copy_generic_semantic_id(
+                live,slot,bytes.data(),bytes.size());
+            if(len==0||len>128)return false;
+            semantic.assign(reinterpret_cast<const char*>(bytes.data()),len);
+            return true;
+        },
+        [live](std::uint32_t slot,FWNativeGenericCodec& codec){
+            return fw_native_copy_generic_codec(live,slot,&codec);
+        },output);
+}
 } // namespace fw
