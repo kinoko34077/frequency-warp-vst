@@ -1,6 +1,6 @@
 {
   "name": "@kinotch/visual-editor-platform",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Versioned offline reusable visual editor primitives and safe exporters",
   "type": "module",
   "private": true,
