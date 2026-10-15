@@ -464,7 +464,8 @@ function makeBuffer(){
 }
 function tuneWet(){
   const p=state.player;
-  if(!p)return;
+  // A direct original-audio audition has no DSP, wet node or parameter mix.
+  if(!p||p.directDry)return;
   const now=state.ctx.currentTime,wet=p.mode==="wet"?settings().wet:0;
   p.wet.gain.setTargetAtTime(wet,now,.012);
   p.dry.gain.setTargetAtTime(1-wet,now,.012);
@@ -502,9 +503,9 @@ function playerMessage(node,p){
 }
 function startSource(p,offset){
   if(p.source){try{p.source.stop();}catch{}p.source.disconnect();}
-  p.worklet.port.postMessage({type:"reset"});
+  if(p.worklet)p.worklet.port.postMessage({type:"reset"});
   const src=state.ctx.createBufferSource();
-  src.buffer=p.buffer;src.loop=true;src.connect(p.worklet);
+  src.buffer=p.buffer;src.loop=true;src.connect(p.worklet||p.master);
   const when=state.ctx.currentTime+.025;
   src.start(when,clamp(offset,0,Math.max(0,duration()-.001)));
   p.source=src;p.offset=offset;p.at=when;state.seek=offset;
@@ -577,29 +578,87 @@ async function stop(){
   state.seek=playPosition();
   state.player=null;
   try{p.source?.stop();}catch{}
-  try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();
-    p.dry.disconnect();p.master.disconnect();p.directRoute.disconnect();
+  try{p.source?.disconnect();p.worklet?.disconnect();p.wet?.disconnect();
+    p.dry?.disconnect();p.master.disconnect();p.directRoute.disconnect();
     p.bridgeRoute?.disconnect();}catch{}
-  try{p.worklet.port.postMessage({type:"dispose"});}catch{}
+  try{p.worklet?.port.postMessage({type:"dispose"});}catch{}
   try{const el=$("#background-output");el.pause();el.srcObject=null;}catch{}
   mediaStatus(false);
-  p.worklet.port.onmessage=null;
+  if(p.worklet)p.worklet.port.onmessage=null;
   controls.stop.disabled=true;
-  indicator("停止中 · Rust / WASM AudioWorklet");
+  indicator("停止中");
   refreshStatusSeek();
+}
+async function startIndependentDry(offset){
+  // 原音 is a first-class transport, not a zero-wet DSP mode. This path
+  // must work without Rust, AudioWorklet, or a valid wet transform setting.
+  const ctx=await context();
+  const master=ctx.createGain(),directRoute=ctx.createGain();
+  master.gain.value=1;directRoute.gain.value=1;
+  master.connect(directRoute);directRoute.connect(ctx.destination);
+  const player={
+    directDry:true,worklet:null,wet:null,dry:null,
+    master,directRoute,bridgeRoute:null,outputRoute:"direct",
+    buffer:makeBuffer(),source:null,mode:"dry",offset:0,at:ctx.currentTime,
+    feedback:createPlaybackFeedback()
+  };
+  state.player=player;
+  startSource(player,offset);
+  mediaStatus(true);
+  void mediaBridge(player);
+  controls.stop.disabled=false;
+  $("#rt-telemetry").textContent="";
+  $("#signal-diagnostic").textContent="原音再生中（変換DSPの音量計は未使用）";
+  indicator("原音再生中 · DSP未使用");
+  message("原音を再生中。変換設定によらず再生できます。");
 }
 async function play(mode="wet",offset=null){
   if(!state.dry)return;
   if(state.player){
+    const player=state.player;
+    if(player.directDry&&mode==="wet"){
+      // Keep the original audio and playhead alive while checking wet.
+      const valid=validateStreamSettings(settings());
+      if(!valid.ok){
+        message("変換再生は未反映: "+valid.message+" 原音再生を継続します。","error");
+        indicator("原音再生中 · 変換設定未反映");
+        return;
+      }
+      try{await prepareCore();}
+      catch(error){
+        message("変換再生の準備失敗: "+error.message+" 原音再生を継続します。","error");
+        indicator("原音再生中 · 変換準備失敗");
+        return;
+      }
+      if(state.player!==player)return;
+      const where=offset===null?playPosition():offset;
+      await stop();
+      await play("wet",where);
+      // A DSP start failure does not cost the already-decoded original.
+      if(!state.player)await play("dry",where);
+      return;
+    }
+    if(mode==="wet"&&player.mode!=="wet"){
+      const valid=validateStreamSettings(settings());
+      if(!valid.ok){
+        message("変換再生は未反映: "+valid.message,"error");
+        indicator("原音再生中 · 変換設定未反映");
+        return;
+      }
+    }
     if(offset!==null)seek(offset);
-    state.player.mode=mode;
+    player.mode=mode;
     tuneWet();
     message(mode==="wet"?"リアルタイム音声処理中。パラメータは即時適用されます。":"原音を連続再生中。");
     return;
   }
   controls.dry.disabled=true;controls.wet.disabled=true;
-  indicator("共通Rust/WASM DSPの起動中…");
+  indicator(mode==="dry"?"原音の起動中…":"共通Rust/WASM DSPの起動中…");
   try{
+    if(mode==="dry"){
+      await startIndependentDry(offset===null?state.seek:offset);
+      return;
+    }
     const {ctx,module}=await prepareCore();
     const current=settings();
     const preflight=validateStreamSettings(current);
@@ -668,6 +727,12 @@ function updateParams(changed){
   }
   const p=state.player;
   if(!p)return;
+  if(p.directDry){
+    const valid=validateStreamSettings(settings());
+    indicator(valid.ok?"原音再生中 · DSP未使用":"原音再生中 · 変換設定未反映");
+    if(!valid.ok)message("原音は再生中。変換設定未反映: "+valid.message,"warning");
+    return;
+  }
   const current=settings();
   const preflight=validateStreamSettings(current);
   if(!preflight.ok){
@@ -1131,6 +1196,8 @@ $("#settings-reset").addEventListener("click",()=>{
   const phase=state.player?.feedback.current.phase;
   if(!state.player)
     message("操作値を初期値へ戻しました。再生位置は保持されます。");
+  else if(state.player.directDry)
+    message("操作値を初期値へ戻しました。原音再生は継続中（DSP未使用）です。");
   else if(phase==="pending"||phase==="rebuilding")
     message("操作値を初期値へ戻しました。音声への反映確認中…再生位置は保持されます。");
 });
