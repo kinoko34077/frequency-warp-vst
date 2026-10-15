@@ -42,6 +42,12 @@ private:
 
 class AsyncPcmMailbox {
 public:
+    // Per-submitted-chunk immutable identity. Zero ticket is legacy/unbound.
+    struct AuthorizationTag {
+        std::uint64_t ticket=0;
+        std::uint64_t acceptedGeneration=0;
+        std::array<std::uint8_t,32> packageSha256{};
+    };
     static constexpr uint32_t kHostPdc=4095;
     static constexpr uint32_t kMaxFrames=128;
     static constexpr uint32_t kMaxEvents=128;
@@ -50,12 +56,14 @@ public:
                   "64-bit timeline counters must be lock-free on x64");
     struct Input {
         uint64_t frame=0,generation=0;
+        AuthorizationTag authorization{};
         uint32_t frames=0,channels=0,eventCount=0;
         std::array<float,2*kMaxFrames> data{};
         std::array<FWNativeEvent,kMaxEvents> events{};
     };
     struct Output {
         uint64_t due=0,generation=0;
+        AuthorizationTag authorization{};
         uint32_t frames=0,channels=0;
         bool good=false;
         std::array<float,2*kMaxFrames> data{};
@@ -64,13 +72,21 @@ public:
     using ProcessFn=int32_t (*)(void* context,const float* input,
         float* output,uint32_t frames,const FWNativeEvent* events,
         uint32_t count);
+    // Validator runs only on the NON-RT worker, never on the audio callback.
+    // It may call the live Wasmi numeric semantic contract for every event.
+    using TaggedValidator=bool (*)(void*,const Input&) noexcept;
+    void workerSetTaggedValidator(TaggedValidator validator,void* context) noexcept {
+        // Called before worker/start and before audio process becomes active.
+        taggedValidator_=validator;taggedContext_=context;
+    }
     struct Stats {uint64_t rejectedInput=0,rejectedOutput=0,workerFailures=0,
                   discardedWet=0;};
 
     // RT producer: one submission per contiguous chunk (<=128 frames).
     // Rejected chunks still advance the sample timeline; caller emits Dry.
     bool rtSubmit(const float* const* planar,uint32_t channels,uint32_t frames,
-                  const FWNativeEvent* events=nullptr,uint32_t count=0) noexcept {
+                  const FWNativeEvent* events=nullptr,uint32_t count=0,
+                  const AuthorizationTag* auth=nullptr) noexcept {
         const uint64_t start=nextInputTime_;
         if(frames>std::numeric_limits<uint64_t>::max()-nextInputTime_)return false;
         nextInputTime_+=frames;
@@ -81,6 +97,12 @@ public:
         Input job{};
         job.frame=start; job.frames=frames;job.channels=channels;job.eventCount=count;
         job.generation=activeGeneration_.load(std::memory_order_acquire);
+        if(auth) {
+            if(!auth->ticket||!auth->acceptedGeneration) {
+                rejectedInput_.fetch_add(1,std::memory_order_relaxed);return false;
+            }
+            job.authorization=*auth;
+        }
         for(uint32_t c=0;c<channels;c++){
             if(frames&&!planar[c]){
                 rejectedInput_.fetch_add(1,std::memory_order_relaxed);return false;
@@ -122,10 +144,16 @@ public:
         Output result{};
         result.due=job.frame+(kHostPdc-workerLatency_);
         result.generation=job.generation;
+        result.authorization=job.authorization;
         result.frames=job.frames;result.channels=job.channels;
-        const auto rc=workerProcess_(workerContext_,job.data.data(),result.data.data(),
-              job.frames,job.events.data(),job.eventCount);
-        result.good=rc==0;
+        // A revoked or mismatched ticket must not call Wasmi, nor produce
+        // audible wet if revoked during Wasmi processing.
+        const bool before=job.authorization.ticket==0 ||
+            (taggedValidator_&&taggedValidator_(taggedContext_,job));
+        const auto rc=before ? workerProcess_(workerContext_,job.data.data(),
+              result.data.data(),job.frames,job.events.data(),job.eventCount) : -1;
+        result.good=rc==0 && (job.authorization.ticket==0 ||
+            (taggedValidator_&&taggedValidator_(taggedContext_,job)));
         if(result.good) {
             for(uint32_t i=0;i<job.frames*job.channels;i++) {
                 if(!std::isfinite(result.data[i])){result.good=false;break;}
@@ -139,7 +167,8 @@ public:
     }
     // RT consumer: read wet only if the *entire* chunk met its sample deadline.
     // Caller should emit the existing 4095-frame PDC-aligned Dry when false.
-    bool rtReadWet(uint64_t now,uint32_t channels,float* wet) noexcept {
+    bool rtReadWet(uint64_t now,uint32_t channels,float* wet,
+                   AuthorizationTag* returnedTag=nullptr) noexcept {
         if(!wet||!(channels==1||channels==2))return false;
         const auto generation=activeGeneration_.load(std::memory_order_acquire);
         for(uint32_t attempt=0;attempt<=kQueueSize;attempt++){
@@ -162,6 +191,7 @@ public:
             const auto pos=now-packet.due;
             for(uint32_t c=0;c<channels;c++)
                 wet[c]=packet.data[c*packet.frames+static_cast<uint32_t>(pos)];
+            if(returnedTag)*returnedTag=packet.authorization;
             currentStarted_=true;
             if(pos+1==packet.frames)haveCurrent_=currentStarted_=false;
             return true;
@@ -206,6 +236,8 @@ private:
     uint32_t workerLatency_=0;
     ProcessFn workerProcess_=nullptr;
     void* workerContext_=nullptr;
+    TaggedValidator taggedValidator_=nullptr; // fixed before worker starts
+    void* taggedContext_=nullptr;
     Output current_{}; // RT-owned
     bool haveCurrent_=false,currentStarted_=false;
     std::atomic<uint64_t> rejectedInput_{0},rejectedOutput_{0},
