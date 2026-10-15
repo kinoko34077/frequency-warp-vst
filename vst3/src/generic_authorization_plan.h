@@ -48,9 +48,14 @@ GenericAuthorizationPlan buildGenericAuthorizationPlan(
     std::uint64_t acceptedMask=0;
     for(const auto& item:saved.bindings) {
         if(!matchesSavedGenericSlotCapability(project,worker,item,
-                                              wasmDeclaredMask) ||
-           !nativePreflight(item,externalDescriptorJson))
+                                              wasmDeclaredMask))
             return denied;
+        // No half-authorized mask survives a failing or throwing descriptor
+        // preflight. Native callback is invoked only on the non-RT worker.
+        bool attested=false;
+        try {attested=nativePreflight(item,externalDescriptorJson);}
+        catch(...) {return denied;}
+        if(!attested)return denied;
         const std::uint64_t bit=std::uint64_t{1}<<(item.hostSlot-64);
         if(acceptedMask&bit)return denied;
         acceptedMask|=bit;
