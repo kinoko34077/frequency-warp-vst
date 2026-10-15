@@ -145,8 +145,10 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       "focus must not reveal fractional cents");
     await page.select("#low-unit","hz");
     await page.focus("#low-value");
-    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-
-      440*2**(25.375/1200))<1e-9, "hidden fractional cents remain canonical");
+    const recoveredLow=Number(await page.$eval("#low-value",el=>el.value));
+    assert.ok(Math.abs(recoveredLow-440*2**(25.375/1200))<1e-9,
+      "hidden fractional cents remain canonical; actual "+recoveredLow+
+      " vs expected "+(440*2**(25.375/1200)));
     await page.$eval("#low-value",el=>el.blur());
 
     // Existing keyboard accessible thumb path must continue to emit native input.
