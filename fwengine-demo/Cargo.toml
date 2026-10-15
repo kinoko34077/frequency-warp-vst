@@ -7,6 +7,7 @@ description = "Small S1 contract fixture: independently replaceable Identity/Gai
 crate-type = ["cdylib", "rlib"]
 [features]
 gain-half = []
+legacy-no-generic-mask = []
 [profile.release]
 opt-level = "s"
 lto = true
