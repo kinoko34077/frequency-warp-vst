@@ -309,6 +309,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
 
     await page.click("#settings-open");
     await page.click("#settings-reset");
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#carrier-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#carrier",el=>Number(el.value)),350);
     assert.equal(await page.$eval("#fundamental-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#fundamental-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),350);
