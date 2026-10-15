@@ -220,6 +220,16 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#fundamental");
     assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
     await page.$eval("#fundamental",el=>el.blur());
+    // Linked P→F cannot lose fractional cents through historical round3().
+    await page.select("#pivot-unit","note");
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="A3+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#fundamental");
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
+      4*220*2**(25/1200))<1e-9, "linked P→F fractional cents must stay exact");
+    await page.$eval("#fundamental",el=>el.blur());
+    await page.select("#pivot-unit","hz");
 
     // Carrier c is independent of F/P, but its manual value is retained
     // while the pre-existing Fold-linked carrier mode disables manual edits.
@@ -241,6 +251,15 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Math.abs(Number(await page.$eval("#carrier",el=>el.value))-
       100*(1+999*Math.log(carrierExact)/Math.log(20000))/1000)<.01,
       "carrier percent must follow original zero+positive logarithmic rail");
+    // Even below 1Hz, the view percentage must convert both directions.
+    await page.$eval("#carrier",el=>{
+      el.value="0.05";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#carrier-unit","hz");
+    await page.focus("#carrier");
+    assert.ok(Math.abs(Number(await page.$eval("#carrier",el=>el.value))-.5)<1e-8,
+      "0.05% rail travel must roundtrip to 0.5Hz");
+    await page.$eval("#carrier",el=>el.blur());
     await page.select("#carrier-unit","note");
     await page.$eval("#carrier-range",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
