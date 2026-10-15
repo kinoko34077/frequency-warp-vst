@@ -20,7 +20,8 @@ static std::vector<uint8_t> historicalV1(const EngineProjectState& image){
     return out;
 }
 static bool sameImage(const EngineProjectState& a,const EngineProjectState& b){
-    return a.values==b.values&&a.package==b.package;
+    return a.values==b.values&&a.package==b.package&&
+           a.bindingLedger==b.bindingLedger;
 }
 int main(){
     EngineProjectState first{};
@@ -75,6 +76,57 @@ int main(){
           "v2 no-engine image");
     check(fw::decodeEngineProjectState(noModule.data(),noModule.size(),restored)
           &&sameImage(empty,restored),"no-engine project roundtrip");
+
+    // R2B optional V3 state: one engine-scoped generic slot binding.
+    // Existing v1/v2 byte layout remains unchanged until project
+    // activation+controller support is separately accepted in R2C/R3.
+    fw::SlotBindingIdentity bind{};
+    bind.hostSlot=64;
+    bind.codecRevision=1;
+    bind.engineId="org.example.engine";
+    bind.semanticId="gain";
+    bind.packageSha256.fill(0x42);
+    fw::SlotBindingLedger ledger{{bind}};
+    EngineProjectState v3=first;
+    v3.bindingLedger=fw::encodeBindingLedger(ledger);
+    const auto newFormat=fw::encodeEngineProjectState(v3);
+    check(fw::state_detail::get32(newFormat.data(),4)==EngineProjectState::kV3,
+          "V3 marker only with explicit verified-shaped semantic identity");
+    EngineProjectState decodedV3{};
+    check(fw::decodeEngineProjectState(newFormat.data(),newFormat.size(),decodedV3)
+          &&sameImage(v3,decodedV3),"V3 exact project bytes and semantic binding restored");
+    check(newFormat==fw::encodeEngineProjectState(v3),
+          "deterministic V3 project image");
+    auto corruptV3=newFormat;
+    corruptV3[EngineProjectState::kLegacySize+4+v3.package.size()+8]^=0xff;
+    check(!fw::decodeEngineProjectState(corruptV3.data(),corruptV3.size(),decodedV3),
+          "corrupted nested identity rejected");
+    check(sameImage(v3,decodedV3),"V3 rejection preserves active image atomically");
+    corruptV3=newFormat;
+    const auto identityLenOffset=EngineProjectState::kLegacySize+4+v3.package.size();
+    corruptV3[identityLenOffset]=0xff;
+    corruptV3[identityLenOffset+1]=0xff;
+    corruptV3[identityLenOffset+2]=0xff;
+    corruptV3[identityLenOffset+3]=0xff;
+    check(!fw::decodeEngineProjectState(corruptV3.data(),corruptV3.size(),decodedV3),
+          "absurd identity length rejected before access");
+    check(!fw::decodeEngineProjectState(newFormat.data(),newFormat.size()-1,decodedV3),
+          "truncated V3 cannot change destination");
+    check(sameImage(v3,decodedV3),"truncated V3 remains atomic");
+    EngineProjectState noEngineBinding=v3;
+    noEngineBinding.package.clear();
+    bool v3Threw=false;
+    try{(void)fw::encodeEngineProjectState(noEngineBinding);}
+    catch(const std::invalid_argument&){v3Threw=true;}
+    check(v3Threw,"binding without engine archive forbidden");
+    EngineProjectState invalidBinding=v3;
+    invalidBinding.bindingLedger[invalidBinding.bindingLedger.size()-1]^=0xff;
+    v3Threw=false;
+    try{(void)fw::encodeEngineProjectState(invalidBinding);}
+    catch(const std::invalid_argument&){v3Threw=true;}
+    check(v3Threw,"corrupt nested binding image must not be serialized");
+    check(fw::state_detail::get32(original.data(),4)==EngineProjectState::kV2,
+          "existing V2 image did not migrate automatically");
 
     EngineProjectState maxPackage=empty;
     maxPackage.package.resize(EngineProjectState::kMaxPackage,0xc3);

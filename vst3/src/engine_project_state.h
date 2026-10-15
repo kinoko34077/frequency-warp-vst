@@ -14,16 +14,22 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include "slot_binding_identity.h"
 
 namespace fw {
 struct EngineProjectState {
     static constexpr std::uint32_t kMagic=0x46575332u;
-    static constexpr std::uint32_t kV1=1,kV2=2,kCount=128;
+    static constexpr std::uint32_t kV1=1,kV2=2,kV3=3,kCount=128;
     static constexpr std::size_t kMaxPackage=8u*1024u*1024u;
     static constexpr std::size_t kLegacySize=12u+8u*kCount;
     static constexpr std::size_t kMinV2Size=kLegacySize+8u;
+    static constexpr std::size_t kMinV3Size=kLegacySize+12u;
+    static constexpr std::size_t kMaxLedger=16u+64u*(4u+4u+1u+128u+1u+128u+32u);
     std::array<double,kCount> values{};
     std::vector<std::uint8_t> package{}; // exact worker-accepted archive bytes
+    // Optional V3 semantic identity image; validated, NOT authorized here.
+    // Active host changes and DAW getState/setState ownership are R2C/R3 gates.
+    std::vector<std::uint8_t> bindingLedger{};
 };
 static_assert(sizeof(double)==8,"VST3 normalized values must use binary64");
 namespace state_detail {
@@ -63,10 +69,19 @@ inline std::vector<std::uint8_t> encodeEngineProjectState(
         if(!std::isfinite(v)||v<0.||v>1.)
             throw std::invalid_argument("non-normalized project parameter");
     }
+    const bool v3=!image.bindingLedger.empty();
+    if(v3) {
+        if(image.package.empty() || image.bindingLedger.size()>EngineProjectState::kMaxLedger)
+            throw std::invalid_argument("generic binding needs bounded verified engine package");
+        SlotBindingLedger checked;
+        if(!decodeBindingLedger(image.bindingLedger.data(),image.bindingLedger.size(),checked)||
+           checked.bindings.empty())
+            throw std::invalid_argument("invalid project semantic bindings");
+    }
     std::vector<std::uint8_t> result;
-    result.reserve(EngineProjectState::kMinV2Size+image.package.size());
+    result.reserve((v3?EngineProjectState::kMinV3Size:EngineProjectState::kMinV2Size)+image.package.size()+image.bindingLedger.size());
     state_detail::push32(result,EngineProjectState::kMagic);
-    state_detail::push32(result,EngineProjectState::kV2);
+    state_detail::push32(result,v3?EngineProjectState::kV3:EngineProjectState::kV2);
     state_detail::push32(result,EngineProjectState::kCount);
     for(double value:image.values){
         std::uint64_t bits=0;
@@ -75,6 +90,10 @@ inline std::vector<std::uint8_t> encodeEngineProjectState(
     }
     state_detail::push32(result,static_cast<std::uint32_t>(image.package.size()));
     result.insert(result.end(),image.package.begin(),image.package.end());
+    if(v3) {
+        state_detail::push32(result,static_cast<std::uint32_t>(image.bindingLedger.size()));
+        result.insert(result.end(),image.bindingLedger.begin(),image.bindingLedger.end());
+    }
     state_detail::push32(result,state_detail::crc32(result.data(),result.size()));
     return result;
 }
@@ -85,11 +104,11 @@ inline bool decodeEngineProjectState(const std::uint8_t* bytes,std::size_t size,
                                     EngineProjectState& destination) {
     using S=EngineProjectState;
     if(!bytes||size<S::kLegacySize||
-       size>S::kMinV2Size+S::kMaxPackage)return false;
+       size>S::kMinV3Size+S::kMaxPackage+S::kMaxLedger)return false;
     if(state_detail::get32(bytes,0)!=S::kMagic||
        state_detail::get32(bytes,8)!=S::kCount)return false;
     const auto schema=state_detail::get32(bytes,4);
-    if(schema!=S::kV1&&schema!=S::kV2)return false;
+    if(schema!=S::kV1&&schema!=S::kV2&&schema!=S::kV3)return false;
     if(schema==S::kV1&&size!=S::kLegacySize)return false;
     S pending;
     for(std::size_t i=0;i<S::kCount;i++){
@@ -99,15 +118,28 @@ inline bool decodeEngineProjectState(const std::uint8_t* bytes,std::size_t size,
         if(!std::isfinite(v)||v<0.||v>1.)return false;
         pending.values[i]=v;
     }
-    if(schema==S::kV2) {
+    if(schema==S::kV2||schema==S::kV3) {
         if(size<S::kMinV2Size)return false;
-        const std::size_t length=state_detail::get32(bytes,S::kLegacySize);
-        if(length>S::kMaxPackage||
-           size!=S::kMinV2Size+length)return false;
+        const std::size_t packageLen=state_detail::get32(bytes,S::kLegacySize);
+        if(packageLen>S::kMaxPackage)return false;
+        const std::size_t afterPackage=S::kLegacySize+4u+packageLen;
+        if(schema==S::kV2) {
+            if(size!=S::kMinV2Size+packageLen)return false;
+        } else {
+            if(packageLen==0||size<afterPackage+8u)return false;
+            const std::size_t bindingLen=state_detail::get32(bytes,afterPackage);
+            if(bindingLen>S::kMaxLedger ||
+               size!=S::kMinV3Size+packageLen+bindingLen)return false;
+            SlotBindingLedger verifiedShape;
+            const auto* ledgerBytes=bytes+afterPackage+4u;
+            if(!decodeBindingLedger(ledgerBytes,bindingLen,verifiedShape)||
+               verifiedShape.bindings.empty())return false;
+            pending.bindingLedger.assign(ledgerBytes,ledgerBytes+bindingLen);
+        }
         const auto got=state_detail::get32(bytes,size-4);
         if(got!=state_detail::crc32(bytes,size-4))return false;
         const auto* data=bytes+S::kLegacySize+4;
-        pending.package.assign(data,data+length);
+        pending.package.assign(data,data+packageLen);
     }
     destination=std::move(pending);
     return true;
