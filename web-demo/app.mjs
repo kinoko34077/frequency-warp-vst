@@ -667,7 +667,7 @@ lowUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#low-value"),select:$("#low-unit"),snapToggle:$("#low-snap"),
+  field:$("#low-value"),select:$("#low-unit"),
   slider:$("#low"),railRoot:$("#dual-range"),
   getDigits:displayDigits,
   initialValue:hzFromScale($("#low").value),
@@ -683,7 +683,7 @@ highUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#high-value"),select:$("#high-unit"),snapToggle:$("#high-snap"),
+  field:$("#high-value"),select:$("#high-unit"),
   slider:$("#high"),railRoot:$("#dual-range"),
   getDigits:displayDigits,
   initialValue:hzFromScale($("#high").value),
@@ -704,7 +704,7 @@ pivotUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#axis-pivot-value"),select:$("#pivot-unit"),snapToggle:$("#pivot-snap"),
+  field:$("#axis-pivot-value"),select:$("#pivot-unit"),
   slider:$("#axis-pivot"),railRoot:$("#axis-pivot"),
   getDigits:displayDigits,initialValue:350,
   onValueChange:()=>{
@@ -721,7 +721,7 @@ aMinUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#a-min-value"),select:$("#a-min-unit"),snapToggle:$("#a-min-snap"),
+  field:$("#a-min-value"),select:$("#a-min-unit"),
   slider:$("#a-min"),railRoot:$("#a-min"),
   getDigits:displayDigits,initialValue:20,
   onValueChange:()=>{updateParams("a-min");updateEngineInfo();}
@@ -738,7 +738,7 @@ slopeUnitControl=mountParameterUnitField({
           thresholdPx:6,during:["slider"]}
   }),
   field:$("#axis-slope-value"),select:$("#axis-slope-unit"),
-  snapToggle:$("#axis-slope-snap"),slider:$("#axis-slope"),
+  slider:$("#axis-slope"),
   railRoot:$("#axis-slope"),getDigits:displayDigits,initialValue:1,
   onValueChange:()=>{updateParams("axis-slope");updateEngineInfo();}
 });
@@ -1094,7 +1094,7 @@ sineUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#sine-hz"),select:$("#sine-unit"),snapToggle:$("#sine-snap"),
+  field:$("#sine-hz"),select:$("#sine-unit"),
   slider:$("#sine-pitch"),railRoot:$("#sine-pitch"),
   getDigits:displayDigits,initialValue:440,
   onValueChange:()=>updateSineLabel()
@@ -1104,7 +1104,8 @@ const sineFrequency=()=>sineUnitControl.value;
 function updateSineLabel(){
   const value=sinePitch(),nearest=Math.round(value);
   const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
-  const cents=round3((value-nearest)*100);
+  // Only the visible cents readout is integer; the oscillator stays Float64.
+  const cents=Math.round((value-nearest)*100);
   $("#sine-note").textContent=note;
   showNumber("sine-cent",cents);
   showNumber("sine-hz",sineFrequency());
@@ -1120,15 +1121,15 @@ function stopSine(){
 $("#sine-pitch").addEventListener("input",()=>sineUnitControl.fromSlider());
 $("#sine-cent").addEventListener("input",()=>{
   if($("#sine-cent").value==="")return;
-  const cents=round3(clamp(Number($("#sine-cent").value),-50,50));
+  const cents=clamp(Number($("#sine-cent").value),-50,50);
   if(!Number.isFinite(cents))return;
   const root=Math.round(sinePitch());
   const pitch=clamp(root+cents/100,36,96);
   sineUnitControl.setCanonical(sineHzAtMidi(pitch));
   updateSineLabel();
 });
-$("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(round3((sinePitch()-Math.round(sinePitch()))*100));});
-$("#sine-cent").addEventListener("blur",()=>showNumber("sine-cent",(sinePitch()-Math.round(sinePitch()))*100));
+$("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(Math.round((sinePitch()-Math.round(sinePitch()))*100));});
+$("#sine-cent").addEventListener("blur",()=>showNumber("sine-cent",Math.round((sinePitch()-Math.round(sinePitch()))*100)));
 $("#sine-enabled").addEventListener("change",async()=>{
   if(!$("#sine-enabled").checked){stopSine();return;}
   try{

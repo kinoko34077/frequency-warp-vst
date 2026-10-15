@@ -151,13 +151,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(Math.abs(Number(await page.$eval("#curvature",n=>n.value))-.53)<.02);
     await dragDual("dual-range",1,.968,.82);
     assert.ok(Number(await page.$eval("#high",n=>n.value))<900);
-    // Restore test baseline before the rest of the DSP regression suite.
+    // Restore the original *unsnapped* DSP fixture while default snap is ON.
+    // Holding Alt is the actual temporary bypass used by real users.
+    await page.keyboard.down("Alt");
     for(const [id,value] of [["zero-reflect","100"],["zero-decay","0"],
       ["invert","0"],["curvature","1"],["low","200"],["high","974"]]){
       await page.$eval("#"+id,(el,v)=>{
         el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));
       },value);
     }
+    await page.keyboard.up("Alt");
 
     assert.equal(await page.$eval("#engine",el=>el.value),"1");
     assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
@@ -293,7 +296,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#sine-hz",el=>Number(el.value)),440);
     await page.click("#sine-enabled");
     assert.equal(await page.$eval("#sine-enabled",el=>el.checked),true);
+    await page.keyboard.down("Alt");
     await page.$eval("#sine-pitch",el=>{el.value="69.5";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.keyboard.up("Alt");
     assert.match(await page.$eval("#sine-hz",el=>el.value),/452\.89/);
     assert.match(await page.$eval("#sine-cent",el=>el.value),/-50|50/);
     await page.click("#sine-enabled");
