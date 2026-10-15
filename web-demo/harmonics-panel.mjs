@@ -149,6 +149,7 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
     getDigits:precision,initialValue:350,
     onValueChange:()=>respond("fundamental")
   });
+  $("#fundamental-range").addEventListener("input",()=>fundamentalUnitControl.fromSlider());
   for(const id of IDS){
     if(id==="fundamental")continue;
     const number=$("#"+id),range=$("#"+id+"-range");
