@@ -184,6 +184,29 @@ pub unsafe extern "C" fn fw_native_attest_generic_descriptor_mask(
         ).unwrap_or(0)
     })).unwrap_or(0)
 }
+/// R3C2D2: attest the ENTIRE externally supplied descriptor set against
+/// the same verified engine's immutable WASM-authored canonical contracts.
+/// Returns the candidate slot bitmask; never grants DAW/RT permission.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_attest_generic_descriptor_set(
+    handle:*const Opaque,json:*const u8,json_len:usize,
+    out_mask:*mut u64
+)->bool {
+    if handle.is_null()||json.is_null()||out_mask.is_null()||
+       json_len==0||json_len>65536||
+       (out_mask as usize)%std::mem::align_of::<u64>()!=0{return false;}
+    catch_unwind(AssertUnwindSafe(||{
+        let o=&*handle;
+        let data=slice::from_raw_parts(json,json_len);
+        let Some(mask)=crate::descriptor::attest_entire_descriptor_set(
+            data,&o.runtime.manifest.engine_id,&o.package_hash,
+            o.runtime.generic_slot_mask(),
+            |slot|o.runtime.generic_contract(slot).cloned()
+        ) else{return false;};
+        ptr::write(out_mask,mask);
+        true
+    })).unwrap_or(false)
+}
 /// R3B2 necessary-only NON-RT descriptor preflight, NOT DAW edit authority.
 /// Validate exact native worker-prepared engine/hash, declared capability mask,
 /// JSON schema/units/ranges and caller-requested semantic ID+codec.
