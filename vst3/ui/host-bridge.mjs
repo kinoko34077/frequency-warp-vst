@@ -33,6 +33,52 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   let disposed = false, applying = false;
   const editing = new Set(), subscriptions = [];
   const controls = new Map();
+  const generated = new Map();
+  let generatedPanel = null;
+  // Only VST3 host-confirmed, fixed generic IDs get a local DOM rail.
+  // This UI is presentation only; native still gates all host DAW edits.
+  function syncGeneratedControls(bindings) {
+    if (typeof document.createElement !== "function" ||
+        typeof document.body?.appendChild !== "function") return;
+    const wanted = new Set(bindings
+      .filter(b => b.id >= 64 && b.id <= 127 &&
+                   b.selector === `#fw-engine-${b.id}`)
+      .map(b => b.id));
+    for (const [id, row] of generated) {
+      if (wanted.has(id)) continue;
+      row.remove();
+      generated.delete(id);
+    }
+    if (wanted.size && !generatedPanel) {
+      generatedPanel = document.createElement("section");
+      generatedPanel.id = "fw-vst3-generic-panel";
+      generatedPanel.setAttribute("aria-label", "Verified engine parameters");
+      generatedPanel.style.cssText =
+        "position:fixed;right:12px;bottom:12px;z-index:10000;" +
+        "max-height:40vh;overflow:auto;padding:12px;" +
+        "background:#161b24;color:white;border:1px solid #69717d;" +
+        "border-radius:8px;font:12px system-ui;min-width:200px";
+      document.body.appendChild(generatedPanel);
+    }
+    for (const id of wanted) {
+      if (generated.has(id)) continue;
+      const row = document.createElement("label");
+      row.style.cssText = "display:flex;gap:8px;align-items:center;margin:6px";
+      const title = document.createElement("span");
+      title.textContent = `Engine Slot ${id}`;
+      const input = document.createElement("input");
+      input.id = `fw-engine-${id}`;
+      input.type = "range";
+      input.min = "0";input.max = "1";input.step = "any";input.value = "0.5";
+      input.setAttribute("aria-label", `Verified Engine Slot ${id}`);
+      row.appendChild(title);row.appendChild(input);
+      generatedPanel.appendChild(row);
+      generated.set(id, row);
+    }
+    if (!wanted.size && generatedPanel) {
+      generatedPanel.remove();generatedPanel = null;
+    }
+  }
   function emit(kind, extra = {}) {
     if (!disposed) webview.postMessage({ protocol: PROTOCOL, kind, ...extra });
   }
@@ -52,6 +98,7 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
     for (const id of editing) emit("edit-end", { id });
     editing.clear();
     controls.clear();
+    syncGeneratedControls(newBindings);
     for (const b of newBindings) {
       const node = document.querySelector(b.selector);
       if (!node || !own(node, "value") && !("value" in node)) continue;
@@ -123,6 +170,10 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       webview.removeEventListener?.("message", onMessage);
       for (const [node, kind, listener] of subscriptions) node.removeEventListener(kind, listener);
       subscriptions.length = 0; controls.clear();
+      for (const row of generated.values()) row.remove();
+      generated.clear();
+      if (generatedPanel) generatedPanel.remove();
+      generatedPanel = null;
     }
   };
 }
