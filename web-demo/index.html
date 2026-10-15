@@ -188,10 +188,10 @@
             <p>反転率 a：元の周波数 f と反転関数 I(f) の間を補間（逆数的モード）</p>
             <math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><msup><mi>f</mi><mrow><mn>1</mn><mo>−</mo><mi>a</mi></mrow></msup><msup><mrow><mi>I</mi><mo>(</mo><mi>f</mi><mo>)</mo></mrow><mi>a</mi></msup></mrow></math>
             <p>移動 u と尺度 p：p=0は指数倍率、p=1はHz平行移動。中間は共通Rust実装の連続座標。</p>
-            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>f</mi><msup><mi>e</mi><mi>u</mi></msup><mspace width=".6em"/><mtext>(p=0)</mtext></mrow></math>
-            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>f</mi><mo>+</mo><mi>u</mi><mi>R</mi><mspace width=".6em"/><mtext>(p=1)</mtext></mrow></math>
-            <p>起点 P と傾き s：Pを基準に伸縮。</p>
-            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>P</mi><mo>+</mo><mi>s</mi><mo>(</mo><mi>f</mi><mo>−</mo><mi>P</mi><mo>)</mo></mrow></math>
+            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>v</mi><msup><mi>e</mi><mi>u</mi></msup><mspace width=".6em"/><mtext>(p=0)</mtext></mrow></math>
+            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>v</mi><mo>+</mo><mi>u</mi><mi>R</mi><mspace width=".6em"/><mtext>(p=1)</mtext></mrow></math>
+            <p>起点Pと傾きs：変換後入力xとその基準点aを用いて伸縮する中間値v（x=g(f)）。</p>
+            <math><mrow><mi>v</mi><mo>=</mo><mi>P</mi><mo>+</mo><mi>s</mi><mo>(</mo><mi>x</mi><mo>−</mo><mi>a</mi><mo>)</mo></mrow></math>
             <p>元基音 F・ピッチ比 r・分母 m と仮想基音 H。</p>
             <math><mrow><mi>H</mi><mo>=</mo><mfrac><mrow><mi>r</mi><mi>F</mi></mrow><mi>m</mi></mfrac></mrow></math>
             <p>番号移動n、折返し指定q。</p>

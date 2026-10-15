@@ -31,6 +31,12 @@ const commonHzToRail=hz=>hz<=0?0:hz<=20?
 const commonRailToHz=t=>t<=0?0:t<=.2?
   .001*Math.exp(Math.log(20000)*(Math.max(.001,t*1000)-1)/199):
   20*Math.exp(Math.log(1000)*(t*1000-200)/800);
+// Unlinked F has its own full-range logarithmic rail. A linked F projects H
+// instead, matching the pivot exactly without changing the canonical F value.
+const F_MIN_HZ=.001,F_MAX_HZ=5_120_000;
+const fToUnlinkedRail=F=>Math.log(clamp(F,F_MIN_HZ,F_MAX_HZ)/F_MIN_HZ)/
+  Math.log(F_MAX_HZ/F_MIN_HZ);
+const fFromUnlinkedRail=t=>F_MIN_HZ*Math.exp(clamp(t,0,1)*Math.log(F_MAX_HZ/F_MIN_HZ));
 
 // Global effect reset must restore ALL harmonic binding owners and their
 // integer companions. Otherwise the settings dialog says "reset" while the
@@ -176,11 +182,13 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
       rail:{
         toPosition:value=>{
           const {m,r}=harmonicRailFactors();
-          return commonHzToRail($("#harmonic-pivot-link")?.checked?value*r/m:value);
+          return $("#harmonic-pivot-link")?.checked?
+            commonHzToRail(value*r/m):fToUnlinkedRail(value);
         },
         fromPosition:t=>{
           const {m,r}=harmonicRailFactors();
-          return commonRailToHz(t)*($("#harmonic-pivot-link")?.checked?m/r:1);
+          return $("#harmonic-pivot-link")?.checked?
+            commonRailToHz(t)*m/r:fFromUnlinkedRail(t);
         }
       },
       digits:3,

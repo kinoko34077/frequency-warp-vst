@@ -72,8 +72,18 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
       field.placeholder=binding.unit==="note"?"音名を入力":"";
       lastRendered=field.value;
     }
-    if(unitButtons)for(const button of unitButtons.querySelectorAll("button[data-unit]"))
-      button.setAttribute("aria-pressed",String(button.dataset.unit===binding.unit||button.dataset.unit==="semitones"&&binding.unit==="cents"));
+    if(unitButtons)for(const button of unitButtons.querySelectorAll("button[data-unit]")){
+      const isInterval=button.dataset.unit==="semitones"&&
+        descriptor.units.includes("cents");
+      const on=button.dataset.unit===binding.unit||(isInterval&&binding.unit==="cents");
+      button.setAttribute("aria-pressed",String(on));
+      if(isInterval){
+        const isCents=binding.unit==="cents";
+        button.textContent=isCents?"¢":"♩";
+        const name=isCents?"セント（再タップで半音）":"半音（再タップでセント）";
+        button.title=name;button.setAttribute("aria-label",name);
+      }
+    }
   };
   let dirty=false;
   const commitTyped=()=>{
@@ -145,6 +155,10 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     unitButtons.append(button);
   }
   select.classList.add("unit-select-source");
+  // The buttons are the accessible controls. Keep native select value as the
+  // compatible programmatic bridge without an invisible keyboard Tab stop.
+  select.tabIndex=-1;
+  select.setAttribute("aria-hidden","true");
   select.insertAdjacentElement("afterend",unitButtons);
   if(descriptor.id==="pitch-ratio"){
     // Alt temporarily disables BOTH note snap and the native 0.05 coarse step.
