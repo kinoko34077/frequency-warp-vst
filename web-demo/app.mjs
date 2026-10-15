@@ -11,6 +11,7 @@ import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 import {validateStreamSettings} from "./stream-parameter-contract.mjs";
+import {createPlaybackFeedback} from "./playback-feedback.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -472,12 +473,17 @@ function playerMessage(node,p){
   return ({data})=>{
     if(state.player!==p)return;
     if(data.type==="error"){
-      indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
-      message("共通DSP: "+data.message,"error");
+      if(p.feedback.fail(data.revision,data.message)){
+        indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
+        message("共通DSP: "+data.message,"error");
+      }
     }
     if(data.type==="parameters-applied"){
-      p.appliedRevision=data.revision;
-      indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
+      if(p.feedback.ack(data.revision)){
+        p.appliedRevision=data.revision;
+        indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
+        message("最新の音声設定を反映しました。");
+      }
     }
     if(data.type==="stats"){
       state.lastStats=data;
@@ -487,8 +493,10 @@ function playerMessage(node,p){
       $("#signal-diagnostic").title="入力 "+dry.toFixed(3)+" / 変換 "+wet.toFixed(3)+" RMS";
       $("#signal-diagnostic").dataset.silent=dry>.002&&wet<dry*.01?"yes":"no";
       const latency=1000*data.latencyFrames/state.ctx.sampleRate;
-      indicator("リアルタイム動作中 · DSP遅延 "+latency.toFixed(1)+" ms · 約 "+
-        data.averageBlockMs.toFixed(2)+" ms/block / 予算超過 "+data.overBudgetBlocks);
+      // Periodic telemetry is passive: it must not overwrite pending,
+      // rejected or failed audio-parameter feedback (A14).
+      $("#rt-telemetry").textContent="DSP遅延 "+latency.toFixed(1)+" ms · 約 "+
+        data.averageBlockMs.toFixed(2)+" ms/block / 予算超過 "+data.overBudgetBlocks;
     }
   };
 }
@@ -611,7 +619,7 @@ async function play(mode="wet",offset=null){
       worklet,dry,wet,master,directRoute,bridgeRoute:null,outputRoute:"direct",
       buffer:makeBuffer(),source:null,
       mode,quality:current.qualityIndex,engine:current.engine,hopDiv:current.hopDiv,at:ctx.currentTime,
-      offset:0,appliedRevision:0
+      offset:0,appliedRevision:0,feedback:createPlaybackFeedback()
     };
     state.player=player;
     worklet.port.onmessage=playerMessage(worklet,player);
@@ -633,6 +641,7 @@ async function play(mode="wet",offset=null){
     worklet.port.postMessage({type:"init",bytes:module,channels:state.dry.length,settings:current});
     const result=await ready;
     if(state.player!==player)return;
+    player.feedback.ready();
     tuneWet();
     controls.stop.disabled=false;
     indicator("稼働中 · Rust/WASM AudioWorklet · "+(1000*result.latencyFrames/ctx.sampleRate).toFixed(1)+" ms DSP遅延");
@@ -663,6 +672,7 @@ function updateParams(changed){
   const preflight=validateStreamSettings(current);
   if(!preflight.ok){
     if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
+    p.feedback.reject(preflight.message);
     message("音声処理へ未反映: "+preflight.message,"error");
     indicator("設定未反映 · "+preflight.field);
     return;
@@ -677,6 +687,7 @@ function updateParams(changed){
       const offset=playPosition(),mode=active.mode;
       await stop();await play(mode,offset);
     },180);
+    p.feedback.rebuild();
     indicator("設定を反映するため音声処理を切替中…");
     return;
   }
@@ -684,6 +695,7 @@ function updateParams(changed){
   // pending rebuild after the current processor already matches settings.
   if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
   const revision=++state.settingsRevision;
+  p.feedback.request(revision);
   p.worklet.port.postMessage({
     type:"params",settings:current,activeQualityIndex:p.quality,revision
   });
@@ -1114,7 +1126,13 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#crusher-bits-value").value="8";
   $("#crusher-hold-value").value="12000";
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
-  message("エフェクト設定を初期値へ戻しました。再生位置は保持されます。");
+  // Controls resetting is not proof that Rust/WASM has acknowledged them.
+  // Preserve any validation error and wait for the latest revision's ACK.
+  const phase=state.player?.feedback.current.phase;
+  if(!state.player)
+    message("操作値を初期値へ戻しました。再生位置は保持されます。");
+  else if(phase==="pending"||phase==="rebuilding")
+    message("操作値を初期値へ戻しました。音声への反映確認中…再生位置は保持されます。");
 });
 function showTab(tab){
   const math=tab==="math";
