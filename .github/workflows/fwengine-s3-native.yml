@@ -19,6 +19,7 @@ on:
     branches: [main]
     paths:
       - 'fwengine-runtime/**'
+      - 'fwengine-stream/**'
       - 'vst3/tests/native/**'
       - 'vst3/src/native_engine_abi.h'
       - 'vst3/src/native_worker_service.h'
