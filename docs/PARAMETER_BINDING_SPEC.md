@@ -143,3 +143,15 @@ Manual carrier `carrier` is now one `createParameterBinding` canonical Hz number
 The independently opt-in `carrier-link` in a Fold L/H mode still overrides only the **effective** DSP carrier with the computed fold frequency; manual `carrier` remains stored unchanged so switching OFF recovers the previous manual carrier. While linked in a valid Fold mode, manual carrier input, range, unit select and snapping are disabled together. This link remains separate from H↔P; unit selectors do not silently change either link mode. No VST3 ParamID 14/15 or Rust DSP ABI changes.
 
 Staged Chrome acceptance includes visible Ring controls, exact note→Hz roundtrip, existing log+zero rail%, 0Hz note fallback, independent fold link disable/restore, and existing dual-thumb, graph/live/WAV regressions. Reference sine remains the final browser-only M1 frequency control.
+
+## 13. M1 browser-only reference sine (staged; completes proposed frequency *coverage*)
+
+The reference sine is a **monitoring oscillator, not a Frequency Warp DSP/VST3 parameter**. `sine-hz` becomes the one canonical Float64 frequency shared by the oscillator, note+cents and the MIDI36..96 physical rail. The old independent `state.sineExactPitch` authority is removed. The existing `#sine-pitch` slider remains the control transport at its original **0.01 semitone** step, and `#sine-cent` is an additional view/editor that commits Hz into this same canonical value (it must not create a competing cents or MIDI owner).
+
+- Canonical range is `440*2^((36-69)/12)` to `440*2^((96-69)/12)` Hz; the formerly displayed 65..2100Hz typed bounds were already effectively clamped by the MIDI range. Default 440Hz.
+- Hz / note+cents / **MIDI rail travel%** uses `m=69+12log2(f/440)`, `position=(m-36)/60`. This rail is not linear in Hz, and should not be confused with absolute cent-percentage.
+- Optional snap-to-integer-semitones uses the same 6px physical track radius, OFF by default. The shared coarse thumb sync must respect the actual native range step (`0.01`) rather than rounding to integer MIDI notes; neither thumb rendering nor view formatting may quantize the canonical Hz.
+- Existing oscillator frequency ramp `setTargetAtTime` consumes that exact canonical Hz, with the same `updateSineLabel` graph/label refresh and note/cents input semantics.
+- This is strictly Web-only, with no VST3 ParamID or .fwengine ABI change. Exact-head Chrome at 390px must verify A4+25c, MIDI rail%, cents editor, .01 gesture step, invalid text rollback, snap 440Hz and no failures in the pre-existing Rust/WASM/graph tests.
+
+M1 still requires consolidated integration review, safety/compatibility audit, and actual public Web unit menus deployment before claiming the full user-visible migration DONE. M2/M3 for ratio/slope/coordinate/percentage/count inputs remain separate.
