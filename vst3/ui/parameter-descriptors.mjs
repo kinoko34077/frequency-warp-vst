@@ -123,7 +123,8 @@ export function validateDescriptors(packageData) {
   return [...ids].every(visit);
 }
 export function parseDescriptors(json) {
-  if (typeof json !== "string" || json.length > 65536) throw new RangeError("descriptor byte limit");
+  if (typeof json !== "string" || new TextEncoder().encode(json).byteLength > 65536)
+    throw new RangeError("descriptor byte limit");
   let data;
   try { data = JSON.parse(json); } catch { throw new TypeError("invalid descriptor JSON"); }
   if (!validateDescriptors(data)) throw new RangeError("invalid descriptor contract");
