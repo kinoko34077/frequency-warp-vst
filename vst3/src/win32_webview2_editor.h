@@ -13,6 +13,7 @@
 #include <wrl.h>
 #include <wrl/client.h>
 #include <filesystem>
+#include <cstring>
 #include <memory>
 #include <string>
 #include "public.sdk/source/vst/vsteditcontroller.h"
