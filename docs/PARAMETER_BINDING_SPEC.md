@@ -109,3 +109,15 @@ Upper band H (`high`) reuses the same `mountFrequencyUnitField` / `defineParamet
 The shared `bounds()` logic still owns L/H separation and effective sample-rate caps; if moving one bound changes the other, its canonical binding and slider are silently updated before the single render/graph notification. H is not a globally fixed 20000Hz oscillator if a file sample rate limits the effective processing band. All original graph/AudioWorklet/WAV calls remain unchanged.
 
 Acceptance requires Chrome 390px note+cent roundtrip, rail-percent correctness, invalid H input rollback, optional snapped 880Hz, screen-reader thumb text, plus existing L and native/WASM regressions. This is a stacked Draft change, not the public site. Other frequency knobs remain #79 open work.
+
+## 9. M1 pivot P: explicit zero-Hz, positive rail, and H↔P link (staged #79)
+
+Pivot `axis-pivot` is an independent canonical frequency binding (default 350 Hz). The physical slider has an **exact zero** at rail position 0 and the strictly positive mapping from 0.001Hz to 20kHz at positions 1..1000. The continuous unit-% codec uses that exact piecewise function; a positive percent smaller than the first representable discrete slider step resolves to 0.001Hz, not a fictional intermediate negative/zero musical pitch. This single discontinuous special point cannot have an everywhere one-to-one inverse.
+
+- Pitch notation is available only when P>0. Selecting note at P=0 restores Hz without updating any DSP value; dragging a note-displayed P down to 0 also automatically changes its display to Hz.
+- Switching Hz/note+cents/rail% does not emit DSP parameters and does not round the canonical value. Opt-in semitone snapping is 6px on actual slider width.
+- Existing `H=rF/m ↔ P` opt-in link remains the only coupled semantic relationship: H update sets the **same** pivot binding silently, and editing P solves `F=mP/r`, clamps F to its fixed range, and silently commits realized H as P before the established single `updateParams`. OFF keeps P independent. Reset turns link and snap OFF, chooses Hz and restores P=350.
+- This migration removes the duplicate `state.precise["axis-pivot"]` UI handler; the old range remains an approximate DOM gesture transport. Native VST3 ParamID 7 remains the original canonical Hz.
+- 390px Chrome regression verifies note parse, nonlinear percent, 0Hz fallback, forward/reverse H link and reset; existing Rust/WASM streaming/graph/WAV test stays the audio oracle.
+
+This is a staged child PR, not yet published to GitHub Pages.
