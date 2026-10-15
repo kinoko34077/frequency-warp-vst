@@ -124,7 +124,7 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   $("#harmonic-table-title").textContent="第1〜"+count+"倍音の数値表を見る";
   const checkbox=$("#carrier-link"),readout=$("#carrier-linked-value");
   const valid=["fold-l","fold-h"].includes($("#mode").value);
-  for(const node of [$("#carrier"),$("#carrier-range"),$("#carrier-unit"),$("#carrier-snap")])node.disabled=checkbox.checked&&valid;
+  for(const node of [$("#carrier"),$("#carrier-range"),$("#carrier-unit")])node.disabled=checkbox.checked&&valid;
   if(!checkbox.checked){
     readout.textContent="";
   }else if(!valid){
