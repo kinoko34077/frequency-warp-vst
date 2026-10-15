@@ -69,8 +69,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         std::ostringstream json;
         json.imbue(std::locale::classic());
         json.precision(17);
-        json<<"{\\\"protocol\\\":\\\"frequency-warp.host-ui.v1\\\","
-              "\\\"kind\\\":\\\"snapshot\\\",\\\"values\\\":{";
+        json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","values":{)";
         bool first=true;
         for(uint32_t id=2;id<=5;id++){
             if(state.editing[id])continue; // never fight an in-progress drag
@@ -78,7 +77,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             if(!std::isfinite(value)||value<0.||value>1.)continue;
             if(!first)json<<",";
             first=false;
-            json<<"\\\""<<id<<"\\\":"<<value;
+            json<<R"(")"<<id<<R"(":)"<<value;
         }
         json<<"}}";
         const std::string ascii=json.str();
