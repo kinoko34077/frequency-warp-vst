@@ -189,3 +189,13 @@ The latest explicit UI decision supersedes prior statements in this document tha
 - **Acceptance:** actual staged 390px Chrome DOM checks no visible snap buttons; default/reset ON; menu right-click, touch-hold, Shift+F10; Ctrl+Alt transient bypass, fractional-cent typed precision; snap value and sample-rate links unchanged; explicit inspector coexistence, Rust/WASM, offline, exact-main Pages and live-public checks before publication.
 
 Other unimplemented M2 dimension families and M3 state cleanup remain open.
+
+## 17. Web unit audit — canonical L/H and complete effect reset (2026-10-15)
+
+The earlier staged `bounds(changed)` implementation in `app.mjs` computed the physical 6%-gap/8%-correction but then reloaded stale `ParamBinding` canonical numbers from `scalar()`. At a violating pair L=15,500 Hz / H=16,000 Hz, editing L must move **canonical H** to 16,740 Hz (8% headroom) and a subsequent graph/settings pass must not revise L. The accepted `frequency-bounds.mjs` pure resolver is the single owner of these physical constraints; its canonical outputs are committed to each binding before coarse range/thumb positioning. 2,500 randomized min/cap/origin pair tests and actual 390px browser edits, precision-view redraw and reset regression protect the fix.
+
+The Settings `エフェクト設定を初期値へ戻す` action also restores *all bound effect parameters*, not just the ratio r. It now resets harmonic F=350 Hz, manual carrier c=350 Hz, r=1; integers m=4/n=−3/q=1 together with their visible slider positions and previous `preciseFields` aliases; and disables the Fold carrier-link and H⇔pivot link. Per-control unit view and snap ON are restored on the eight effect unit bindings. The independent WebAudio sine oscillator keeps its actual frequency and playback status but its **snap preference returns ON** as a user-interface default; no automatic oscillator restart occurs. File choice and playhead remain preserved.
+
+The global reset is a single user action: do not dispatch synthetic input events for each parameter, and do not change native VST3/DAW ParamIDs. Real Chrome regression deliberately sets conflicting pre-reset numeric, unit view, snap OFF and carrier link, then asserts exact reset across controls.
+
+The remaining M2 fractions/u/count and M3 legacy state migration are future tasks, not accepted by these two audit fixes.

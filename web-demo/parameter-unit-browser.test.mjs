@@ -474,6 +474,32 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#carrier",el=>el.blur());
     await page.select("#mode","reciprocal");
 
+    // Audit rev22: deliberately diverge the other harmonic parameters from
+    // defaults and turn selected snap menus OFF before global Settings reset.
+    await page.click("#tab-math");
+    await page.select("#fundamental-unit","note");
+    await page.$eval("#fundamental",el=>{
+      el.value="A4";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#carrier-unit","note");
+    await page.$eval("#carrier",el=>{
+      el.value="A5";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    for(const [id,value] of [
+      ["denominator","5"],["numerator","2"],["harmonic-index","3"]
+    ])await page.$eval("#"+id,(el,value)=>{
+      el.value=value;el.dispatchEvent(new Event("change",{bubbles:true}));
+    },value);
+    await page.$eval("#carrier-link",el=>{
+      el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    for(const id of ["fundamental","carrier","sine-pitch"]){
+      await page.$eval("#"+id,el=>el.dispatchEvent(new MouseEvent(
+        "contextmenu",{bubbles:true,cancelable:true,clientX:90,clientY:130})));
+      await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+      assert.equal(await page.$eval("#"+(id==="fundamental"?"fundamental-range":
+        id==="carrier"?"carrier-range":id),el=>el.dataset.fwSnap),"off");
+    }
     // Engine A floor reuses the frequency descriptor in its actual Settings UI.
     await page.click("#settings-open");
     await page.select("#engine","0");
@@ -520,6 +546,21 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#axis-slope-unit",el=>el.value),"ratio");
     assert.equal(await page.$eval("#axis-slope",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#axis-slope-value",el=>Number(el.value)),1);
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),350);
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#carrier-range",el=>el.dataset.fwSnap),"on");
+    assert.equal(await page.$eval("#carrier",el=>Number(el.value)),350);
+    assert.equal(await page.$eval("#carrier-link",el=>el.checked),false);
+    for(const [id,value] of [
+      ["denominator",4],["numerator",-3],["harmonic-index",1]
+    ]){
+      assert.equal(await page.$eval("#"+id,el=>Number(el.value)),value);
+      assert.equal(await page.$eval("#"+id+"-range",el=>Number(el.value)),value);
+    }
+    assert.equal(await page.$eval("#sine-pitch",el=>el.dataset.fwSnap),"on",
+      "monitor frequency preserved, but its snap preference returns to ON");
     await page.click("#settings-done");
 
     // Browser-only reference sine still has ONE physical Hz authority;

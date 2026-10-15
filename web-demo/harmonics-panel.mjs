@@ -20,6 +20,22 @@ const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
 const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log(20000);
 
+// Global effect reset must restore ALL harmonic binding owners and their
+// integer companions. Otherwise the settings dialog says "reset" while the
+// engine still sees old F/c values and old OFF snap preferences.
+export function resetHarmonicControls(){
+  fundamentalUnitControl?.reset();
+  carrierUnitControl?.reset();
+  ratioUnitControl?.reset();
+  for(const [id,value] of Object.entries({
+    denominator:4,numerator:-3,"harmonic-index":1
+  })){
+    preciseFields.delete(id);
+    $("#"+id).value=String(value);
+    $("#"+id+"-range").value=String(value);
+  }
+}
+// Kept as a compatibility export for standalone ratio reset consumers.
 export function resetRatioUnit(){ratioUnitControl?.reset();}
 export function linkedCarrierRequested(){
   return $("#carrier-link").checked;
