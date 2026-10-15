@@ -125,3 +125,56 @@ test("out-of-range edits do not emit; disposal closes active automation exactly 
   x.nodes.get("#curvature").fire("input");
   assert.equal(x.posted.length, 4);
 });
+
+test("verified generic binding creates local controls, handles DAW no-echo and revokes", () => {
+  const x = fixture();
+  const mounted = [], generated = new Map();
+  const make = tag => ({
+    tag, children: [], style: {}, listeners: new Map(),
+    setAttribute() {},
+    appendChild(child) { this.children.push(child); },
+    remove() { this.removed = true; },
+    addEventListener(kind, cb) { this.listeners.set(kind, cb); },
+    removeEventListener(kind) { this.listeners.delete(kind); },
+    dispatchEvent(e) { this.listeners.get(e.type)?.(e); }
+  });
+  const original = x.document.querySelector;
+  x.document.createElement = tag => {
+    const el = make(tag);
+    if (tag === "input") Object.defineProperty(el, "id", {
+      get() { return this._id; },
+      set(id) { this._id = id; generated.set("#" + id, this); }
+    });
+    return el;
+  };
+  x.document.body = { appendChild(node) { mounted.push(node); } };
+  x.document.querySelector = selector => generated.get(selector) ?? original(selector);
+  const bridge = createHostUiBridge(x);
+  x.webview.deliver({ protocol: PROTOCOL, kind: "bindings", bindings: [
+    ...DEFAULT_BINDINGS,
+    { id: 64, selector: "#fw-engine-64", min: 0, max: 1 },
+    { id: 127, selector: "#fw-engine-127", min: 0, max: 1 }
+  ] });
+  assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5, 64, 127]);
+  assert.equal(mounted.length, 1);
+  const low = generated.get("#fw-engine-64");
+  const high = generated.get("#fw-engine-127");
+  assert.ok(low && high);
+  low.value = "0.75";
+  low.dispatchEvent({ type: "input" });
+  low.dispatchEvent({ type: "change" });
+  assert.deepEqual(x.posted.slice(-3), [
+    { protocol: PROTOCOL, kind: "edit-begin", id: 64 },
+    { protocol: PROTOCOL, kind: "edit-perform", id: 64, value: 0.75 },
+    { protocol: PROTOCOL, kind: "edit-end", id: 64 }
+  ]);
+  const count = x.posted.length;
+  x.webview.deliver({ protocol: PROTOCOL, kind: "snapshot", values: { "64": 0.5 } });
+  assert.equal(low.value, "0.5");
+  assert.equal(x.posted.length, count);
+  x.webview.deliver({ protocol: PROTOCOL, kind: "bindings", bindings: DEFAULT_BINDINGS });
+  assert.ok(low.removed && high.removed);
+  assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5]);
+  bridge.dispose();
+  assert.ok(mounted[0].removed);
+});
