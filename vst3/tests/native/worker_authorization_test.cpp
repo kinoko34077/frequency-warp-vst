@@ -124,6 +124,24 @@ int main(int argc,char** argv) {
                 1,{},true,selected) && selected==committed.encodedLedger,
              "Processor D5 exact project commit gate rejects worker authority");
         const auto exactSelected=selected;
+        // Real project persistence contract: an accepted new Worker-ledger
+        // must serialize as FWS3 with exact package/semantic identity, and
+        // re-open without silently interpreting the same slot differently.
+        fw::EngineProjectState savedProject=project;
+        savedProject.bindingLedger=exactSelected;
+        const auto serialized=fw::encodeEngineProjectState(savedProject);
+        fw::EngineProjectState reopened{};
+        need(serialized.size()>12 && serialized[4]==3 &&
+             fw::decodeEngineProjectState(
+                 serialized.data(),serialized.size(),reopened) &&
+             reopened.package==gain &&
+             reopened.bindingLedger==exactSelected &&
+             fw::matchSavedBindingToVerifiedEngine(reopened,current),
+             "new FWS3 project cannot roundtrip with verified Gain identity");
+        auto changed=current;
+        changed.sha256[0]^=1;
+        need(!fw::matchSavedBindingToVerifiedEngine(reopened,changed),
+             "saved Gain automation aliased a different package identity");
         need(!fw::selectExplicitNewLedgerForCommit(
                 evidence,current,851,committed.authorizedTicket,1,{},true,selected) &&
              selected==exactSelected,"wrong request mutated previously selected ledger");
