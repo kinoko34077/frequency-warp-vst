@@ -106,3 +106,32 @@ test("failed rollback frees the partial stream and emits fatal recovery request"
   assert.equal(f.processor.lastGoodSettings,null);
   assert.equal(f.freed(),1);
 });
+
+test("repeated 128-frame Rust process failure emits ONE fatal and quarantines the stream",async()=>{
+  const f=await fixture();
+  let processingCalls=0;
+  f.processor.exports.warp_stream_process=()=>{processingCalls++;return -2;};
+  f.processor.inputView=new Float32Array(128);
+  f.processor.outputView=new Float32Array(128);
+  f.processor.delay=[new Float32Array(256)];
+  const run=()=>f.processor.process([[new Float32Array(128).fill(.25)]],
+    [[new Float32Array(128)],[new Float32Array(128)]]);
+  for(let i=0;i<25;i++)assert.equal(run(),true);
+  assert.equal(processingCalls,1,
+    "a native processing failure must not retry unsafe Rust on every audio quantum");
+  assert.equal(f.messages.length,1,
+    "do not emit hundreds of fatal messages per second");
+  assert.equal(f.messages[0].type,"error");
+  assert.equal(f.messages[0].fatal,true);
+  assert.match(f.messages[0].message,/Streaming core returned -2/);
+  assert.equal(f.processor.streamFailed,true);
+  // A late control packet cannot revive the quarantined stream.
+  f.processor.command({type:"params",settings:{...f.base,axisPivot:900},
+    activeQualityIndex:0,revision:10});
+  assert.equal(f.state.axisPivot,f.base.axisPivot);
+  assert.equal(f.messages.length,1);
+  f.processor.command({type:"dispose"});
+  assert.equal(f.freed(),1,"release occurs on control callback, not audio quantum");
+  assert.equal(f.processor.stream,0);
+  assert.equal(f.processor.streamFailed,false);
+});
