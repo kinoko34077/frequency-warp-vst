@@ -21,6 +21,14 @@ std::uint32_t fw_native_latency(const FWNativeOpaque* handle);
 bool fw_native_faulted(const FWNativeOpaque* handle);
 // Worker-only; may inspect validated manifest, NEVER call from audio thread.
 bool fw_native_supports_stream_controls(const FWNativeOpaque* handle);
+// Non-RT immutable worker-verified package byte SHA256 + ASCII manifest
+// engine ID. Returns engine ID length or 0 on invalid buffers. Caller must
+// allocate exactly 32 hash bytes and up to 129 ASCII ID bytes including NUL.
+// This is NOT proof of authorship/signature; activation still needs worker OK.
+std::uint32_t fw_native_copy_verified_identity(
+    const FWNativeOpaque* handle, std::uint8_t* sha_out,
+    std::size_t sha_capacity, std::uint8_t* engine_out,
+    std::size_t engine_capacity);
 // Off-RT immutable module capability mask, bit positions are fixed ParamIDs.
 std::uint64_t fw_native_stream_control_mask(const FWNativeOpaque* handle);
 std::int32_t fw_native_process(
