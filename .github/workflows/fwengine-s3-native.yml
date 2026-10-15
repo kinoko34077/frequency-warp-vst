@@ -57,6 +57,11 @@ jobs:
           cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s3/gain.wasm
           python scripts/fwengine_pack.py _s3/identity.wasm _s3/identity.fwengine org.kinotch.identity
           python scripts/fwengine_pack.py _s3/gain.wasm _s3/gain.fwengine org.kinotch.gainhalf
+          # Old v1 fixture without the optional R3A generic mask export:
+          # it must remain loadable/audio-valid but receive no new DAW slots.
+          cargo build --release --manifest-path fwengine-demo/Cargo.toml --target wasm32-unknown-unknown --features legacy-no-generic-mask
+          cp fwengine-demo/target/wasm32-unknown-unknown/release/fwengine_demo.wasm _s3/identity_legacy.wasm
+          python scripts/fwengine_pack.py _s3/identity_legacy.wasm _s3/identity_legacy.fwengine org.kinotch.identity
           cargo build --release --manifest-path fwengine-stream/Cargo.toml --target wasm32-unknown-unknown
           python scripts/fwengine_pack.py fwengine-stream/target/wasm32-unknown-unknown/release/fwengine_stream.wasm _s3/stream.fwengine org.kinotch.stream --latency 1023
           # Simulate a pre-capability Stream module embedded in a legacy DAW project.
@@ -86,10 +91,12 @@ jobs:
           cmake --build _bridge_build --config Release
           if [ "$RUNNER_OS" = "Windows" ]; then
             _bridge_build/Release/fw_native_bridge_smoke.exe _s3/identity.fwengine _s3/gain.fwengine
+            _bridge_build/Release/fw_native_generic_capability_test.exe _s3/identity.fwengine _s3/gain.fwengine _s3/identity_legacy.fwengine
             _bridge_build/Release/fw_native_worker_verified_identity_test.exe _s3/identity.fwengine _s3/gain.fwengine
             _bridge_build/Release/fw_native_worker_service_smoke.exe _s3/identity.fwengine _s3/gain.fwengine _s3/stream.fwengine _s3/stream_legacy.fwengine _s3/stream_legacy14.fwengine
           else
             _bridge_build/fw_native_bridge_smoke _s3/identity.fwengine _s3/gain.fwengine
+            _bridge_build/fw_native_generic_capability_test _s3/identity.fwengine _s3/gain.fwengine _s3/identity_legacy.fwengine
             _bridge_build/fw_native_worker_verified_identity_test _s3/identity.fwengine _s3/gain.fwengine
             _bridge_build/fw_native_worker_service_smoke _s3/identity.fwengine _s3/gain.fwengine _s3/stream.fwengine _s3/stream_legacy.fwengine _s3/stream_legacy14.fwengine
           fi
