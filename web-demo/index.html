@@ -130,11 +130,11 @@
         </div>
       </section>
       <section class="panel sine-monitor" aria-labelledby="sine-heading">
-        <div class="section-header"><div><p class="eyebrow">REFERENCE SINE</p><h2 id="sine-heading">基準音</h2></div>
+        <div class="section-header"><div><p class="eyebrow">REFERENCE SINE</p><h2 id="sine-heading">補助音</h2></div>
           <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
         <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
-        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="any" value="0" aria-label="基準音 セント"><span class="unit-value-tools"><input class="inline-value" id="sine-hz" type="text" value="440" spellcheck="false" autocapitalize="off" aria-label="基準音周波数・音名入力"><select id="sine-unit" aria-label="基準音の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
-        
+        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="any" value="0" aria-label="補助音 セント"><span class="unit-value-tools"><input class="inline-value" id="sine-hz" type="text" value="440" spellcheck="false" autocapitalize="off" aria-label="補助音周波数・音名入力"><select id="sine-unit" aria-label="基準音の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
+        <label class="sine-volume">音量 <input id="sine-volume" type="range" min="0" max="100" step="1" value="25" aria-label="補助音量"><output id="sine-volume-value">25%</output></label>
       </section>
     </div>
 
@@ -144,11 +144,11 @@
         <button id="tab-math" type="button" role="tab" aria-selected="false" aria-controls="view-math" tabindex="-1">詳細</button>
       </div>
       <div id="view-map" role="tabpanel" aria-labelledby="tab-map">
-        <div class="graph-title"><strong id="graph-title">〜2kHz</strong><span>タップで表示切替</span></div>
+        <div class="graph-title"><strong id="graph-title">〜2kHz</strong><span>タップで2k / 20k / 低域拡大</span></div>
         <div class="curve-panel">
           <canvas id="curve" tabindex="0" role="button" aria-label="周波数表示を2kHzと20kHzで切り替える"></canvas>
         </div>
-        <div class="graph-scale"><label for="graph-log">表示軸</label><details class="info-tip"><summary aria-label="グラフ表示の説明" title="グラフ表示の説明">ⓘ</summary><div class="info-body">表示の線形／対数の割合を変えます。音声は変化しません。<p id="graph-log-formula" class="slider-formula" aria-live="polite"></p><p>周波数曲線は単音の理論経路で、実測スペクトルではありません。</p></div></details><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div>
+        <div class="graph-scale"><label for="graph-log">表示軸</label><details class="info-tip"><summary aria-label="グラフ表示の説明" title="グラフ表示の説明">ⓘ</summary><div class="info-body">表示の線形／対数の割合を変えます。音声は変化しません。<p id="graph-log-formula" class="slider-formula" aria-live="polite"></p><p>周波数曲線は単音の理論経路で、実測スペクトルではありません。</p></div></details><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="0" aria-label="グラフの対数表示割合"><span>対数</span></div>
         <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音（ガイド・Mix100%では非出力）</span><span id="crusher-alias-legend" hidden>━ 間引き後の実線＝折返し音、薄線＝追加スペクトル像</span></div>
         <p id="crusher-alias-note" class="graph-note" hidden></p>
         
@@ -227,6 +227,11 @@
       </div>
       <details class="help-inline"><summary>ⓘ 反転方式の説明</summary><p class="setting-help">幾何補間は f′=f^(1−a)×I(f)^a。中間で周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点を生みます。</p></details>
       
+    </fieldset>
+    <fieldset><legend>処理帯域</legend>
+      <label for="processing-min-hz">最低処理周波数 L（Hz）</label>
+      <input id="processing-min-hz" type="number" min="0.001" max="20000" step="any" value="20" inputmode="decimal">
+      <p class="setting-help">変換範囲の下限Lと共通。FFT分解能以下の音響的分離は保証されません。処理外もグラフに細破線で表示します。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>

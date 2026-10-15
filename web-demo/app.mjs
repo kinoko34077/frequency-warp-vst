@@ -100,6 +100,7 @@ function bounds(changed=""){
   }else $("#high").value=String(scaleFromHz(high));
   // Even with both exact values unchanged, refresh coarse handles/ARIA.
   state.effective={low,high};
+  const min=$("#processing-min-hz");if(min&&document.activeElement!==min)min.value=String(low);
   showNumber("low-value",low);
   showNumber("high-value",high);
   const rail=$("#dual-range");
@@ -303,7 +304,7 @@ function drawCurve(){
     (p.crusherHold===1?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
     "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝単一正弦波の標本保持から生じる理論スペクトル像、透明度＝理想応答ゲイン（振幅量子化でさらに変化）。");
   updateListeningGuide();
-  $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
+  $("#graph-title").textContent=graphMax===20?"0.001〜20Hz":graphMax===2000?"〜2kHz":"〜20kHz";
 }
 async function ensureSharedCore(){
   if(!state.wasmPromise){
@@ -812,9 +813,9 @@ dualControls.shape=mountDualThumb($("#shape-dual"),
     v=>"反転 "+Number((v*100).toFixed(1))+"%",
     v=>"移動尺度 p="+v+"（0=対数、1=線形）"
   ]);
-$("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;drawCurve();});
+$("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:graphMax===20000?20:2000;drawCurve();});
 $("#curve").addEventListener("keydown",event=>{
-  if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
+  if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:graphMax===20000?20:2000;drawCurve();}
 });
 for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{
@@ -834,6 +835,11 @@ for(const name of ["mode","outside","quality","overlap","engine"]){
 }
 $("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");updateEngineInfo();});
 $("#graph-log").addEventListener("input",drawCurve);
+$("#processing-min-hz").addEventListener("change",event=>{
+  const v=Number(event.target.value);
+  if(!Number.isFinite(v)||v<.001||v>20000){event.target.value=String(lowUnitControl.value);return;}
+  lowUnitControl.setCanonical(v);updateParams("low");updateEngineInfo();
+});
 $("#decimal-digits").addEventListener("change",()=>{
   labels();drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   lowUnitControl.refresh();
@@ -881,35 +887,29 @@ async function withDecodeDeadline(promise,ms,phase){
   }finally{clearTimeout(timer);}
 }
 async function decodeFileWithoutPlayback(file,token){
-  // No AudioContext.resume(): playback still requires the later user gesture.
-  let firstFailure=null;
-  if(typeof OfflineAudioContext!=="undefined"){
-    try{
-      message("音声を解析中…");
-      const buffer=await withDecodeDeadline(file.arrayBuffer(),10000,"ファイル読み込み");
-      if(token!==state.loadToken)return null;
-      const offline=new OfflineAudioContext(1,1,44100);
-      return await withDecodeDeadline(offline.decodeAudioData(buffer),6500,"初回デコード");
-    }catch(error){firstFailure=error;}
-  }
+  // Read once; decodeAudioData can detach its source buffer. Retry with a copy.
+  const bytes=await withDecodeDeadline(file.arrayBuffer(),20000,"ファイル読み込み");
   if(token!==state.loadToken)return null;
-  message("別の読み込み方法に切り替えています…");
-  const Constructor=window.AudioContext||window.webkitAudioContext;
-  if(!Constructor)throw Error("このブラウザでは音声ファイルを解析できません");
-  let ctx,owned=false;
-  try{
-    // Create a decode-only context. decodeAudioData is allowed while it is
-    // suspended: do not await resume() and lose the picker gesture on iOS.
-    try{ctx=new Constructor();owned=true;}
-    catch(error){if(state.ctx)ctx=state.ctx;else throw error;}
-    const bytes=await withDecodeDeadline(file.arrayBuffer(),12000,"再読み込み");
+  const Native=window.AudioContext||window.webkitAudioContext;
+  const Offline=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  const candidates=[
+    ...(Native?[["通常",()=>new Native()]]:[]),
+    ...(Offline?[["オフライン",()=>new Offline(1,1,44100)]]:[])
+  ];
+  if(!candidates.length)throw Error("このブラウザでは音声を解析できません");
+  const failures=[];
+  for(const [index,[name,create]] of candidates.entries()){
     if(token!==state.loadToken)return null;
-    return await withDecodeDeadline(ctx.decodeAudioData(bytes),16000,"代替デコード");
-  }catch(error){
-    throw Error((firstFailure?firstFailure.message+"。":"")+"代替経路も失敗: "+error.message);
-  }finally{
-    if(owned&&ctx?.close)void ctx.close().catch(()=>{});
+    let ctx;
+    try{
+      message(index?"別の音声デコーダで再試行しています…":"音声を解析中…");
+      ctx=create();
+      const decoded=await withDecodeDeadline(ctx.decodeAudioData(bytes.slice(0)),20000,name+"デコード");
+      return token===state.loadToken?decoded:null;
+    }catch(error){failures.push(name+": "+(error?.message||String(error)));}
+    finally{if(ctx?.close)try{await ctx.close();}catch{}}
   }
+  throw Error("音声形式・コーデック・ブラウザの対応状況を確認してください。"+failures.join(" / "));
 }
 async function load(file){
   if(!file)return;
@@ -1039,7 +1039,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
-    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"0","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   lowUnitControl.reset();
@@ -1134,6 +1134,11 @@ $("#sine-cent").addEventListener("input",()=>{
 });
 $("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(Math.round((sinePitch()-Math.round(sinePitch()))*100));});
 $("#sine-cent").addEventListener("blur",()=>showNumber("sine-cent",Math.round((sinePitch()-Math.round(sinePitch()))*100)));
+$("#sine-volume").addEventListener("input",()=>{
+  const v=Number($("#sine-volume").value);
+  $("#sine-volume-value").textContent=v+"%";
+  if(state.sine&&state.ctx)state.sine.gain.gain.setTargetAtTime(v/100*.32,state.ctx.currentTime,.012);
+});
 $("#sine-enabled").addEventListener("change",async()=>{
   if(!$("#sine-enabled").checked){stopSine();return;}
   try{
@@ -1142,7 +1147,7 @@ $("#sine-enabled").addEventListener("change",async()=>{
     stopSine();
     const osc=ctx.createOscillator(),gain=ctx.createGain();
     osc.type="sine";osc.frequency.value=sineFrequency();
-    gain.gain.value=0.08;
+    gain.gain.value=Number($("#sine-volume").value)/100*.32;
     osc.connect(gain);gain.connect(ctx.destination);
     osc.start();state.sine={osc,gain};updateSineLabel();
   }catch(error){
