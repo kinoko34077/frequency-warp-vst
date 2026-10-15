@@ -36,6 +36,7 @@ public:
         std::uint64_t acceptedGeneration=0;
         std::array<std::uint8_t,32> packageSha256{};
         std::vector<std::uint8_t> encodedLedger{};
+        std::uint64_t authorizedTicket=0; // populated on committed read only
         // D7A: worker-attested but NOT yet published to RT. The ticket must
         // remain zero until D7B's fenced explicit persistence transaction.
         GenericAuthorizationSnapshot stagedAuthorization{};
@@ -81,6 +82,7 @@ public:
            genericAuthorization_.workerCurrentTicket()!=committedTicket_)
             return false;
         out=committed_;
+        out.authorizedTicket=committedTicket_;
         return true;
     }
     NativeWorkerService() {
@@ -233,6 +235,7 @@ public:
         pending_=Request{};
         pending_.descriptor=std::move(descriptor);
         pending_.requestId=requestId;
+        if(!committed_.encodedLedger.empty())return false;
         pending_.prepareLedger=true;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
