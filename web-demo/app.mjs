@@ -28,7 +28,7 @@ const state={
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",fileMeta:"音声未選択",processing:false,
   precise:Object.create(null),
-  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0
+  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0,transportEpoch:0
 };
 // Continuous log bands around 20 Hz: 0..200 resolves 0.001..20 Hz,
 // 200..1000 resolves 20..20,000 Hz. Exact typed values remain independent.
@@ -610,6 +610,10 @@ async function mediaBridge(player){
   }
 }
 async function stop(){
+  // Fence any pending async AudioContext/WASM/Worklet launch. A successful
+  // file replacement and explicit stop must never be undone by an old click.
+  state.transportEpoch++;
+  if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
   const p=state.player;
   if(!p){controls.stop.disabled=true;mediaStatus(false);return;}
   state.seek=playPosition();
@@ -638,7 +642,9 @@ async function play(mode="wet",offset=null){
       return;
     }
     const position=offset===null?playPosition():offset;
+    const nextEpoch=state.transportEpoch+1;
     await stop();
+    if(state.transportEpoch!==nextEpoch)return;
     return play("wet",position);
   }
   if(state.player){
@@ -648,6 +654,7 @@ async function play(mode="wet",offset=null){
     message(mode==="wet"?"リアルタイム音声処理中。パラメータは即時適用されます。":"原音を連続再生中。");
     return;
   }
+  const launchEpoch=++state.transportEpoch;
   controls.dry.disabled=true;controls.wet.disabled=true;
   if(mode==="dry"){
     indicator("原音を起動中…");
@@ -655,6 +662,7 @@ async function play(mode="wet",offset=null){
       // Browser native buffer playback; even a broken/unavailable wet WASM
       // engine or an invalid theoretical F cannot block original audition.
       const ctx=await context();
+      if(launchEpoch!==state.transportEpoch)return;
       const dry=ctx.createGain(),master=ctx.createGain(),directRoute=ctx.createGain();
       dry.gain.value=1;master.gain.value=1;directRoute.gain.value=1;
       dry.connect(master);master.connect(directRoute);directRoute.connect(ctx.destination);
@@ -672,18 +680,22 @@ async function play(mode="wet",offset=null){
       indicator("原音再生中 · 変換DSPから独立");
       message("原音再生中。変換設定にかかわらず音源を再生しています。");
     }catch(error){
+      if(launchEpoch!==state.transportEpoch)return;
       await stop();
       message("原音再生準備失敗: "+error.message,"error");
       indicator("原音起動失敗");
     }finally{
-      controls.dry.disabled=!state.dry;
-      controls.wet.disabled=!state.dry;
+      if(launchEpoch===state.transportEpoch){
+        controls.dry.disabled=!state.dry;
+        controls.wet.disabled=!state.dry;
+      }
     }
     return;
   }
   indicator("共通Rust/WASM DSPの起動中…");
   try{
     const {ctx,module}=await prepareCore();
+    if(launchEpoch!==state.transportEpoch)return;
     const preflight=prepareStreamSettings(settings());
     if(!preflight.ok)throw Error("設定が現行DSPに非対応: "+preflight.message);
     const current=preflight.settings;
@@ -724,7 +736,7 @@ async function play(mode="wet",offset=null){
     void mediaBridge(player);
     worklet.port.postMessage({type:"init",bytes:module,channels:state.dry.length,settings:current});
     const result=await ready;
-    if(state.player!==player)return;
+    if(state.player!==player||launchEpoch!==state.transportEpoch)return;
     player.feedback.ready();
     tuneWet();
     controls.stop.disabled=false;
@@ -733,6 +745,7 @@ async function play(mode="wet",offset=null){
       (mode==="wet"?"128サンプル単位でリアルタイム変換中。ツマミ操作で曲全体を再計算しません。":"原音再生中。"),
       player.notice?"warning":"info");
   }catch(error){
+    if(launchEpoch!==state.transportEpoch)return;
     // DSP failure must not prevent listening to the already loaded source.
     // Retain the requested position and fall back to direct original audio.
     const resume=state.player?playPosition():(offset===null?state.seek:offset);
@@ -747,8 +760,10 @@ async function play(mode="wet",offset=null){
       indicator("起動失敗");
     }
   }finally{
-    controls.dry.disabled=!state.dry;
-    controls.wet.disabled=!state.dry;
+    if(launchEpoch===state.transportEpoch){
+      controls.dry.disabled=!state.dry;
+      controls.wet.disabled=!state.dry;
+    }
   }
 }
 function updateParams(changed){
@@ -792,7 +807,10 @@ function updateParams(changed){
       state.rebuildTimer=null;
       const active=state.player;if(!active)return;
       const offset=playPosition(),mode=active.mode;
-      await stop();await play(mode,offset);
+      const nextEpoch=state.transportEpoch+1;
+      await stop();
+      if(state.transportEpoch!==nextEpoch)return;
+      await play(mode,offset);
     },180);
     p.feedback.rebuild();
     indicator("設定を反映するため音声処理を切替中…");
