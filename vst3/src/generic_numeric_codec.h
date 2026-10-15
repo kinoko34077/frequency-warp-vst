@@ -35,7 +35,8 @@ inline bool validGenericNumericCodec(const GenericNumericCodec& c) noexcept {
         case GenericScale::Linear:
             if(c.steps!=0)return false;break;
         case GenericScale::Log:
-            if(c.min<=0.||c.steps!=0)return false;break;
+            if(c.min<=0.||c.steps!=0||!std::isfinite(c.max/c.min))
+                return false;break;
         case GenericScale::Discrete:
             if(c.steps==0||c.steps>65535)return false;
             {
