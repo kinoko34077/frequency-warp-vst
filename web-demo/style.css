@@ -525,3 +525,13 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
  .math-field>.unit-value-tools{flex-wrap:wrap;justify-content:flex-start}
  .math-field>.unit-value-tools .inline-value{width:85px!important}
 }
+
+/* #79 carrier: pitch spelling and unit selector remain visible in the FX row. */
+.fx-body .control-heading .unit-value-tools{justify-content:flex-end;min-width:0}
+.fx-body .control-heading .unit-value-tools .inline-value{
+  width:96px!important;max-width:110px;min-width:78px
+}
+@media(max-width:450px){
+ .fx-body .control-heading .unit-value-tools{flex-wrap:wrap;justify-content:flex-start}
+ .fx-body .control-heading .unit-value-tools .inline-value{width:82px!important}
+}
