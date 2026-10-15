@@ -9,6 +9,7 @@
 #include "engine_project_state.h"
 #include "project_state_stream_reader.h"
 #include "project_binding_association.h"
+#include "generic_ui_authorization.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
 #include <cstdlib>
@@ -181,6 +182,66 @@ public:
             const auto response=ok?sendMessage(reply):kResultFalse;
             reply->release();
             return response;
+        }
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.QuerySavedGenericV1")==0) {
+            // Non-audio host query. No GUI claim can create authority.
+            auto* reply=allocateMessage();
+            if(!reply)return kResultFalse;
+            reply->setMessageID("FrequencyWarp.SavedGenericStatusV1");
+            auto* result=reply->getAttributes();
+            const auto done=worker_.lastAuthorizationWord();
+            // Historical success alone is NOT current edit authority.
+            // The worker can revoke on unload/swap/fault after this result.
+            const bool currentlyActive=(done&1u)!=0 &&
+                worker_.status()==NativeWorkerService::Status::Ready &&
+                worker_.genericAuthorization().workerCurrentTicket()!=0;
+            const bool ok=result &&
+                result->setInt("request",static_cast<int64>(done>>1))==kResultTrue &&
+                result->setInt("succeeded",static_cast<int64>(done&1u))==kResultTrue &&
+                result->setInt("active",static_cast<int64>(currentlyActive))==kResultTrue;
+            const auto response=ok?sendMessage(reply):kResultFalse;
+            reply->release();
+            return response;
+        }
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.AuthorizeSavedGenericV1")==0) {
+            auto* attrs=message->getAttributes();
+            if(!attrs)return kResultFalse;
+            const void* data=nullptr;
+            uint32 length=0;
+            int64 request=0;
+            if(attrs->getBinary("descriptor",data,length)!=kResultTrue ||
+               attrs->getInt("request",request)!=kResultTrue ||
+               request<=0 ||
+               !validGenericUiRequest(static_cast<uint64_t>(request),
+                      static_cast<const uint8_t*>(data),length))
+                return kResultFalse;
+            // Worker receives ONLY the current verified engine and the
+            // already-saved semantic ledger; never trust UI-supplied package,
+            // identity, hash or binding. No silent creation of a new FWS3.
+            std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
+            if(!workerActive_)return kResultFalse;
+            try {
+                const auto identity=worker_.verifiedIdentitySnapshot();
+                VerifiedProjectEngine verified{};
+                verified.package=identity.package;
+                verified.engineId=identity.engineId;
+                verified.sha256=identity.packageSha256;
+                verified.acceptedGeneration=identity.acceptedGeneration;
+                verified.active=identity.active;
+                EngineProjectState project{};
+                if(!prepareSavedGenericUiAuthorization(
+                        verified,savedBindingLedger_,
+                        static_cast<const uint8_t*>(data),length,
+                        static_cast<uint64_t>(request),project))
+                    return kResultFalse;
+                const auto* first=static_cast<const uint8_t*>(data);
+                std::vector<uint8_t> descriptor(first,first+length);
+                return worker_.postAuthorization(
+                    std::move(project),std::move(descriptor),
+                    static_cast<uint64_t>(request)) ? kResultOk:kResultFalse;
+            }catch(...) {return kResultFalse;}
         }
         if(std::strcmp(message->getMessageID(),"FrequencyWarp.LoadFwengineV1")!=0)
             return AudioEffect::notify(message);
@@ -583,6 +644,55 @@ public:
         }
         return request;
     }
+    // Future trusted native editor can invoke this non-RT transport only
+    // for an EXISTING saved FWS3. The processor still independently denies
+    // absent/mismatched ledgers and incomplete worker verification.
+    uint64_t sendSavedGenericDescriptorToProcessor(
+        const std::vector<uint8_t>& descriptor) {
+        if(descriptor.empty() || descriptor.size()>kGenericUiDescriptorLimit ||
+           !validGenericUiRequest(1,descriptor.data(),descriptor.size()))
+            return 0;
+        const uint64_t request=nextAuthRequest_.fetch_add(
+            1,std::memory_order_relaxed)+1;
+        if(request==0 || request>kGenericUiMaxRequest)return 0;
+        uint64_t none=0;
+        if(!genericInFlight_.compare_exchange_strong(
+                none,request,std::memory_order_acq_rel))return 0;
+        auto* msg=allocateMessage();
+        if(!msg) {
+            genericInFlight_.store(0,std::memory_order_release);
+            return 0;
+        }
+        msg->setMessageID("FrequencyWarp.AuthorizeSavedGenericV1");
+        auto* attrs=msg->getAttributes();
+        const bool ok=attrs &&
+            attrs->setInt("request",static_cast<int64>(request))==kResultTrue &&
+            attrs->setBinary("descriptor",descriptor.data(),
+                            static_cast<uint32>(descriptor.size()))==kResultTrue;
+        const auto sent=ok?sendMessage(msg):kResultFalse;
+        msg->release();
+        if(sent!=kResultTrue) {
+            uint64_t expected=request;
+            genericInFlight_.compare_exchange_strong(
+                expected,0,std::memory_order_acq_rel);
+            return 0;
+        }
+        return request;
+    }
+    // Query/ack remains on the VST3 host lifecycle, never from process().
+    uint64_t lastSavedGenericAuthorizationWord() const noexcept {
+        return lastSavedGenericStatus_.load(std::memory_order_acquire);
+    }
+    bool lastSavedGenericActiveSnapshot() const noexcept {
+        return lastSavedGenericActive_.load(std::memory_order_acquire);
+    }
+    void querySavedGenericAuthorization() {
+        auto* msg=allocateMessage();
+        if(!msg)return;
+        msg->setMessageID("FrequencyWarp.QuerySavedGenericV1");
+        sendMessage(msg);
+        msg->release();
+    }
 #ifdef _WIN32
     EngineStatusSnapshot pollWorkerStatus(){
         if(auto* message=allocateMessage()){
@@ -596,6 +706,29 @@ public:
 #endif
     tresult PLUGIN_API notify(IMessage* message) override {
         if(!message||!message->getMessageID())return kInvalidArgument;
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.SavedGenericStatusV1")==0) {
+            auto* attrs=message->getAttributes();
+            if(!attrs)return kResultFalse;
+            int64 request=0,succeeded=0,active=0;
+            if(attrs->getInt("request",request)!=kResultTrue ||
+               attrs->getInt("succeeded",succeeded)!=kResultTrue ||
+               attrs->getInt("active",active)!=kResultTrue ||
+               request<0 || (succeeded!=0&&succeeded!=1) ||
+               (active!=0&&active!=1) || (active && !succeeded))
+                return kResultFalse;
+            // The completed word is historical; the separate active bit is
+            // informational only and must NOT bypass worker/RT authority.
+            const auto word=(static_cast<uint64_t>(request)<<1) |
+                            static_cast<uint64_t>(succeeded);
+            lastSavedGenericStatus_.store(word,std::memory_order_release);
+            lastSavedGenericActive_.store(active==1,std::memory_order_release);
+            uint64_t pending=genericInFlight_.load(std::memory_order_acquire);
+            if(pending && static_cast<uint64_t>(request)==pending)
+                genericInFlight_.compare_exchange_strong(
+                    pending,0,std::memory_order_acq_rel);
+            return kResultOk;
+        }
         if(std::strcmp(message->getMessageID(),"FrequencyWarp.EngineStatusV1")!=0)
             return EditController::notify(message);
         auto* attrs=message->getAttributes();
@@ -642,6 +775,9 @@ public:
     }
 private:
     std::atomic<uint64_t> nextRequest_{0},inFlight_{0};
+    std::atomic<uint64_t> nextAuthRequest_{0},genericInFlight_{0},
+                          lastSavedGenericStatus_{0};
+    std::atomic<bool> lastSavedGenericActive_{false};
 #ifdef _WIN32
     std::mutex snapshotMutex_{};
     EngineStatusSnapshot lastSnapshot_{};
