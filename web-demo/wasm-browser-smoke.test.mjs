@@ -564,6 +564,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // Telemetry must remain visible without hiding persistent rejection.
     await page.waitForFunction(()=>document.querySelector("#rt-telemetry").textContent.includes("ms/block"),
       {timeout:15000});
+    assert.match(await page.$eval("#signal-diagnostic",el=>el.title),/DSP処理の直近 .* 秒.*RMS/,
+      "meter explicitly reports its recent observation window");
     await new Promise(resolve=>setTimeout(resolve,900));
     assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/設定未反映/,
       "periodic real worklet stats must not overwrite a rejected edit");
