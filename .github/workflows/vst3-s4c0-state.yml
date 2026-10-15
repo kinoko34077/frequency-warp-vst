@@ -3,12 +3,16 @@ on:
   pull_request:
     paths:
       - 'vst3/src/engine_project_state.h'
+      - 'vst3/src/parameter_state_mailbox.h'
+      - 'vst3/src/shell.cpp'
       - 'vst3/tests/state/**'
       - '.github/workflows/vst3-s4c0-state.yml'
   push:
     branches: [main]
     paths:
       - 'vst3/src/engine_project_state.h'
+      - 'vst3/src/parameter_state_mailbox.h'
+      - 'vst3/src/shell.cpp'
       - 'vst3/tests/state/**'
       - '.github/workflows/vst3-s4c0-state.yml'
 permissions:
@@ -26,5 +30,5 @@ jobs:
         run: cmake -S vst3/tests/state -B _state_build -DCMAKE_BUILD_TYPE=Release
       - name: Compile C++17
         run: cmake --build _state_build --config Release
-      - name: Run v1/v2 serialization and corruption tests
+      - name: Run v1/v2 serialization, concurrent state and corruption tests
         run: ctest --test-dir _state_build -C Release --output-on-failure

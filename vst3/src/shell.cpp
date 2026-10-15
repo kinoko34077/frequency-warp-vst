@@ -6,6 +6,7 @@
 #include "native_worker_service.h"
 #include "stream_host_events.h"
 #include "engine_project_state.h"
+#include "parameter_state_mailbox.h"
 #include <climits>
 #include "win32_engine_editor.h"
 #include "pluginterfaces/base/ibstream.h"
@@ -218,7 +219,7 @@ public:
         // Persist exactly the last worker-confirmed bytes. A queued/rejected
         // replacement is never elevated to a verified project engine.
         EngineProjectState image{};
-        image.values=values_;
+        if(!parameterMailbox_.uiSnapshot(image.values))return kResultFalse;
         try {image.package=worker_.verifiedPackageSnapshot();}
         catch(...) {return kResultFalse;}
         return writeStateImage(stream,image)?kResultOk:kResultFalse;
@@ -243,7 +244,7 @@ public:
             deferredRestorePackage_=std::move(image.package);
             deferredRestorePending_=true;
         }
-        values_=image.values;
+        parameterMailbox_.uiStage(image.values);
         return kResultOk;
     }
     struct Queue {
@@ -254,6 +255,10 @@ public:
     };
     template<class Sample> tresult processTyped(ProcessData& data) {
         if(data.numSamples<0)return kInvalidArgument;
+        // The UI thread may call setState/getState while Processing. The
+        // audio callback alone owns values_; a complete pending project is
+        // consumed at this callback boundary with a bounded atomic snapshot.
+        parameterMailbox_.rtAdopt(values_);
         std::array<Queue,kParamCount> cursors{};
         int32 used=0;
         if(auto* changes=data.inputParameterChanges) {
@@ -288,7 +293,11 @@ public:
                 }
             }
         };
-        if(data.numSamples==0){apply(0);return kResultOk;}
+        if(data.numSamples==0){
+            apply(0);
+            parameterMailbox_.rtPublish(values_);
+            return kResultOk;
+        }
         if(data.numInputs!=1||data.numOutputs!=1||!data.inputs||!data.outputs)
             return kResultFalse;
         const auto& src=data.inputs[0];auto& dst=data.outputs[0];
@@ -396,6 +405,7 @@ public:
             start+=static_cast<int32>(frames);
         }
         dst.silenceFlags=0; // never drop the buffered impulse tail
+        parameterMailbox_.rtPublish(values_);
         return kResultOk;
     }
     tresult PLUGIN_API process(ProcessData& data) override {
@@ -404,7 +414,8 @@ public:
         return kResultFalse;
     }
 private:
-    Values values_=defaults();
+    Values values_=defaults(); // RT-owned; never accessed by UI/getState
+    ParameterStateMailbox<kParamCount> parameterMailbox_{defaults()};
     Delay delay_;
     NativeWorkerService worker_{}; // per-instance worker, never process()
     std::vector<uint8_t> deferredRestorePackage_{}; // non-RT only
