@@ -6,7 +6,7 @@ import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
-import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
+import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetRatioUnit} from "./harmonics-panel.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField} from "./frequency-unit-field.mjs";
 
@@ -1028,6 +1028,7 @@ $("#settings-reset").addEventListener("click",()=>{
   highUnitControl.reset();
   pivotUnitControl.reset();
   aMinUnitControl.reset();
+  resetRatioUnit();
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#harmonic-pivot-link").checked=false;

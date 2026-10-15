@@ -4,7 +4,7 @@
  */
 import {createParameterBinding} from "./parameter-binding.mjs";
 
-export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slider,railRoot,
+export function mountParameterUnitField({descriptor,field,select,snapToggle,slider,railRoot,
   initialValue=descriptor.defaultValue,getDigits=()=>descriptor.digits,onValueChange=()=>{}}) {
   if (![field,select,snapToggle,slider,railRoot].every(Boolean) ||
       typeof onValueChange !== "function")
@@ -50,7 +50,8 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
     return true;
   };
   field.addEventListener("focus",()=>{
-    if(binding.unit==="hz")field.value=String(binding.value);
+    if(["hz","ratio","coordinate","integer"].includes(binding.unit))
+      field.value=String(binding.value);
     else field.value=String(binding.display(8));
     lastRendered=field.value;
     field.select();
@@ -114,3 +115,6 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
     }
   });
 }
+
+// Backward-compatible name retained for the frequency M1 adapters.
+export const mountFrequencyUnitField=mountParameterUnitField;

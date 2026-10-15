@@ -220,6 +220,56 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#fundamental");
     assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
     await page.$eval("#fundamental",el=>el.blur());
+    // M2 positive ratio r: its units are intervals, NOT absolute note Hz.
+    const initialRThumb=await page.$eval("#pitch-ratio-range",el=>el.value);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll(
+      "#pitch-ratio-unit option")].map(el=>el.value)),
+      ["ratio","semitones","cents","percent"]);
+    assert.equal(await page.$eval("#pitch-ratio-snap",el=>el.checked),false);
+    await page.select("#pitch-ratio-unit","semitones");
+    assert.equal(await page.$eval("#pitch-ratio-range",el=>el.value),initialRThumb,
+      "view-only changes must preserve the source ratio and DSP");
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="7";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#pitch-ratio-unit","ratio");
+    await page.focus("#pitch-ratio");
+    const ratioExact=Number(await page.$eval("#pitch-ratio",el=>el.value));
+    assert.ok(Math.abs(ratioExact-2**(7/12))<1e-12);
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    await page.select("#pitch-ratio-unit","cents");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-700)<.001);
+    await page.select("#pitch-ratio-unit","percent");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+      100*(ratioExact-.25)/3.75)<.01, "ratio% uses the physical linear rail");
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-
+      ratioExact*440/4)<.001, "r edit still updates linked P");
+    await page.select("#pitch-ratio-unit","ratio");
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#pitch-ratio-snap",el=>{el.checked=true;});
+    await page.$eval("#pitch-ratio-range",el=>{
+      el.value="1.05";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#pitch-ratio");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+      2**(1/12))<1e-12, "physical-pixel snap targets one interval semitone");
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    await page.select("#pitch-ratio-unit","semitones");
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="bad";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.select("#pitch-ratio-unit","ratio");
+    await page.focus("#pitch-ratio");
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+      2**(1/12))<1e-12, "invalid typed ratio intervals must not overwrite r");
+    await page.$eval("#pitch-ratio",el=>el.blur());
+    await page.$eval("#pitch-ratio",el=>{
+      el.value="1";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<.005);
+
     // Linked P→F cannot lose fractional cents through historical round3().
     await page.select("#pivot-unit","note");
     await page.$eval("#axis-pivot-value",el=>{
@@ -328,6 +378,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#a-min-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#a-min-value",el=>Number(el.value)),20);
+    assert.equal(await page.$eval("#pitch-ratio-unit",el=>el.value),"ratio");
+    assert.equal(await page.$eval("#pitch-ratio-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#pitch-ratio",el=>Number(el.value)),1);
     await page.click("#settings-done");
 
     // Browser-only reference sine still has ONE physical Hz authority;
