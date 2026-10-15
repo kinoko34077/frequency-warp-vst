@@ -9,6 +9,7 @@ import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetRatioUnit} from "./harmonics-panel.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
+import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -84,21 +85,20 @@ function message(text,type="info"){$("#status").textContent=text;$("#status").da
 function indicator(text){$("#rt-indicator").textContent=text;}
 function bounds(changed=""){
   const cap=state.decoded?Math.min(20000,state.decoded.sampleRate*.45):20000;
-  let low=scalar("low",()=>hzFromScale($("#low").value));
-  let high=Math.min(cap,scalar("high",()=>hzFromScale($("#high").value)));
-  low=Math.min(low,cap/1.08);
-  if(high<low*1.06){
-    if(changed==="low")high=Math.min(cap,low*1.08);
-    else low=Math.max(MIN_POSITIVE_HZ,high/1.08);
-  }
-  if(high<=low)low=Math.max(MIN_POSITIVE_HZ,high/1.08);
-  $("#low").value=String(scaleFromHz(low));
-  $("#high").value=String(scaleFromHz(high));
-  low=Math.min(scalar("low",()=>hzFromScale($("#low").value)),cap/1.08);
-  high=Math.min(scalar("high",()=>hzFromScale($("#high").value)),cap);
-  if(low>=high)low=high/1.08;
-  if(lowUnitControl&&!Object.is(lowUnitControl.value,low))lowUnitControl.setCanonical(low);
-  if(highUnitControl&&!Object.is(highUnitControl.value,high))highUnitControl.setCanonical(high);
+  // Reconcile physical Hz ONCE. Previously the computed peer correction was
+  // overwritten by scalar() re-reading stale canonical binding values.
+  const {low,high}=reconcileFrequencyBounds({
+    low:scalar("low",()=>hzFromScale($("#low").value)),
+    high:scalar("high",()=>hzFromScale($("#high").value)),
+    cap,changed
+  });
+  if(lowUnitControl){
+    if(!Object.is(lowUnitControl.value,low))lowUnitControl.setCanonical(low);
+  }else $("#low").value=String(scaleFromHz(low));
+  if(highUnitControl){
+    if(!Object.is(highUnitControl.value,high))highUnitControl.setCanonical(high);
+  }else $("#high").value=String(scaleFromHz(high));
+  // Even with both exact values unchanged, refresh coarse handles/ARIA.
   state.effective={low,high};
   showNumber("low-value",low);
   showNumber("high-value",high);

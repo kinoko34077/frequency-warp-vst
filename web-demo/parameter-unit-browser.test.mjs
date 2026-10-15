@@ -597,6 +597,42 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#low-value",el=>Number(el.value)),20);
     assert.equal(await page.$eval("#low",el=>el.value),"200");
+    // #79-A21: changing L near H must move H in the *canonical binding*,
+    // not only the coarse range proxy (which used to be undone by settings()).
+    await page.$eval("#low-value",el=>{
+      el.value="15500";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#high-value");
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16740,
+      "an L edit to 15.5k must move canonical H to 16.74k");
+    await page.$eval("#high-value",el=>el.blur());
+    await page.focus("#low-value");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),15500);
+    await page.$eval("#low-value",el=>el.blur());
+    // Even a display-only precision change triggers more graph/settings
+    // render passes; these must not silently rewrite the previous edit.
+    await page.$eval("#decimal-digits",el=>{
+      el.value="2";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.focus("#high-value");
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16740);
+    await page.$eval("#high-value",el=>el.blur());
+    // Changing H instead keeps H and pulls L downward by the declared gap.
+    await page.$eval("#high-value",el=>{
+      el.value="10000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#low-value");
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-
+      10000/1.08)<1e-8,"H edit must move actual canonical L, not its proxy");
+    await page.$eval("#low-value",el=>el.blur());
+    await page.focus("#high-value");
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),10000);
+    await page.$eval("#high-value",el=>el.blur());
+    await page.click("#settings-open");
+    await page.click("#settings-reset");
+    await page.click("#settings-done");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),20);
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16000);
     // Opt-in layout editor coexists: it must NOT hijack snap menus on
     // a recognized parameter, but retains its context menu elsewhere.
     await page.goto("http://127.0.0.1:8774/index.html?layout_editor=1",{
