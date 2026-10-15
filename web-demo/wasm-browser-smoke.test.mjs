@@ -296,7 +296,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#sine-hz",el=>Number(el.value)),440);
     await page.click("#sine-enabled");
     assert.equal(await page.$eval("#sine-enabled",el=>el.checked),true);
+    await page.keyboard.down("Alt");
     await page.$eval("#sine-pitch",el=>{el.value="69.5";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.keyboard.up("Alt");
     assert.match(await page.$eval("#sine-hz",el=>el.value),/452\.89/);
     assert.match(await page.$eval("#sine-cent",el=>el.value),/-50|50/);
     await page.click("#sine-enabled");
