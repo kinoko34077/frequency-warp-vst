@@ -513,7 +513,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#carrier",el=>el.disabled),true);
     assert.equal(await page.$eval("#carrier-range",el=>el.disabled),true);
     assert.equal(await page.$eval("#carrier-unit",el=>el.disabled),true);
-    assert.equal(await page.$eval("#carrier-unit + .unit-switch button",
+    assert.equal(await page.$$eval("#carrier-unit + .unit-switch button",
       buttons=>buttons.every(button=>button.disabled)),true,
       "Fold-linked carrier must lock visible unit icons, not only hidden select");
     const lockedUnit=await page.$eval("#carrier-unit",el=>el.value);
@@ -525,7 +525,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     assert.equal(await page.$eval("#carrier",el=>el.disabled),false);
-    assert.equal(await page.$eval("#carrier-unit + .unit-switch button",
+    assert.equal(await page.$$eval("#carrier-unit + .unit-switch button",
       buttons=>buttons.every(button=>!button.disabled)),true,
       "unlinking carrier must restore its visible unit icon controls");
     await page.$eval("#carrier-unit + .unit-switch button[data-unit=note]",
