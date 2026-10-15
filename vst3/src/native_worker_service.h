@@ -231,11 +231,11 @@ public:
            descriptor.empty()||descriptor.size()>65536)return false;
         std::lock_guard<std::mutex> guard(commandMutex_);
         if(commandPending_||stopping_.load(std::memory_order_acquire)||
-           status_.load(std::memory_order_acquire)!=Status::Ready)return false;
+           status_.load(std::memory_order_acquire)!=Status::Ready||
+           !committed_.encodedLedger.empty())return false;
         pending_=Request{};
         pending_.descriptor=std::move(descriptor);
         pending_.requestId=requestId;
-        if(!committed_.encodedLedger.empty())return false;
         pending_.prepareLedger=true;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
