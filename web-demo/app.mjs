@@ -516,10 +516,11 @@ function playerMessage(node,p){
     if(data.type==="parameters-applied"){
       if(p.feedback.ack(data.revision)){
         p.appliedRevision=data.revision;
-        // The worklet ACK is essential for state correctness, but changing
-        // the visible "pending/applied" banner on every slider move causes
-        // a noisy, reflowing UI. Only errors and actual capability notices
-        // update the floating status panel.
+        // Keep nonvisual ACK evidence for host regression tests; the text is
+        // stable after the first successful update, never toggled to
+        // "updating..." for each slider tick.
+        $("#rt-indicator").dataset.appliedRevision=String(data.revision);
+        indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
       }
     }
     if(data.type==="stats"){
@@ -801,7 +802,7 @@ function updateParams(changed){
   // pending rebuild after the current processor already matches settings.
   if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
   const nextNotice=preflight.warnings.join(" ");
-  if(p.notice!==nextNotice){
+  if(p.notice!==nextNotice||$("#status").dataset.kind==="error"){
     p.notice=nextNotice;
     message(nextNotice||"リアルタイム音声処理中。",
       nextNotice?"warning":"info");
