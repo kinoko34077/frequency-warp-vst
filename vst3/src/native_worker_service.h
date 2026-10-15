@@ -3,6 +3,7 @@
 // native Wasmi C ABI. All mailbox RT methods stay allocation-free.
 // No file picker/DAW controller yet; UI will call postPackage() off RT.
 #include "async_pcm_mailbox.h"
+#include "stream_host_events.h"
 #include "native_engine_abi.h"
 #include <atomic>
 #include <chrono>
@@ -101,7 +102,7 @@ private:
         // Explicit semantic guard: generic Identity/Gain module has slot64
         // only, so never forward unrelated spectral host parameter events.
         const bool spectral=fw_native_supports_stream_controls(native);
-        // Keep BOTH contracts valid: core Stream IDs2..5 and demo Gain ID64.
+        // Keep BOTH contracts valid: known Stream physical IDs and demo ID64.
         // Filtering is on this off-RT thread; no heap allocations or host
         // parameter semantic aliasing are introduced.
         if(count>AsyncPcmMailbox::kMaxEvents||(count>0&&!events))return -1;
@@ -109,7 +110,7 @@ private:
         uint32_t used=0;
         for(uint32_t i=0;i<count;i++) {
             const bool bound=spectral
-                ? (events[i].id>=2&&events[i].id<=5)
+                ? StreamHostEvents::bound(events[i].id)
                 : events[i].id==64;
             if(bound)filtered[used++]=events[i];
         }

@@ -10,13 +10,27 @@
 namespace fw {
 class StreamHostEvents {
 public:
-    static constexpr uint32_t kFirst=2,kLast=5,kInitial=4;
     static constexpr uint32_t kMax=128;
-    static bool bound(uint32_t id) noexcept {return id>=kFirst&&id<=kLast;}
+    // Exact physical IDs accepted by org.kinotch.stream v1. Don't include
+    // unrelated host-only controls or demo Gain ID64.
+    inline static constexpr std::array<uint32_t,11> kBindingIds{
+        2,3,4,5,6,7,8,9,10,13,18
+    };
+    static constexpr uint32_t kBindingCount=kBindingIds.size();
+    static constexpr uint32_t kInitial=kBindingCount;
+    static int indexOf(uint32_t id) noexcept {
+        for(uint32_t i=0;i<kBindingCount;i++)
+            if(kBindingIds[i]==id)return static_cast<int>(i);
+        return -1;
+    }
+    static uint32_t idAt(uint32_t index) noexcept {
+        return kBindingIds[index];
+    }
+    static bool bound(uint32_t id) noexcept {return indexOf(id)>=0;}
     bool start(const std::array<double,kParamCount>& normalized,
                double rate) noexcept {
         size_=0;
-        for(uint32_t id=kFirst;id<=kLast;id++){
+        for(uint32_t id:kBindingIds){
             if(!append(id,0,normalized[id],rate))return false;
         }
         return true;
