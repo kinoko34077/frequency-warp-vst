@@ -18,7 +18,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
-let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null;
+let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null;
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -62,12 +62,14 @@ const displayDigits=()=>Number($("#decimal-digits")?.value||3);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
-  name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:(state.precise[name]??fallback());
+  name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
+  name==="a-min"&&aMinUnitControl?aMinUnitControl.value:(state.precise[name]??fallback());
 function showNumber(id,value){
   const field=$("#"+id);
   if(id==="low-value"&&lowUnitControl){lowUnitControl.refresh();return;}
   if(id==="high-value"&&highUnitControl){highUnitControl.refresh();return;}
   if(id==="axis-pivot-value"&&pivotUnitControl){pivotUnitControl.refresh();return;}
+  if(id==="a-min-value"&&aMinUnitControl){aMinUnitControl.refresh();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -707,9 +709,22 @@ pivotUnitControl=mountFrequencyUnitField({
     updateParams("axis-pivot");updateEngineInfo();
   }
 });
+// Engine A extraction floor has the same nonzero Hz log rail as L/H.
+aMinUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"a-min",min:MIN_POSITIVE_HZ,max:20000,defaultValue:20,
+    units:["hz","note","percent"],
+    rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#a-min-value"),select:$("#a-min-unit"),snapToggle:$("#a-min-snap"),
+  slider:$("#a-min"),railRoot:$("#a-min"),
+  getDigits:displayDigits,initialValue:20,
+  onValueChange:()=>{updateParams("a-min");updateEngineInfo();}
+});
 // Other controls retain the legacy input binding until independently migrated.
 const inline={
-  "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",MIN_POSITIVE_HZ,20000],
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
@@ -788,6 +803,7 @@ for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay"
     if(name==="low"){lowUnitControl.fromSlider();return;}
     if(name==="high"){highUnitControl.fromSlider();return;}
     if(name==="axis-pivot"){pivotUnitControl.fromSlider();return;}
+    if(name==="a-min"){aMinUnitControl.fromSlider();return;}
     delete state.precise[name];
     if(name==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams(name);updateEngineInfo();
@@ -804,6 +820,7 @@ $("#decimal-digits").addEventListener("change",()=>{
   lowUnitControl.refresh();
   highUnitControl.refresh();
   pivotUnitControl.refresh();
+  aMinUnitControl.refresh();
   updateSineLabel();
 });
 $("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
@@ -1009,12 +1026,13 @@ $("#settings-reset").addEventListener("click",()=>{
   lowUnitControl.reset();
   highUnitControl.reset();
   pivotUnitControl.reset();
+  aMinUnitControl.reset();
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#harmonic-pivot-link").checked=false;
   $("#engine-auto").checked=false;
-  $("#a-min").value="200";$("#a-reverb").value="0";
-  $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
+  $("#a-reverb").value="0";
+  $("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="880";
   $("#crusher-bits-value").value="8";
