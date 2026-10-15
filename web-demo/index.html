@@ -255,7 +255,19 @@
 // Layout inspector is strictly opt-in: normal page visitors never load its code.
 let debugMode = false;
 try { debugMode = localStorage.getItem("frequency-warp:debug-mode:v1") === "1"; } catch {}
-if (new URL(location.href).searchParams.get("layout_editor") === "1" || debugMode) {
+const params = new URL(location.href).searchParams;
+if (params.get("visual_editor_v2") === "1") {
+  // Explicit opt-in pilot: preserve the published inspector as the default.
+  import("./visual-editor-platform/ui.mjs").then(({mountVisualEditor}) => mountVisualEditor({
+    nodeMap: {
+      "player.title": "player-title",
+      "controls.title": "control-title",
+      "graph.title": "graph-title",
+      "engine.summary": "engine-summary",
+      "listening.guide": "listening-guide"
+    }
+  })).catch(error => console.error("Visual editor pilot unavailable:", error));
+} else if (params.get("layout_editor") === "1" || debugMode) {
   import("./visual-editor.mjs");
 }
 </script>
