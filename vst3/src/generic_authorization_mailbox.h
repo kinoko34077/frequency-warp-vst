@@ -105,6 +105,20 @@ public:
         for(unsigned i=0;i<kCapacity && queue_.pop(next);++i)
             rtOwned_=next;
     }
+    // RT-owned snapshot is immutable until the next rtAdopt() boundary.
+    // Worker may revoke the atomic ticket at any time; caller must propagate
+    // this ticket to its PCM job and recheck before mixing delayed wet.
+    const GenericAuthorizationSnapshot* rtLiveSnapshot() const noexcept {
+        const auto ticket=activeTicket_.load(std::memory_order_acquire);
+        return ticket!=0 && rtOwned_.ticket==ticket ? &rtOwned_ : nullptr;
+    }
+    bool rtTicketLive(std::uint64_t ticket) const noexcept {
+        return ticket!=0 && activeTicket_.load(std::memory_order_acquire)==ticket;
+    }
+    // Worker-thread API: useful only while its verified native handle lives.
+    std::uint64_t workerCurrentTicket() const noexcept {
+        return activeTicket_.load(std::memory_order_acquire);
+    }
     bool rtAllows(std::uint32_t slot,std::uint64_t generation,
                   const std::array<std::uint8_t,32>& sha) const noexcept {
         if(slot<64||slot>127 || !rtOwned_.ticket ||
