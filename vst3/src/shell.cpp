@@ -1006,7 +1006,13 @@ public:
         if(const char* enabled=std::getenv("FW_VST3_WEBVIEW2_PREVIEW");
            enabled && std::strcmp(enabled,"1")==0 &&
            Win32WebView2Editor::runtimeAvailable())
-            return new Win32WebView2Editor(this);
+            return new Win32WebView2Editor(this,[this]() -> std::uint64_t {
+                // An asynchronous host message refreshes permission; stale
+                // snapshots time out fail-closed within 300ms. No GUI call
+                // ever derives authority from local HTML or a raw WASM mask.
+                queryNewGenericStatus();
+                return currentVerifiedGenericUiMask();
+            });
 #endif
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
