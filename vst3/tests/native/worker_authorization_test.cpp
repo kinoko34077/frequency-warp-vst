@@ -1,5 +1,6 @@
 #include "../../src/native_worker_service.h"
 #include "../../src/slot_binding_identity.h"
+#include "../../src/explicit_generic_ledger_commit_gate.h"
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -87,7 +88,76 @@ int main(int argc,char** argv) {
              "D7A escrow must contain same-live-WASM numeric evidence, no ticket");
         need(worker.genericAuthorization().workerCurrentTicket()==0,
              "candidate must not authorize DAW audio");
+        need(!worker.postCommitPreparedNewLedger(850,false),
+             "new binding cannot commit without explicit request");
+        need(!worker.postCommitPreparedNewLedger(851,true),
+             "incorrect request cannot commit a candidate");
+        need(worker.postCommitPreparedNewLedger(850,true),
+             "request explicit same-worker commit");
+        need(until([&]{return (worker.lastCommittedLedgerWord()>>1)==850;}),
+             "worker commit completion missing");
+        need((worker.lastCommittedLedgerWord()&1)!=0,
+             "worker did not commit valid candidate");
+        fw::NativeWorkerService::PreparedNewLedger committed{};
+        need(worker.readCommittedNewLedger(committed) &&
+             committed.requestId==850 && committed.authorizedTicket!=0 &&
+             committed.stagedAuthorization.allowedMask==1 &&
+             committed.encodedLedger==prepared.encodedLedger &&
+             committed.packageSha256==accepted.packageSha256,
+             "atomic worker commit differs from live engine proof");
+        fw::GenericNewLedgerEvidence evidence{};
+        evidence.requestId=committed.requestId;
+        evidence.authorizedTicket=committed.authorizedTicket;
+        evidence.acceptedGeneration=committed.acceptedGeneration;
+        evidence.packageSha256=committed.packageSha256;
+        evidence.authorizedMask=committed.stagedAuthorization.allowedMask;
+        evidence.encodedLedger=committed.encodedLedger;
+        fw::VerifiedProjectEngine current{};
+        current.active=true;
+        current.package=accepted.package;
+        current.engineId=accepted.engineId;
+        current.sha256=accepted.packageSha256;
+        current.acceptedGeneration=accepted.acceptedGeneration;
+        std::vector<std::uint8_t> selected{};
+        need(fw::selectExplicitNewLedgerForCommit(
+                evidence,current,850,worker.genericAuthorization().workerCurrentTicket(),
+                1,{},true,selected) && selected==committed.encodedLedger,
+             "Processor D5 exact project commit gate rejects worker authority");
+        const auto exactSelected=selected;
+        // Real project persistence contract: an accepted new Worker-ledger
+        // must serialize as FWS3 with exact package/semantic identity, and
+        // re-open without silently interpreting the same slot differently.
+        fw::EngineProjectState savedProject=project;
+        savedProject.bindingLedger=exactSelected;
+        const auto serialized=fw::encodeEngineProjectState(savedProject);
+        fw::EngineProjectState reopened{};
+        need(serialized.size()>12 && serialized[4]==3 &&
+             fw::decodeEngineProjectState(
+                 serialized.data(),serialized.size(),reopened) &&
+             reopened.package==gain &&
+             reopened.bindingLedger==exactSelected &&
+             fw::matchSavedBindingToVerifiedEngine(reopened,current),
+             "new FWS3 project cannot roundtrip with verified Gain identity");
+        auto changed=current;
+        changed.sha256[0]^=1;
+        need(!fw::matchSavedBindingToVerifiedEngine(reopened,changed),
+             "saved Gain automation aliased a different package identity");
+        need(!fw::selectExplicitNewLedgerForCommit(
+                evidence,current,851,committed.authorizedTicket,1,{},true,selected) &&
+             selected==exactSelected,"wrong request mutated previously selected ledger");
+        need(!fw::selectExplicitNewLedgerForCommit(
+                evidence,current,850,committed.authorizedTicket,1,exactSelected,true,selected),
+             "silent migration of an existing FWS3 binding accepted");
+        auto& firstRT=worker.genericAuthorization();
+        firstRT.rtAdopt();
+        need(firstRT.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
+             "committed ticket was not visible to the RT mailbox");
+        need(!worker.postCommitPreparedNewLedger(850,true),
+             "second implicit commit/migration must be denied");
         need(worker.postAuthorization(project,doc,902),"request real WASM proof");
+        need(!worker.readCommittedNewLedger(committed) &&
+             !firstRT.rtAllows(64,accepted.acceptedGeneration,accepted.packageSha256),
+             "new command failed to revoke prior committed binding and ticket");
         need(until([&]{return (worker.lastAuthorizationWord()>>1)==902;}),
              "authorization completion");
         need((worker.lastAuthorizationWord()&1)!=0,

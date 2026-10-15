@@ -36,6 +36,7 @@ public:
         std::uint64_t acceptedGeneration=0;
         std::array<std::uint8_t,32> packageSha256{};
         std::vector<std::uint8_t> encodedLedger{};
+        std::uint64_t authorizedTicket=0; // populated on committed read only
         // D7A: worker-attested but NOT yet published to RT. The ticket must
         // remain zero until D7B's fenced explicit persistence transaction.
         GenericAuthorizationSnapshot stagedAuthorization{};
@@ -64,6 +65,25 @@ public:
     }
     std::uint64_t lastPreparedLedgerWord() const noexcept {
         return lastPreparedLedger_.load(std::memory_order_acquire);
+    }
+    // D7B: observed only on the non-RT host. The worker commits the
+    // attested FWS3 bytes BEFORE publishing its RT ticket in one mutex fence.
+    // This result is the logical project-state source for Processor getState.
+    std::uint64_t lastCommittedLedgerWord() const noexcept {
+        return lastCommittedLedger_.load(std::memory_order_acquire);
+    }
+    bool readCommittedNewLedger(PreparedNewLedger& out) {
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(commandPending_ || stopping_.load(std::memory_order_acquire) ||
+           status_.load(std::memory_order_acquire)!=Status::Ready ||
+           committed_.encodedLedger.empty()||!committedTicket_ ||
+           committed_.acceptedGeneration!=
+               accepted_.load(std::memory_order_acquire)||
+           genericAuthorization_.workerCurrentTicket()!=committedTicket_)
+            return false;
+        out=committed_;
+        out.authorizedTicket=committedTicket_;
+        return true;
     }
     NativeWorkerService() {
         // Same stable object lifetime as the worker, never configured by RT.
@@ -156,6 +176,7 @@ public:
         pending_.requestId=requestId;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
+        committed_=PreparedNewLedger{};committedTicket_=0;
         genericAuthorization_.workerRevoke(); // pending replacement is inert
         return true;
     }
@@ -172,6 +193,7 @@ public:
         pending_.requestId=requestId;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
+        committed_=PreparedNewLedger{};committedTicket_=0;
         genericAuthorization_.workerRevoke();
         return true;
     }
@@ -195,6 +217,7 @@ public:
         pending_.requestId=requestId;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
+        committed_=PreparedNewLedger{};committedTicket_=0;
         genericAuthorization_.workerRevoke();
         return true;
     }
@@ -208,13 +231,39 @@ public:
            descriptor.empty()||descriptor.size()>65536)return false;
         std::lock_guard<std::mutex> guard(commandMutex_);
         if(commandPending_||stopping_.load(std::memory_order_acquire)||
-           status_.load(std::memory_order_acquire)!=Status::Ready)return false;
+           status_.load(std::memory_order_acquire)!=Status::Ready||
+           !committed_.encodedLedger.empty())return false;
         pending_=Request{};
         pending_.descriptor=std::move(descriptor);
         pending_.requestId=requestId;
         pending_.prepareLedger=true;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
+        // Never replace an already-committed FWS3 binding through candidate
+        // preparation. Previous live authorizations stay as-is.
+        return true;
+    }
+    // The Processor MUST check its saved ledger is empty while holding
+    // projectStateMutex_ before posting. A later explicit new binding
+    // operation cannot silently migrate any prior project mapping.
+    bool postCommitPreparedNewLedger(std::uint64_t requestId,
+                                     bool explicitUserIntent) {
+        if(!explicitUserIntent||!thread_.joinable()||requestId==0||
+           requestId>static_cast<std::uint64_t>(INT64_MAX))return false;
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(commandPending_||stopping_.load(std::memory_order_acquire)||
+           status_.load(std::memory_order_acquire)!=Status::Ready ||
+           prepared_.requestId!=requestId||
+           prepared_.encodedLedger.empty()||!committed_.encodedLedger.empty()||
+           prepared_.stagedAuthorization.allowedMask==0 ||
+           prepared_.stagedAuthorization.ticket!=0 ||
+           prepared_.acceptedGeneration!=
+               accepted_.load(std::memory_order_acquire))
+            return false;
+        pending_=Request{};
+        pending_.commitLedger=true;
+        pending_.requestId=requestId;
+        commandPending_=true;
         return true;
     }
     // NonRT only. Host must quiesce audio process first.
@@ -228,6 +277,8 @@ public:
             std::lock_guard<std::mutex> lock(commandMutex_);
             pending_=Request{};commandPending_=false;
             prepared_=PreparedNewLedger{};
+            committed_=PreparedNewLedger{};
+            committedTicket_=0;
         }
         // No worker or audio callback remains; all pending PCM is discarded.
         mailbox_.detachWorkerWhenStopped();
@@ -243,6 +294,7 @@ private:
         bool unload=false;
         bool authorize=false;
         bool prepareLedger=false;
+        bool commitLedger=false;
         EngineProjectState project{};
         std::vector<std::uint8_t> descriptor{};
     };
@@ -391,6 +443,51 @@ private:
                 }
                 lastAuthorization_.store((req.requestId<<1)|(approved?1ull:0ull),
                                          std::memory_order_release);
+            } else if(haveCommand && req.commitLedger) {
+                bool committed=false;
+                // This single worker-side fence owns both the logical FWS3
+                // commit and permission publication. No GUI thread calls
+                // workerPublish (SPSC producer remains the Worker).
+                {
+                    std::lock_guard<std::mutex> guard(commandMutex_);
+                    if(!commandPending_ &&
+                       !stopping_.load(std::memory_order_acquire) &&
+                       status_.load(std::memory_order_acquire)==Status::Ready &&
+                       committed_.encodedLedger.empty() &&
+                       prepared_.requestId==req.requestId &&
+                       !prepared_.encodedLedger.empty() &&
+                       prepared_.acceptedGeneration!=0 &&
+                       prepared_.acceptedGeneration==
+                           accepted_.load(std::memory_order_acquire) &&
+                       prepared_.stagedAuthorization.ticket==0 &&
+                       prepared_.stagedAuthorization.allowedMask!=0 &&
+                       prepared_.stagedAuthorization.acceptedGeneration==
+                           prepared_.acceptedGeneration &&
+                       prepared_.stagedAuthorization.verifiedPackageSha256==
+                           prepared_.packageSha256) {
+                        committed_=std::move(prepared_);
+                        // Ledger state becomes committed BEFORE any RT ticket
+                        // becomes visible. Failed publication rolls back.
+                        committed=genericAuthorization_.workerPublish(
+                            committed_.stagedAuthorization,
+                            committed_.acceptedGeneration,
+                            committed_.packageSha256);
+                        if(committed) {
+                            committedTicket_=
+                                genericAuthorization_.workerCurrentTicket();
+                            workerAuthorized_=committed_.stagedAuthorization;
+                            workerAuthorized_.ticket=committedTicket_;
+                            workerNativeActive_=active;
+                        } else {
+                            committed_=PreparedNewLedger{};
+                            committedTicket_=0;
+                            workerAuthorized_=GenericAuthorizationSnapshot{};
+                        }
+                    }
+                    lastCommittedLedger_.store(
+                        (req.requestId<<1)|(committed?1ull:0ull),
+                        std::memory_order_release);
+                }
             } else if(haveCommand && req.prepareLedger) {
                 PreparedNewLedger pending{};
                 bool prepared=false;
@@ -524,6 +621,8 @@ private:
                 {
                     std::lock_guard<std::mutex> guard(commandMutex_);
                     prepared_=PreparedNewLedger{};
+                    committed_=PreparedNewLedger{};
+                    committedTicket_=0;
                 }
                 mailbox_.workerConfigure(nullptr,nullptr,0);
                 fw_native_destroy(std::exchange(active,nullptr));
@@ -548,6 +647,8 @@ private:
     std::mutex commandMutex_{};
     Request pending_{};
     PreparedNewLedger prepared_{}; // commandMutex_ protected, never RT-owned
+    PreparedNewLedger committed_{}; // commandMutex_ protected; saved state evidence
+    std::uint64_t committedTicket_=0;
     bool commandPending_=false;
     std::atomic<bool> stopping_{true};
     std::atomic<Status> status_{Status::Stopped};
@@ -556,6 +657,7 @@ private:
     std::atomic<uint64_t> lastCompleted_{0};
     std::atomic<uint64_t> lastAuthorization_{0};
     std::atomic<uint64_t> lastPreparedLedger_{0};
+    std::atomic<uint64_t> lastCommittedLedger_{0};
     mutable std::mutex verifiedMutex_{};
     VerifiedIdentitySnapshot verified_{}; // success-confirmed only
 
