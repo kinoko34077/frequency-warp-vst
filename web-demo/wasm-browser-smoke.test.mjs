@@ -57,7 +57,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#mode",el=>[...el.options].some(x=>x.value==="blend")),false,"simple blend must not be user-selectable");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
-    assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"0");
     // Fold/reference Hz must remain visible without opening the tooltip.
     const shapeMarker=await page.$eval("#invert-reference-hz",el=>({
       text:el.textContent,
@@ -332,7 +332,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/連動対象なし/);
     await page.select("#mode","fold-h");
     assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
-    assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
+    assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/α=/);
 
     await page.click("#tab-map");
     // Emulate a Touch PointerEvent at iPhone 390px; verify a lower thumb
