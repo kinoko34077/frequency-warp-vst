@@ -563,6 +563,45 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
     }
+    // A19: 0.001 Hz theoretical F is allowed to coexist with a 1 Hz
+    // effective Rust transform reference. It must not stop audible playback.
+    // Floating HUD changes also must NOT move the player buttons.
+    const priorButtons=await page.$eval("#play-wet",node=>{
+      const r=node.getBoundingClientRect();
+      return {x:r.x,y:r.y,width:r.width,height:r.height};
+    });
+    const priorAck=await page.$eval("#rt-indicator",el=>
+      Number(el.dataset.appliedRevision||0));
+    await page.$eval("#fundamental",el=>{
+      el.value="0.001";
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(rev=>
+      Number(document.querySelector("#rt-indicator").dataset.appliedRevision||0)>rev
+      &&document.querySelector("#status").textContent.includes("1 Hz"),{
+        timeout:16000
+      },priorAck);
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),.001,
+      "sub-Hz theoretical control must remain untouched");
+    assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/稼働中/);
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false);
+    assert.equal(await page.$eval("#runtime-hud",el=>
+      getComputedStyle(el).position),"fixed");
+    const afterButtons=await page.$eval("#play-wet",node=>{
+      const r=node.getBoundingClientRect();
+      return {x:r.x,y:r.y,width:r.width,height:r.height};
+    });
+    assert.deepEqual(afterButtons,priorButtons,
+      "floating parameter/status text must not resize or shift transport controls");
+    const subHzAck=await page.$eval("#rt-indicator",el=>
+      Number(el.dataset.appliedRevision||0));
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(rev=>
+      Number(document.querySelector("#rt-indicator").dataset.appliedRevision||0)>rev,{
+        timeout:16000
+      },subHzAck);
     const before=await page.$eval("#elapsed",n=>n.textContent);
     // Dragging the actual reflected-rate thumb during live AudioWorklet
     // playback must go through the SAME Rust setter as the old range.
