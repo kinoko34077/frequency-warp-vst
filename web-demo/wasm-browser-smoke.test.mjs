@@ -511,6 +511,26 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
+    // AUD-05: the independent original player has no DSP feedback tracker.
+    // Reset must neither throw TypeError nor interrupt original transport.
+    const resetPage=await browser.newPage();
+    const resetErrors=[];
+    resetPage.on("pageerror",e=>resetErrors.push(e.message));
+    await resetPage.goto("http://127.0.0.1:8765/index.html");
+    await resetPage.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:15000});
+    await (await resetPage.$("#audio-file")).uploadFile(wavPath);
+    await resetPage.waitForFunction(()=>!document.querySelector("#play-dry").disabled,{timeout:20000});
+    await resetPage.click("#play-dry");
+    await resetPage.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:12000});
+    await resetPage.click("#settings-open");
+    await resetPage.click("#settings-reset");
+    assert.equal(resetErrors.length,0,
+      "Settings Reset while original-only transport is active must not access absent DSP feedback: "+
+      resetErrors.join("; "));
+    assert.match(await resetPage.$eval("#status",el=>el.textContent),/初期値.*原音は再生中/);
+    assert.equal(await resetPage.$eval("#stop",el=>el.disabled),false);
+    await resetPage.close();
+
     // AUD-03: a stale wet request waiting on worklet module registration
     // must not start or replace a newer decoded file's original playback.
     // This deliberately holds the *first* audio-worklet module load.
