@@ -625,7 +625,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
       el=>el.textContent),"¢");
     assert.match(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
-      el=>el.getAttribute("aria-label")),"セント");
+      el=>el.getAttribute("aria-label")),/セント/);
     await page.select("#pitch-ratio-unit","ratio");
 
     // Browser-only reference sine still has ONE physical Hz authority;
