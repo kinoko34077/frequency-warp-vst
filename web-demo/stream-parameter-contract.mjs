@@ -8,13 +8,38 @@ export function validateStreamSettings(p){
     ["low",0.001,20000,"処理下限 L"],["high",0.001,20000,"処理上限 H"],
     ["axisPivot",0,20000,"物理起点 P"],["aMinHz",0.001,20000,"A抽出下限"],
     ["pitchRatio",0.000000000001,4,"ピッチ比 r"],["carrierHz",-1,20000,"搬送波 c"],
-    ["axisShift",-4,4,"変換位置 u"],["axisSlope",-4,4,"物理傾き s"]
+    ["axisShift",-4,4,"変換位置 u"],["axisSlope",-4,4,"物理傾き s"],
+    // Each later Rust stream setter validates independently after set_ext.
+    // Reject the full snapshot BEFORE any live stream mutation can begin.
+    ["curvature",0,1,"曲率"],["invert",0,1,"反転率"],
+    ["aReverb",0,1,"A残響"],["zeroReflectGain",0,1,"反射合成率"],
+    ["zeroReflectDecay",0,1,"反射減衰率"]
   ];
   for(const [key,min,max,label] of ranges){
     if(!finite(p[key])||p[key]<min||p[key]>max)
       return failed(key,label+"が現行DSPの範囲（"+min+"〜"+max+"）外です。");
   }
-  if(p.low>=p.high)return failed("low","処理周波数は L < H が必要です。");
+  // Rust u32 setters do not preserve invalid, fractional or negative UI
+  // values. Reject instead of silently coercing via a WebAssembly argument.
+  const integers=[
+    ["qualityIndex",0,2,"FFT品質"],["engine",0,3,"処理エンジン"],
+    ["zeroMode",0,2,"ゼロ周波数モード"],["aBandBins",1,8,"A抽出帯域"],
+    ["aQuality",0,100,"A再合成精細度"],["crusherHold",0,1000000000,"ビットクラッシャー保持長"]
+  ];
+  for(const [key,min,max,label] of integers){
+    if(!Number.isSafeInteger(p[key])||p[key]<min||p[key]>max)
+      return failed(key,label+"が現行DSPの整数範囲（"+min+"〜"+max+"）外です。");
+  }
+  if(![4,8].includes(p.hopDiv))
+    return failed("hopDiv","処理hopは4または8にしてください。");
+  if(p.crusherBits!==0&&
+     (!Number.isSafeInteger(p.crusherBits)||p.crusherBits<2||p.crusherBits>16))
+    return failed("crusherBits","量子化bit数はOFF（0）または2〜16にしてください。");
+  if(!["fold-h","fold-l","reciprocal","blend"].includes(p.mode))
+    return failed("mode","反転進行の種類が現行DSPに非対応です。");
+  if(p.outside!=="pass"&&p.outside!=="kill")
+    return failed("outside","L/H外側の処理が現行DSPに非対応です。");
+    if(p.low>=p.high)return failed("low","処理周波数は L < H が必要です。");
   const rate=p.sampleRate;
   if(!finite(rate)||rate<=0)return failed("sampleRate","処理サンプルレートが不正です。");
   if(p.high>=rate/2)return failed("high","上限Hは現在のサンプルレートのナイキスト周波数未満にしてください。");
