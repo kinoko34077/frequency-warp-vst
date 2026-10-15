@@ -72,6 +72,8 @@ export function initEditorInteractions({host,shadow,choose,getSelected,isPicking
   let clipboard=null,pressTimer=null,pressStart=null,suppressClick=false;
   const active=()=>host.isConnected&&!host.hidden&&isPicking();
   const isSettingsAction=event=>event.target instanceof Element&&Boolean(event.target.closest('#settings-dialog,#settings-open,#settings-inline'));
+  // Snap control context menus take priority even in layout-inspector mode.
+  const isSnapControl=event=>event.target instanceof Element&&Boolean(event.target.closest('[data-fw-snap-control]'));
   const safeParent=el=>Boolean(el?.parentElement&&/flex|grid/.test(getComputedStyle(el.parentElement).display));
   const peers=el=>[...el.parentElement.children].sort((a,b)=>{
     const x=parseInt(getComputedStyle(a).order)||0,y=parseInt(getComputedStyle(b).order)||0;
@@ -131,14 +133,14 @@ export function initEditorInteractions({host,shadow,choose,getSelected,isPicking
     const b=event.target.closest('button[data-context]');if(b&&!b.disabled)act(b.dataset.context);
   });
   document.addEventListener('contextmenu',event=>{
-    if(!active()||event.composedPath().includes(host)||isSettingsAction(event))return;
+    if(!active()||event.composedPath().includes(host)||isSettingsAction(event)||isSnapControl(event))return;
     const target=event.target instanceof Element?event.target:null;
     if(!target)return;
     event.preventDefault();event.stopImmediatePropagation();openMenu(event.clientX,event.clientY,target);
   },true);
   function cancelLongPress(){if(pressTimer!==null)clearTimeout(pressTimer);pressTimer=null;pressStart=null;}
   document.addEventListener('pointerdown',event=>{
-    if(!active()||event.pointerType!=='touch'||event.composedPath().includes(host)||isSettingsAction(event))return;
+    if(!active()||event.pointerType!=='touch'||event.composedPath().includes(host)||isSettingsAction(event)||isSnapControl(event))return;
     const target=event.target instanceof Element?event.target:null;
     if(!target)return;
     cancelLongPress();
