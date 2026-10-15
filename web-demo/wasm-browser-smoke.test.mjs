@@ -602,8 +602,15 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>typeof window.__auditModuleRelease==="function",
       {timeout:10000});
     await (await page.$("#audio-file")).uploadFile(replacementPath);
-    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("replacement.wav"),
+    await page.waitForFunction(()=>
+      document.querySelector("#file-meta").textContent.includes("replacement.wav") &&
+      !document.querySelector("#play-dry").disabled,
       {timeout:20000});
+    await page.evaluate(()=>{
+      window.__auditDryClicked=0;
+      document.querySelector("#play-dry").addEventListener("click",
+        ()=>window.__auditDryClicked++,{capture:true,once:true});
+    });
     await page.click("#play-dry");
     await page.waitForFunction(()=>
       document.querySelector("#rt-indicator").textContent.includes("原音再生中") &&
@@ -614,6 +621,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         statusKind:document.querySelector("#status")?.dataset.kind,
         meta:document.querySelector("#file-meta")?.textContent,
         dryDisabled:document.querySelector("#play-dry")?.disabled,
+        dryClickReceived:window.__auditDryClicked,
         wetDisabled:document.querySelector("#play-wet")?.disabled,
         stopDisabled:document.querySelector("#stop")?.disabled,
         workletLoadPending:typeof window.__auditModuleRelease==="function",
@@ -624,6 +632,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       })).catch(e=>({diagnosticError:e.message}));
       throw Error("Stale-Wet→new-Dry state: "+JSON.stringify(evidence)+" | "+error.message);
     });
+    assert.equal(await page.evaluate(()=>window.__auditDryClicked),1,
+      "a click must actually reach the enabled original-audio button");
     await page.evaluate(()=>window.__auditModuleRelease());
     await new Promise(resolve=>setTimeout(resolve,250));
     assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/原音再生中/,
