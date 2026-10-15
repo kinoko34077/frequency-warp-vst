@@ -625,7 +625,11 @@ async function stop(){
   state.transportEpoch++;
   if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
   const p=state.player;
-  if(!p){controls.stop.disabled=true;mediaStatus(false);return;}
+  if(!p){
+    controls.stop.disabled=true;mediaStatus(false);
+    indicator("停止中");
+    return;
+  }
   state.seek=playPosition();
   state.player=null;
   try{p.source?.stop();}catch{}
@@ -1145,6 +1149,7 @@ async function load(file){
     controls.stop.disabled=true;
     controls.render.disabled=false;controls.download.disabled=true;
     $("#progress").value=0;
+    indicator("停止中 · 音声選択済み");
     message("読み込み完了。再生できます。");
   }catch(error){
     if(token!==state.loadToken)return;
