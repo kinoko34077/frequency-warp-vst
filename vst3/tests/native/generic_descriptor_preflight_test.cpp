@@ -26,8 +26,8 @@ static std::string hashHex(const std::array<std::uint8_t,32>& bytes){
 static std::string doc(const std::string& hash,const std::string& unit="ratio"){
     // Same v1 outer schema as the unchanged website-side validator.
     return std::string(R"({"schema":"frequency-warp-ui-descriptors-v1","engine":{"id":"org.kinotch.gainhalf","version":"0.1.0","sha256":")")+
-        hash+R"("},"bindings":[{"host_slot":64,"semantic_id":"gain","label":"Gain","dimension":"ratio","canonical_unit":"ratio","min":0.25,"max":4,"default":1,"scale":"log","widget":"knob","display_units":[)"+
-        "\""+unit+"\""+R"(],"codec_revision":1,"snap":{"values":[0.5,1,2],"radius_normalized":0.03}}]})";
+        hash+R"("},"bindings":[{"host_slot":64,"semantic_id":"gain","label":"Gain","dimension":"signedRatio","canonical_unit":"ratio","min":0,"max":4,"default":0.5,"scale":"linear","widget":"knob","display_units":[)"+
+        "\""+unit+"\""+R"(],"codec_revision":1,"snap":{"values":[0,0.5,1],"radius_normalized":0.03}}]})";
 }
 static bool check(const FWNativeOpaque* h,const std::string& json,
                   unsigned slot=64,const std::string& semantic="gain",
@@ -54,6 +54,17 @@ int main(int argc,char** argv){
                 "expected verified Gain fixture ID");
         const auto valid=doc(hashHex(digest));
         require(check(g,valid),"valid engine-bound descriptor rejected");
+        // Same verified file hash and declared slot are NOT enough:
+        // every canonical parameter field must match WASM-owned bytes.
+        auto mismatchMax=valid;
+        mismatchMax.replace(mismatchMax.find("\"max\":4"),7,"\"max\":3");
+        require(!check(g,mismatchMax),"WASM canonical max disagreement passed");
+        auto mismatchDefault=valid;
+        mismatchDefault.replace(mismatchDefault.find("\"default\":0.5"),13,"\"default\":1.0");
+        require(!check(g,mismatchDefault),"WASM initial/default disagreement passed");
+        auto mismatchScale=valid;
+        mismatchScale.replace(mismatchScale.find("\"scale\":\"linear\""),16,"\"scale\":\"log\"");
+        require(!check(g,mismatchScale),"WASM canonical scale disagreement passed");
         require(!check(i,valid),"foreign engine ID passed");
         require(!check(l,valid),"legacy engine missing mask passed");
         require(!check(g,doc(std::string(64,'0'))),"mismatched engine bytes passed");

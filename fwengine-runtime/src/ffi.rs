@@ -108,11 +108,13 @@ pub unsafe extern "C" fn fw_native_preflight_generic_descriptor(
         let Some(id)=std::str::from_utf8(slice::from_raw_parts(semantic,semantic_len)).ok()
         else{return false;};
         let o=&*handle;
+        let data=slice::from_raw_parts(json,json_len);
         crate::descriptor::preflight(
-            slice::from_raw_parts(json,json_len),
-            &o.runtime.manifest.engine_id,
+            data,&o.runtime.manifest.engine_id,
             &o.package_hash,o.runtime.generic_slot_mask(),
-            slot,id,codec_revision)
+            slot,id,codec_revision) &&
+        o.runtime.generic_contract(slot).is_some_and(|canonical|
+            crate::descriptor::matches_wasm_semantics(data,canonical))
     })).unwrap_or(false)
 }
 fn intersects(a:usize,a_len:usize,b:usize,b_len:usize)->bool {

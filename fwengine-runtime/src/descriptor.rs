@@ -174,6 +174,24 @@ pub fn preflight(data:&[u8], engine_id:&str, package_sha:&[u8;32],
     let mut visited=HashSet::new();
     target&&graph.keys().copied().all(|id|visit(id,&graph,&mut visiting,&mut visited))
 }
+/// R3B3 second, independent proof: compare the external UI view to the
+/// immutable WASM-authored canonical contract copied during preparation.
+/// A designer may change *display-only* fields and widgets, but must not
+/// change DSP semantic id, canonical min/max/default, scale or codec.
+pub fn matches_wasm_semantics(data:&[u8],attested:&crate::module_contract::Canonical)->bool {
+    if data.is_empty()||data.len()>MAX_BYTES{return false}
+    let Ok(doc)=serde_json::from_slice::<DescriptorFile>(data) else{return false};
+    doc.bindings.iter().any(|b|{
+        b.host_slot==attested.host_slot &&
+        b.semantic_id==attested.semantic_id &&
+        b.codec_revision==attested.codec_revision &&
+        b.dimension==attested.dimension &&
+        b.canonical_unit==attested.canonical_unit &&
+        b.min==attested.min && b.max==attested.max &&
+        b.default==attested.default && b.scale==attested.scale &&
+        b.steps==attested.steps
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;
