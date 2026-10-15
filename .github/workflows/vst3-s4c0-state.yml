@@ -2,6 +2,7 @@ name: S4c0 VST3 saved engine state codec
 on:
   pull_request:
     paths:
+      - 'vst3/src/ui_asset_policy.h'
       - 'vst3/src/engine_project_state.h'
       - 'vst3/src/parameter_state_mailbox.h'
       - 'vst3/src/shell.cpp'
@@ -10,6 +11,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'vst3/src/ui_asset_policy.h'
       - 'vst3/src/engine_project_state.h'
       - 'vst3/src/parameter_state_mailbox.h'
       - 'vst3/src/shell.cpp'
