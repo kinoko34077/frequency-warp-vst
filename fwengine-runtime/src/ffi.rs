@@ -90,6 +90,18 @@ pub unsafe extern "C" fn fw_native_generic_slot_mask(handle:*const Opaque)->u64 
     if handle.is_null(){return 0;}
     (*handle).runtime.generic_slot_mask()
 }
+// R3C1 NON-RT validation only; does not authorize DAW events.
+// R3C2 must still match active FWS3 ledger, generation and trusted UI
+// descriptor before calling any worker route for these slots.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_generic_value_in_contract(
+    handle:*const Opaque,slot:u32,value:f64
+)->bool {
+    if handle.is_null()||!(64..=127).contains(&slot){return false;}
+    let rt=&(*handle).runtime;
+    rt.generic_slot_mask()&(1u64<<(slot-64))!=0 &&
+        rt.generic_contract(slot).is_some_and(|b|b.contains_event_value(value))
+}
 /// R3B2 necessary-only NON-RT descriptor preflight, NOT DAW edit authority.
 /// Validate exact native worker-prepared engine/hash, declared capability mask,
 /// JSON schema/units/ranges and caller-requested semantic ID+codec.
