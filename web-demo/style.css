@@ -517,3 +517,11 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
  .bounds-heading .unit-value-tools .inline-value{width:86px!important;min-width:72px}
  .unit-value-tools select{min-width:58px;font-size:10px}
 }
+
+/* #79: F uses the same responsive selector and 6px snap control as L/H/P. */
+.math-field>.unit-value-tools{justify-content:flex-end;max-width:100%;gap:4px}
+.math-field>.unit-value-tools .inline-value{width:100px!important;max-width:110px;min-width:75px}
+@media(max-width:450px){
+ .math-field>.unit-value-tools{flex-wrap:wrap;justify-content:flex-start}
+ .math-field>.unit-value-tools .inline-value{width:85px!important}
+}
