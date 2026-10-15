@@ -130,7 +130,7 @@ automation record/playback unverified.
 UI-4: generic descriptor schema/preflight, 64..127 slot identity,
 WASM capability/semantic/numeric proof, saved FWS3 association, fixed-capacity
 sample-offset generic host→WASM routing and worker-only new-ledger candidate
-preparation — source/CI accepted in stages R0–R3C2D6 (PRs #153–#203; owner #172).
+preparation — source/CI accepted in stages R0–R3C2D6 (owners #145/#172; individually evidenced PRs #153/#155/#156/#157/#159/#160/#162/#164/#190/#193/#194/#195/#197/#198/#199/#200/#202/#203).
 **Unfinished:** explicitly requested atomic *new* FWS3 ledger persistence
 and live-ticket authorization, trusted WebView2 generic begin/perform/end,
 echo-free DAW value return and physical host regression. Read-only candidate
