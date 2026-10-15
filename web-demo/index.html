@@ -95,7 +95,7 @@
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><label for="low">下限 <input class="inline-value" id="low-value" type="number" min="0.001" max="20000" step="0.001" value="20"> Hz</label><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="0.001" max="20000" step="0.001" value="16000"> Hz</label></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><span class="unit-value-tools"><label for="low-value">下限 <input class="inline-value" id="low-value" type="text" value="20" spellcheck="false" autocapitalize="off" aria-label="下限の数値・音名入力"></label><select id="low-unit" aria-label="下限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select><label class="snap-toggle" for="low-snap"><input id="low-snap" type="checkbox" aria-label="下限の音名半音吸着">吸着</label></span><label for="high">上限 <input class="inline-value" id="high-value" type="number" min="0.001" max="20000" step="0.001" value="16000"> Hz</label></div>
             <div class="dual-range shared-dual-track" id="dual-range" aria-label="帯域下限Lと帯域上限Hを操作するデュアルサム">
               <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="200" tabindex="-1" aria-hidden="true">
               <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="974" tabindex="-1" aria-hidden="true">
@@ -247,11 +247,5 @@
 </dialog>
 <script defer src="./entry-controls.js"></script>
 <script type="module" src="./app.mjs"></script>
-<script type="module">
-// Layout inspector is strictly opt-in: normal page visitors never load its code.
-if (new URL(location.href).searchParams.get("layout_editor") === "1") {
-  import("./visual-editor.mjs");
-}
-</script>
 </body>
 </html>
