@@ -50,3 +50,7 @@ add_test(NAME fw_explicit_generic_ledger_commit_gate_test COMMAND fw_explicit_ge
 add_executable(fw_generic_ui_authority_gate_test generic_ui_authority_gate_test.cpp)
 target_compile_features(fw_generic_ui_authority_gate_test PRIVATE cxx_std_17)
 add_test(NAME fw_generic_ui_authority_gate_test COMMAND fw_generic_ui_authority_gate_test)
+
+add_executable(fw_ui_asset_policy_test ui_asset_policy_test.cpp)
+target_compile_features(fw_ui_asset_policy_test PRIVATE cxx_std_17)
+add_test(NAME fw_ui_asset_policy_test COMMAND fw_ui_asset_policy_test)
