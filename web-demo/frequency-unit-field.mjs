@@ -15,6 +15,11 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
     (Number(slider.max)-Number(slider.min))+Number(slider.min)));};
   let lastRendered="";
   const display=(force=false)=>{
+    // A 0-Hz pivot has no musical-note spelling. Recover into a valid
+    // physical view instead of throwing and breaking live controls.
+    if(binding.value<=0&&binding.unit==="note"){
+      binding.selectUnit("hz");select.value="hz";
+    }
     if(force || field.ownerDocument.activeElement!==field){
       field.value=String(binding.display(getDigits()));
       lastRendered=field.value;
@@ -58,6 +63,9 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
     if(event.key==="Enter")field.blur();
   });
   select.addEventListener("change",()=>{
+    if(select.value==="note" && binding.value<=0){
+      select.value="hz"; // 0Hz is undefined as musical pitch
+    }
     binding.selectUnit(select.value);
     dirty=false;
     display(true); // unit notation must never change DSP value
