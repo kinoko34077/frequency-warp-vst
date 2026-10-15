@@ -8,7 +8,7 @@ import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetRatioUnit} from "./harmonics-panel.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
-import {mountFrequencyUnitField} from "./frequency-unit-field.mjs";
+import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -18,7 +18,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
-let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null;
+let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null;
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -63,13 +63,15 @@ const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
-  name==="a-min"&&aMinUnitControl?aMinUnitControl.value:(state.precise[name]??fallback());
+  name==="a-min"&&aMinUnitControl?aMinUnitControl.value:
+  name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:(state.precise[name]??fallback());
 function showNumber(id,value){
   const field=$("#"+id);
   if(id==="low-value"&&lowUnitControl){lowUnitControl.refresh();return;}
   if(id==="high-value"&&highUnitControl){highUnitControl.refresh();return;}
   if(id==="axis-pivot-value"&&pivotUnitControl){pivotUnitControl.refresh();return;}
   if(id==="a-min-value"&&aMinUnitControl){aMinUnitControl.refresh();return;}
+  if(id==="axis-slope-value"&&slopeUnitControl){slopeUnitControl.refresh();return;}
   if(id==="sine-hz"&&sineUnitControl){sineUnitControl.refresh();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
@@ -724,6 +726,22 @@ aMinUnitControl=mountFrequencyUnitField({
   getDigits:displayDigits,initialValue:20,
   onValueChange:()=>{updateParams("a-min");updateEngineInfo();}
 });
+// Signed slope s has no pitch or Hz interpretation: only signed × and the
+// original linear physical rail%, with optional anchors −1, 0, +1.
+slopeUnitControl=mountParameterUnitField({
+  descriptor:defineParameter({
+    id:"axis-slope",min:-4,max:4,defaultValue:1,
+    units:["ratio","percent"],
+    rail:{toPosition:value=>(value+4)/8,fromPosition:t=>8*t-4},
+    digits:3,
+    snap:{unit:"ratio",mode:"targets",targets:[-1,0,1],
+          thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#axis-slope-value"),select:$("#axis-slope-unit"),
+  snapToggle:$("#axis-slope-snap"),slider:$("#axis-slope"),
+  railRoot:$("#axis-slope"),getDigits:displayDigits,initialValue:1,
+  onValueChange:()=>{updateParams("axis-slope");updateEngineInfo();}
+});
 // Other controls retain the legacy input binding until independently migrated.
 const inline={
   "a-band-value":["a-band",v=>v,"a-band",1,8],
@@ -734,7 +752,6 @@ const inline={
   "zero-decay-value":["zero-decay",v=>v,"zero-decay",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
-  "axis-slope-value":["axis-slope",v=>v,"axis-slope",-4,4],
   "wet-value":["wet",v=>v/100,"wet",0,100],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
   "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,192000]
@@ -805,6 +822,7 @@ for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay"
     if(name==="high"){highUnitControl.fromSlider();return;}
     if(name==="axis-pivot"){pivotUnitControl.fromSlider();return;}
     if(name==="a-min"){aMinUnitControl.fromSlider();return;}
+    if(name==="axis-slope"){slopeUnitControl.fromSlider();return;}
     delete state.precise[name];
     if(name==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams(name);updateEngineInfo();
@@ -822,12 +840,12 @@ $("#decimal-digits").addEventListener("change",()=>{
   highUnitControl.refresh();
   pivotUnitControl.refresh();
   aMinUnitControl.refresh();
+  slopeUnitControl.refresh();
   updateSineLabel();
 });
 $("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
 $("#slope-one").addEventListener("click",()=>{
-  delete state.precise["axis-slope"];
-  $("#axis-slope").value="1";
+  slopeUnitControl.setCanonical(1);
   updateParams("axis-slope");updateEngineInfo();
 });
 $("#axis-zero").addEventListener("click",()=>{
@@ -1019,7 +1037,7 @@ controls.download.addEventListener("click",()=>{
 // It remains available even when a Rust/DSP module import fails.
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-slope":"1",
+    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
@@ -1028,6 +1046,7 @@ $("#settings-reset").addEventListener("click",()=>{
   highUnitControl.reset();
   pivotUnitControl.reset();
   aMinUnitControl.reset();
+  slopeUnitControl.reset();
   resetRatioUnit();
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
