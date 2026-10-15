@@ -36,6 +36,9 @@ public:
         std::uint64_t acceptedGeneration=0;
         std::array<std::uint8_t,32> packageSha256{};
         std::vector<std::uint8_t> encodedLedger{};
+        // D7A: worker-attested but NOT yet published to RT. The ticket must
+        // remain zero until D7B's fenced explicit persistence transaction.
+        GenericAuthorizationSnapshot stagedAuthorization{};
     };
     // Non-RT read only: copy a prepared candidate only if it still belongs
     // to the active worker generation. This is NEVER a persisted binding or
@@ -48,6 +51,12 @@ public:
            status_.load(std::memory_order_acquire)!=Status::Ready ||
            prepared_.requestId!=requestId||
            prepared_.encodedLedger.empty()||
+           prepared_.stagedAuthorization.ticket!=0||
+           prepared_.stagedAuthorization.acceptedGeneration!=
+               prepared_.acceptedGeneration||
+           prepared_.stagedAuthorization.verifiedPackageSha256!=
+               prepared_.packageSha256||
+           prepared_.stagedAuthorization.allowedMask==0||
            prepared_.acceptedGeneration!=
                accepted_.load(std::memory_order_acquire))return false;
         out=prepared_;
@@ -402,7 +411,34 @@ private:
                             pending.acceptedGeneration=current.acceptedGeneration;
                             pending.packageSha256=current.packageSha256;
                             pending.encodedLedger=encodeBindingLedger(candidate);
-                            prepared=!pending.encodedLedger.empty();
+                            EngineProjectState image{};
+                            image.package=current.package;
+                            image.bindingLedger=pending.encodedLedger;
+                            const auto plan=buildGenericAuthorizationPlan(
+                                image,verified,fw_native_generic_slot_mask(active),
+                                req.descriptor,
+                                [active](const SlotBindingIdentity& binding,
+                                         const std::vector<std::uint8_t>& json) {
+                                    return fw_native_preflight_generic_descriptor(
+                                        active,json.data(),json.size(),binding.hostSlot,
+                                        reinterpret_cast<const std::uint8_t*>(
+                                            binding.semanticId.data()),
+                                        binding.semanticId.size(),binding.codecRevision);
+                                });
+                            // Numeric codec must be read from this SAME live
+                            // Wasmi engine, not from untrusted UI descriptor.
+                            prepared=!pending.encodedLedger.empty() &&
+                                buildGenericAuthorizationSnapshot(
+                                    plan,[active](std::uint32_t slot,
+                                                  FWNativeGenericCodec& codec) {
+                                        return fw_native_copy_generic_codec(
+                                            active,slot,&codec);
+                                    },pending.stagedAuthorization) &&
+                                pending.stagedAuthorization.ticket==0;
+                            // This branch never publishes a permission ticket.
+                            // A later explicit D7B commit must reacquire the
+                            // current worker+project identity and revalidate.
+
                         }
                     }
                 }catch(...) {prepared=false;}
