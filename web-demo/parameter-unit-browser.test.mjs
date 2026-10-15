@@ -98,8 +98,52 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.keyboard.press("ArrowRight");
     assert.ok(Number(await page.$eval("#low",el=>el.value))>=railStep);
 
+    // Upper H is a second independent binding with the same unit registry.
+    assert.deepEqual(await page.$eval("#high-unit option",items=>items.map(i=>i.value)),
+      ["hz","note","percent"]);
+    assert.equal(await page.$eval("#high-snap",el=>el.checked),false);
+    const highRailInitial=await page.$eval("#high",el=>el.value);
+    await page.select("#high-unit","note");
+    assert.equal(await page.$eval("#high",el=>el.value),highRailInitial,
+      "H unit-only changes must not update the DSP value");
+    await page.$eval("#high-value",el=>{
+      el.value="A5+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#high-unit","hz");
+    await page.focus("#high-value");
+    const highExact=Number(await page.$eval("#high-value",el=>el.value));
+    assert.ok(Math.abs(highExact-880*2**(25/1200))<1e-9);
+    await page.$eval("#high-value",el=>el.blur());
+    await page.select("#high-unit","percent");
+    const highPercent=Number(await page.$eval("#high-value",el=>el.value));
+    const expectedHighPercent=100*(.2+.8*Math.log(highExact/20)/Math.log(1000));
+    assert.ok(Math.abs(highPercent-expectedHighPercent)<.01);
+    await page.select("#high-unit","note");
+    await page.$eval("#high-value",el=>{
+      el.value="invalid";el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.select("#high-unit","hz");
+    await page.focus("#high-value");
+    assert.ok(Math.abs(Number(await page.$eval("#high-value",el=>el.value))-highExact)<1e-9);
+    await page.$eval("#high-value",el=>el.blur());
+
+    // H opt-in snap and keyboard gestures are a peer, not a new DSP path.
+    await page.$eval("#high-snap",el=>{el.checked=true;});
+    const highStep=Math.round(200+800*Math.log(880/20)/Math.log(1000));
+    await page.$eval("#high",(el,step)=>{
+      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },highStep);
+    await page.focus("#high-value");
+    assert.ok(Math.abs(Number(await page.$eval("#high-value",el=>el.value))-880)<1e-8);
+    await page.$eval("#high-value",el=>el.blur());
+    assert.equal(await page.$eval("#high-thumb",el=>el.getAttribute("aria-valuetext")),"880 Hz");
+
     await page.click("#settings-open");
     await page.click("#settings-reset");
+    assert.equal(await page.$eval("#high-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#high-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#high-value",el=>Number(el.value)),16000);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#low-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#low-value",el=>Number(el.value)),20);
