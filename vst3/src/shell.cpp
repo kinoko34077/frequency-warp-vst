@@ -8,6 +8,7 @@
 #include "engine_project_state.h"
 #include <climits>
 #include "win32_engine_editor.h"
+#include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
 #include <atomic>
