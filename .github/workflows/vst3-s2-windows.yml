@@ -13,6 +13,9 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+      - name: Verify local WebView host bridge including dynamic generic bindings
+        shell: bash
+        run: node --test vst3/ui/host-bridge.test.mjs
       - name: Fetch official Steinberg SDK with all recursive submodules
         shell: bash
         run: |
