@@ -65,6 +65,24 @@ public:
     std::uint64_t lastPreparedLedgerWord() const noexcept {
         return lastPreparedLedger_.load(std::memory_order_acquire);
     }
+    // D7B: observed only on the non-RT host. The worker commits the
+    // attested FWS3 bytes BEFORE publishing its RT ticket in one mutex fence.
+    // This result is the logical project-state source for Processor getState.
+    std::uint64_t lastCommittedLedgerWord() const noexcept {
+        return lastCommittedLedger_.load(std::memory_order_acquire);
+    }
+    bool readCommittedNewLedger(PreparedNewLedger& out) {
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(commandPending_ || stopping_.load(std::memory_order_acquire) ||
+           status_.load(std::memory_order_acquire)!=Status::Ready ||
+           committed_.encodedLedger.empty()||!committedTicket_ ||
+           committed_.acceptedGeneration!=
+               accepted_.load(std::memory_order_acquire)||
+           genericAuthorization_.workerCurrentTicket()!=committedTicket_)
+            return false;
+        out=committed_;
+        return true;
+    }
     NativeWorkerService() {
         // Same stable object lifetime as the worker, never configured by RT.
         mailbox_.workerSetTaggedValidator(&NativeWorkerService::validateTagged,this);
@@ -156,6 +174,7 @@ public:
         pending_.requestId=requestId;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
+        committed_=PreparedNewLedger{};committedTicket_=0;
         genericAuthorization_.workerRevoke(); // pending replacement is inert
         return true;
     }
@@ -195,6 +214,7 @@ public:
         pending_.requestId=requestId;
         commandPending_=true;
         prepared_=PreparedNewLedger{};
+        committed_=PreparedNewLedger{};committedTicket_=0;
         genericAuthorization_.workerRevoke();
         return true;
     }
@@ -217,6 +237,29 @@ public:
         prepared_=PreparedNewLedger{};
         return true;
     }
+    // The Processor MUST check its saved ledger is empty while holding
+    // projectStateMutex_ before posting. A later explicit new binding
+    // operation cannot silently migrate any prior project mapping.
+    bool postCommitPreparedNewLedger(std::uint64_t requestId,
+                                     bool explicitUserIntent) {
+        if(!explicitUserIntent||!thread_.joinable()||requestId==0||
+           requestId>static_cast<std::uint64_t>(INT64_MAX))return false;
+        std::lock_guard<std::mutex> guard(commandMutex_);
+        if(commandPending_||stopping_.load(std::memory_order_acquire)||
+           status_.load(std::memory_order_acquire)!=Status::Ready ||
+           prepared_.requestId!=requestId||
+           prepared_.encodedLedger.empty()||!committed_.encodedLedger.empty()||
+           prepared_.stagedAuthorization.allowedMask==0 ||
+           prepared_.stagedAuthorization.ticket!=0 ||
+           prepared_.acceptedGeneration!=
+               accepted_.load(std::memory_order_acquire))
+            return false;
+        pending_=Request{};
+        pending_.commitLedger=true;
+        pending_.requestId=requestId;
+        commandPending_=true;
+        return true;
+    }
     // NonRT only. Host must quiesce audio process first.
     void stop() noexcept {
         // Flip the worker stop gate before revocation; a pending worker
@@ -228,6 +271,8 @@ public:
             std::lock_guard<std::mutex> lock(commandMutex_);
             pending_=Request{};commandPending_=false;
             prepared_=PreparedNewLedger{};
+            committed_=PreparedNewLedger{};
+            committedTicket_=0;
         }
         // No worker or audio callback remains; all pending PCM is discarded.
         mailbox_.detachWorkerWhenStopped();
@@ -243,6 +288,7 @@ private:
         bool unload=false;
         bool authorize=false;
         bool prepareLedger=false;
+        bool commitLedger=false;
         EngineProjectState project{};
         std::vector<std::uint8_t> descriptor{};
     };
@@ -548,6 +594,8 @@ private:
     std::mutex commandMutex_{};
     Request pending_{};
     PreparedNewLedger prepared_{}; // commandMutex_ protected, never RT-owned
+    PreparedNewLedger committed_{}; // commandMutex_ protected; saved state evidence
+    std::uint64_t committedTicket_=0;
     bool commandPending_=false;
     std::atomic<bool> stopping_{true};
     std::atomic<Status> status_{Status::Stopped};
@@ -556,6 +604,7 @@ private:
     std::atomic<uint64_t> lastCompleted_{0};
     std::atomic<uint64_t> lastAuthorization_{0};
     std::atomic<uint64_t> lastPreparedLedger_{0};
+    std::atomic<uint64_t> lastCommittedLedger_{0};
     mutable std::mutex verifiedMutex_{};
     VerifiedIdentitySnapshot verified_{}; // success-confirmed only
 
