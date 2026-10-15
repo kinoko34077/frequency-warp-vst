@@ -8,7 +8,11 @@
 #include "engine_project_state.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
+#include <cstdlib>
 #include "win32_engine_editor.h"
+#if defined(_WIN32) && defined(FW_ENABLE_WEBVIEW2)
+#include "win32_webview2_editor.h"
+#endif
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
@@ -563,6 +567,14 @@ public:
     IPlugView* PLUGIN_API createView(FIDString type) override {
 #ifdef _WIN32
         if(!type||std::strcmp(type,ViewType::kEditor)!=0)return nullptr;
+#if defined(FW_ENABLE_WEBVIEW2)
+        // Experimental only: default native picker/rollback editor remains
+        // functional until embedded Web UI achieves feature parity.
+        if(const char* enabled=std::getenv("FW_VST3_WEBVIEW2_PREVIEW");
+           enabled && std::strcmp(enabled,"1")==0 &&
+           Win32WebView2Editor::runtimeAvailable())
+            return new Win32WebView2Editor(this);
+#endif
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
         },[this](){return pollWorkerStatus();});
