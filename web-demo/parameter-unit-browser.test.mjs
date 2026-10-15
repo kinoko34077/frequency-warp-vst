@@ -182,7 +182,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // M1 fundamental F: same unit registry, a linear 20..2000Hz slider,
     // and one shared canonical value feeding the existing harmonic math.
     await page.click("#tab-math");
-    assert.deepEqual(await page.$eval("#fundamental-unit option",items=>items.map(i=>i.value)),
+    assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll("#fundamental-unit option"),item=>item.value)),
       ["hz","note","percent"]);
     assert.equal(await page.$eval("#fundamental-snap",el=>el.checked),false);
     const existingLinkedP=Number(await page.$eval("#axis-pivot-value",el=>el.value));
