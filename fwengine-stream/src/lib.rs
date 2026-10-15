@@ -30,13 +30,15 @@ struct ExtraControls {
     ring:bool,rational:bool,
     crusher_enabled:bool,crusher_bits:u32,crusher_rate_hz:f64,
     a_min_hz:f64,a_quality:u32,a_band_bins:u32,a_reverb:f64,
+    engine_choice:u32,outside_policy:u32,
 }
 impl Default for ExtraControls {
     fn default()->Self {
         Self{shift:0.,pivot:350.,slope:1.,gain:1.,decay:0.,
              ring:false,rational:false,
              crusher_enabled:false,crusher_bits:8,crusher_rate_hz:12000.,
-             a_min_hz:20.,a_quality:0,a_band_bins:1,a_reverb:0.}
+             a_min_hz:20.,a_quality:0,a_band_bins:1,a_reverb:0.,
+             engine_choice:0,outside_policy:0}
     }
 }
 static mut EXTRA:Option<ExtraControls>=None;
@@ -53,7 +55,7 @@ fn defaults(rate:f64)->Settings {
 #[cfg(not(feature="legacy-no-mask"))]
 #[no_mangle]pub extern "C" fn fw_supported_param_mask()->i64 {
     let mut mask=0u64;
-    for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18,27,28,29,30] {
+    for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18,25,27,28,29,30,31,32] {
         if cfg!(feature="legacy-fourteen-mask") && id>=27 {continue;}
         mask|=1u64<<id;
     }
@@ -107,6 +109,8 @@ fn valid_event(event:Event,sample_rate:f64)->bool{
         27=>event.value>=0.001&&event.value<=20000.,
         28|30=>event.value>=0.&&event.value<=1.,
         29=>(1.0..=8.0).contains(&event.value)&&event.value.fract()==0.,
+        25|32=>event.value==0.||event.value==1.,
+        31=>(0.0..=2.0).contains(&event.value)&&event.value.fract()==0.,
         _=>false,
     }
 }
@@ -126,6 +130,8 @@ fn modify_extra(extra:&mut ExtraControls,event:Event)->bool {
         28=>extra.a_quality=(event.value*100.).round() as u32,
         29=>extra.a_band_bins=event.value as u32,
         30=>extra.a_reverb=event.value,
+        25=>extra.engine_choice=event.value as u32,
+        32=>extra.outside_policy=event.value as u32,
         _=>return false,
     }
     true
@@ -158,6 +164,11 @@ fn modify(settings:&mut Settings,event:Event) {
         3=>settings.high=event.value,
         4=>settings.invert=event.value,
         5=>settings.curvature=event.value,
+        31=>settings.mode=match event.value as u32 {
+            0=>Progression::Reciprocal,
+            1=>Progression::FoldLow,
+            _=>Progression::FoldHigh,
+        },
         _=>{}
     }
 }
@@ -193,18 +204,27 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
                     modify(&mut next,EVENTS[i]);
                     extraChanged|=modify_extra(&mut following,EVENTS[i]);
                 }
-                if extraChanged {
+                // Preserve valid previous DSP on impossible L/H crossings.
+                // Engine change and outside policy are committed together
+                // with same-frame settings, not partially on failure.
+                let programChanged=following.engine_choice!=extra.engine_choice ||
+                    following.outside_policy!=extra.outside_policy;
+                let ok=if programChanged {
+                    engine.configure_extended(next,following.outside_policy,
+                        following.engine_choice,1.,0.,350.,0).is_ok()
+                }else{
+                    engine.configure(next,following.outside_policy).is_ok()
+                };
+                if ok {
+                    *settings=next;
+                    if extraChanged || programChanged {
+                        if apply_extra(engine,following,SAMPLE_RATE).is_err(){return -3;}
+                        *extra=following;
+                    }
+                }else if extraChanged && !programChanged {
+                    // A valid effect control remains independently applicable.
                     if apply_extra(engine,following,SAMPLE_RATE).is_err(){return -3;}
                     *extra=following;
-                }
-                // Physical host parameters can individually be in-range but
-                // jointly impossible (L>=H or H>=host Nyquist). These are
-                // ordinary DAW automation crossings, NOT a WASM runtime trap.
-                // Keep the last verified working settings until the next
-                // valid same-sample combination is received. The host sends
-                // full L/H snapshot on every new PCM packet for recovery.
-                if engine.configure(next,OUTSIDE_PASS).is_ok(){
-                    *settings=next;
                 }
             }
             return 0;
@@ -221,18 +241,27 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
                     extraChanged|=modify_extra(&mut following,EVENTS[ei]);
                     ei+=1;
                 }
-                if extraChanged {
+                // Preserve valid previous DSP on impossible L/H crossings.
+                // Engine change and outside policy are committed together
+                // with same-frame settings, not partially on failure.
+                let programChanged=following.engine_choice!=extra.engine_choice ||
+                    following.outside_policy!=extra.outside_policy;
+                let ok=if programChanged {
+                    engine.configure_extended(next,following.outside_policy,
+                        following.engine_choice,1.,0.,350.,0).is_ok()
+                }else{
+                    engine.configure(next,following.outside_policy).is_ok()
+                };
+                if ok {
+                    *settings=next;
+                    if extraChanged || programChanged {
+                        if apply_extra(engine,following,SAMPLE_RATE).is_err(){return -3;}
+                        *extra=following;
+                    }
+                }else if extraChanged && !programChanged {
+                    // A valid effect control remains independently applicable.
                     if apply_extra(engine,following,SAMPLE_RATE).is_err(){return -3;}
                     *extra=following;
-                }
-                // Physical host parameters can individually be in-range but
-                // jointly impossible (L>=H or H>=host Nyquist). These are
-                // ordinary DAW automation crossings, NOT a WASM runtime trap.
-                // Keep the last verified working settings until the next
-                // valid same-sample combination is received. The host sends
-                // full L/H snapshot on every new PCM packet for recovery.
-                if engine.configure(next,OUTSIDE_PASS).is_ok(){
-                    *settings=next;
                 }
             }
             let end=if ei<e{EVENTS[ei].offset as usize}else{f};
