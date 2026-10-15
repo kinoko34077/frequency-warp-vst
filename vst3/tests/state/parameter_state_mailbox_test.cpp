@@ -67,8 +67,11 @@ int main(){
 
     // Once RT finishes the last staged state, the next DAW save must reflect
     // that same project plus subsequent realtime automation.
+    Values terminal=defaults;
+    terminal[0]=terminal[1]=terminal[2]=terminal[3]=.333;
+    mail.uiStage(terminal);
     Values final{};
-    check(mail.rtAdopt(final),"last state not adopted after audio quiet");
+    check(mail.rtAdopt(final)&&final==terminal,"last state not adopted after audio quiet");
     mail.rtPublish(final);
     check(mail.uiSnapshot(ui)&&ui==final,"last coherent project not persisted");
     std::printf("PASS bounded lock-free VST3 UI/RT state mailbox, %u UI saves %u RT stage commits\n",
