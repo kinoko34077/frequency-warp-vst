@@ -44,7 +44,8 @@ test("valid independent generic slots, format roundtrip and bounds",()=>{
   ]);
   assert.equal(validateDescriptors(data),true);
   assert.deepEqual(parseDescriptors(JSON.stringify(data)),data);
-  assert.equal(toPhysical(data.bindings[1],0.2),20);
+  assert.ok(Math.abs(toPhysical(data.bindings[1],0.2)-20)<1e-10,
+    "20Hz frequency-band breakpoint allows floating precision");
   assert.ok(Math.abs(toNormalized(data.bindings[1],20)-.2)<1e-12);
   assert.equal(toPhysical(data.bindings[2],.8),1);
   assert.equal(toNormalized(data.bindings[2],0),0);
