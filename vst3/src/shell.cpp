@@ -314,9 +314,9 @@ public:
                     return kResultFalse;
             }
         }
-        // Chunking is adaptive: each packet begins with fourteen verified physical
+        // Chunking is adaptive: each packet begins with eighteen verified physical
         // parameter snapshots (so a newly loaded engine receives host state).
-        // Up to 114 more distinct per-sample changes fit the fixed 128-event
+        // Up to 110 more distinct per-sample changes fit the fixed 128-event
         // ABI. If over capacity, split BEFORE consuming any host point.
         // No host automation changes are silently discarded.
         const bool hasWorker=worker_.mailbox().rtHasPreparedWorker();
@@ -373,7 +373,7 @@ public:
                 }
                 frames++;
             }
-            if(frames==0)return kResultFalse; // impossible: fourteen always fit
+            if(frames==0)return kResultFalse; // impossible: eighteen always fit
             uint64_t jobStart=0;
             if(hasWorker){
                 jobStart=worker_.mailbox().rtNextTime();
