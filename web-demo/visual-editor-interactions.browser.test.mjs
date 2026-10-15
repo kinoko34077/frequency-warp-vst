@@ -13,7 +13,16 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     await page.setViewport({width:1280,height:900});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto('http://127.0.0.1:8794/index.html',{waitUntil:'domcontentloaded'});
-    await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready');
+    try {await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready',{timeout:10000});}
+    catch(error){
+      const diagnostics=await page.evaluate(()=>({
+        state:document.documentElement.dataset.fwBoot,
+        bootError:document.documentElement.dataset.fwBootError,
+        menu:!!document.querySelector("#fw-unit-snap-menu"),
+        controls:!!document.querySelector("#low-unit")
+      }));
+      throw new Error("Web init failed: "+JSON.stringify(diagnostics)+", errors="+errors.join(" | ")+", "+error.message);
+    }
     assert.equal(await page.$('#fw-layout-inspector'),null,'Normal site must not mount the inspector');
     await page.click('#settings-open');
     assert.equal(await page.$eval('#debug-mode',el=>el.checked),false);
