@@ -459,10 +459,14 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#carrier-range",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"note",
+      "0Hz keeps the user's selected musical-note mode");
+    assert.equal(await page.$eval("#carrier",el=>el.value),"—");
+    await page.select("#carrier-unit","hz");
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
     await page.select("#carrier-unit","note");
-    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"note");
+    await page.select("#carrier-unit","hz");
     await page.$eval("#carrier",el=>{
       el.value="350";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
