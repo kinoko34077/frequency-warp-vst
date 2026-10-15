@@ -153,6 +153,7 @@ private:
         // only, so never forward unrelated spectral host parameter events.
         const bool spectral=fw_native_supports_stream_controls(native);
         const uint64_t mask=spectral?fw_native_stream_control_mask(native):0;
+        const uint64_t genericMask=spectral?0:fw_native_generic_slot_mask(native);
         // Keep BOTH contracts valid: verified Stream IDs and demo Gain ID64.
         // Filtering is on this off-RT thread; no heap allocations or host
         // parameter semantic aliasing are introduced.
@@ -163,7 +164,9 @@ private:
             const bool bound=spectral
                 ? (events[i].id<64 && StreamHostEvents::bound(events[i].id) &&
                    ((mask>>events[i].id)&1ull)!=0)
-                : events[i].id==64;
+                // R3A only: ID64 demo if the verified WASM explicitly
+                // advertises bit0. R3B/R3C own other semantic permissions.
+                : (events[i].id==64 && (genericMask&1ull)!=0);
             if(bound)filtered[used++]=events[i];
         }
         return fw_native_process(native,input,output,frames,

@@ -83,6 +83,13 @@ pub unsafe extern "C" fn fw_native_stream_control_mask(handle:*const Opaque)->u6
     if handle.is_null(){return 0;}
     (*handle).runtime.stream_control_mask()
 }
+// R3A non-RT verified engine capability. Bit0 corresponds to Host ParamID64.
+// No semantic permissions are granted by this read-only mask alone.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_generic_slot_mask(handle:*const Opaque)->u64 {
+    if handle.is_null(){return 0;}
+    (*handle).runtime.generic_slot_mask()
+}
 fn intersects(a:usize,a_len:usize,b:usize,b_len:usize)->bool {
     match (a.checked_add(a_len),b.checked_add(b_len)){
         (Some(a_end),Some(b_end))=>a<b_end && b<a_end,
