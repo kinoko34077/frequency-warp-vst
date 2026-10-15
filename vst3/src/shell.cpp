@@ -270,6 +270,8 @@ public:
         // audio callback alone owns values_; a complete pending project is
         // consumed at this callback boundary with a bounded atomic snapshot.
         parameterMailbox_.rtAdopt(values_);
+        // R3C2C1 only: adopt verified fixed POD; no generic DAW routing yet.
+        worker_.genericAuthorization().rtAdopt();
         std::array<Queue,kParamCount> cursors{};
         int32 used=0;
         if(auto* changes=data.inputParameterChanges) {
