@@ -89,3 +89,15 @@ const binding = createParameterBinding(fundamental, {onChange: onOneDspValueChan
 
 ### Acceptance status & next migration
 This pure-layer foundation is independent of the existing `app.mjs` / `harmonics-panel.mjs` form glue; existing UI remains unchanged. The next #79 M1 PR should wire one frequency control end-to-end (Hz/note+cents/rail percent; touch, keyboard, zero-Hz handling and link semantics) before migrating more controls. M2 subsequently covers ratio, signed slope, counts, fractions and coordinate constraints. M3 retires redundant `state.precise` and panel fields only after passing sound/graph/WAV parity and exact-main Pages checks. No migration to VST3 audio or external engine ABI is implied.
+
+## 7. M1 first Web UI slice — L input (stacked on #113)
+
+**Scope and status:** #79 branch integration only, not yet merged/released to the public Pages main. The first parameter is band lower-bound L (`low`) with Hz / note+cents / nonlinear physical rail%, plus opt-in semitone snapping.
+
+- L now uses one `createParameterBinding` canonical Hz `number` instead of `state.precise.low`; the pre-existing hidden `#low` range is only an integer gesture/thumb transport and is not the DSP authority. Other parameters retain their existing adapters until independently migrated.
+- The actual piecewise log rail is [0..0.2] for 0.001..20 Hz and [0.2..1] for 20..20000 Hz. Percent means 100×this position. Continuous inverse is used for value input; rounding to 1000 coarse thumb steps never overwrites typed canonical values.
+- Unit selection only reformats the current value: no DSP change event. Typing a complete valid note (`A4+25c`) or a valid Hz/% number commits once, updates coarse rail position, then uses the existing `updateParams` Rust/graph pipeline. Invalid/incomplete edits preserve the last canonical value and revert on blur/change. Normal display digits follow the existing display setting; focus reveals high precision.
+- Optional snap is **OFF by default** and only for slider gestures: note step=1 semitone, threshold=6 physical rail px. The existing two-thumb touch, mouse and keyboard input handler still emits native `input` for the same hidden source control, then this binding applies snap before the single DSP update.
+- Constraint-induced adjustments when L/H or sample-rate cap collide silently synchronize the canonical binding and its coarse thumb (rather than showing a note label disagreeing with effective audio bounds). Reset returns L to 20Hz, Hz notation, snapping OFF.
+- `web-demo/parameter-unit-browser.test.mjs` exercises actual staged artifact in headless Chrome at 390px: parse/format, precision retention, true nonlinear %, invalid input rollback, optional snapping, keyboard thumb and reset. The existing Rust AudioWorklet/WAV/graph code and VST3 parameter IDs are unchanged.
+- **Acceptance gate:** exact head CI and review before further horizontal migration. M1 is not the full per-control unit rollout; #79 stays open.
