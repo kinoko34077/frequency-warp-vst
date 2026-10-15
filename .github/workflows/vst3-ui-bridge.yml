@@ -1,0 +1,25 @@
+name: VST3 reloadable UI host bridge
+on:
+  pull_request:
+    paths:
+      - 'vst3/ui/**'
+      - '.github/workflows/vst3-ui-bridge.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'vst3/ui/**'
+      - '.github/workflows/vst3-ui-bridge.yml'
+permissions:
+  contents: read
+jobs:
+  bridge-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify module syntax and offline host/DOM protocol
+        run: |
+          node --check vst3/ui/host-bridge.mjs
+          node --test vst3/ui/host-bridge.test.mjs
