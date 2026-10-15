@@ -127,3 +127,11 @@ This is a staged child PR, not yet published to GitHub Pages.
 The existing `a-min` parameter (minimum positive extraction frequency for Engine A) reuses the Hz/note+cents/nonlinear physical rail% typed binding and 6px opt-in semitone snapping. Canonical bounds are 0.001..20000Hz, default 20Hz, and no arbitrary zero-Hz musical note is accepted. Its own unit/snap preference is independent of L/H/P. The underlying Rust Engine A frequency gate receives the canonical `aMinHz`; changing only formatting does not retrigger audio.
 
 The original `#a-min` range remains a coarse DOM gesture transport; duplicate `state.precise["a-min"]` and old numeric field listener are removed. Reset restores 20Hz, Hz notation, snap off. The mobile staged Chrome test must first select actual Engine A in Settings, then verify visible field/menu, cents, nonlinear rail%, invalid edit retention, snapped 440Hz and reset. Other M1 controls F/carrier/reference sine remain open.
+
+## 11. M1 harmonic source F (staged, not released)
+
+The harmonic source F `fundamental` (20..2000Hz, default 350) now has one `mountFrequencyUnitField` canonical Float64 owner inside `harmonics-panel.mjs`. The panel's legacy `preciseFields["fundamental"]` numeric listener and range owner are bypassed (other harmonic inputs unchanged). `harmonicParameters()` reads this one binding, and the existing `setFundamentalFromPivot(P)` writes back into it silently rather than creating a second independent F. The external Rust/DSP graph, native VST3 ParamID 19 and mathematical invariant `H=rF/m` remain unchanged.
+
+Unlike L/H/P, the existing F slider is LINEAR 20..2000Hz; thus F percent denotes `100 (F-20)/1980`. Note+cents and Hz use the same shared physical converters; opt-in 6px semitone snapping applies to the F slider only. F unit selection cannot trigger DAW or DSP automation. Existing global display precision remains formatting only and F input focus preserves the full canonical value.
+
+Staged Chrome regression must visit the actual mathematical panel, parse A4+25c, verify **linear** rail%, preserve F during notation changes, confirm H↔P from precise F, snap A4=440, and reject invalid text without changing canonical F. Existing P↔F inverse regression continues. Carrier/Fold remain distinct. No Pages release or main merge.
