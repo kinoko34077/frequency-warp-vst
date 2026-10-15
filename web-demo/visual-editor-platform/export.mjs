@@ -65,3 +65,37 @@ export function exportStaticHtml(document,profile,{source,expectedSource,expecte
   }
   return source.replace(/<\/head\s*>/i,'<style data-ve-export="v1">\n'+css+'</style>\n</head>');
 }
+
+/** Review-only layout manifest: strips arbitrary application-owned payloads. */
+export function exportModelLayout(model,profile){
+  if(!profile||!['react-model','scene-graph'].includes(profile.ownership)||!profile.exports?.includes('layout-json'))fail('UNSUPPORTED_EXPORT');
+  if(!model||typeof model!=='object'||!model.nodes||typeof model.nodes!=='object'||Array.isArray(model.nodes)||
+    !Number.isSafeInteger(model.revision)||model.revision<0)fail('BAD_MODEL');
+  const rootId=assertSafeId(model.rootId),ids=Object.keys(model.nodes);
+  if(ids.length>1024||!ids.includes(rootId))fail('BAD_MODEL');
+  const nodes=Object.create(null),found=new Set();
+  for(const id of ids){
+    assertSafeId(id);
+    const node=model.nodes[id];
+    if(!node||node.id!==id||typeof node.type!=='string'||!/^[a-zA-Z0-9_.:-]{1,128}$/.test(node.type)||!Array.isArray(node.children))fail('BAD_MODEL');
+    if(node.parentId!==null)assertSafeId(node.parentId);
+    if(id===rootId&&node.parentId!==null||id!==rootId&&node.parentId===null)fail('BAD_MODEL');
+    if(new Set(node.children).size!==node.children.length)fail('DUPLICATE_CHILD');
+    const children=node.children.map(child=>assertSafeId(child));
+    nodes[id]={id,type:node.type,parentId:node.parentId,children};
+  }
+  const stack=[rootId];
+  while(stack.length){
+    const id=stack.pop(),node=nodes[id];
+    if(!node||found.has(id))fail('CYCLE_OR_DISCONNECTED');
+    found.add(id);
+    for(const child of node.children){
+      if(!nodes[child]||nodes[child].parentId!==id)fail('PARENT_MISMATCH');
+      stack.push(child);
+    }
+  }
+  if(found.size!==ids.length)fail('CYCLE_OR_DISCONNECTED');
+  return {schemaVersion:1,kind:'visual-editor-layout-proposal',status:'REVIEW_REQUIRED',
+    ownership:profile.ownership,target:profile.target,layoutRevision:model.revision,
+    rootId,nodes,warning:'Layout metadata only. Owner must map to framework source and review before applying.'};
+}
