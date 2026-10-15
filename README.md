@@ -1,8 +1,9 @@
-## Current source/release distinction (2026-10-15)
-
-Accepted public main at the start of this Web branch: ad34eb1992c67fe4a68057cc6a372c08e8506bc8 (visual editor M1–M5 via PR #181). Web UI PR #184 and stacked PR #185 added the newer graph, parameter units and layout code as **unmerged Draft candidates**, not yet published at that checkpoint. Their exact-head Browser/Rust/WASM and offline workflows passed; this does not prove real iPhone Safari decode of the reported failing user file. These docs describe candidate branch behavior; validate actual deployed main and Actions before claiming publication. >20kHz real processing is deferred as possible future oversampling, not a current Rust/VST3 implementation target. The in-band Web/Rust preflight work is separately tracked at #183, native generic DAW routing at #172.
-
 # Frequency Warp — VST3 / Web shared DSP research
+
+## 2026-10-15 Web UI release scope
+
+The source includes responsive graph views (2k/20k/0.001–20Hz theoretical zoom), compact Hz/note/rail unit controls, auxiliary sine gain and bounded live-audio setting validation. PRs [#184](https://github.com/kinoko34077/frequency-warp-vst/pull/184), [#185](https://github.com/kinoko34077/frequency-warp-vst/pull/185) and [#186](https://github.com/kinoko34077/frequency-warp-vst/pull/186) retain implementation/CI history; consult the linked main branch and Pages workflow for live release state. Above 20kHz actual processing is reserved for **possible later oversampling**, not current DSP support. Real failing physical iOS Safari audio-file/codec reproduction remains unverified; staged Chrome tests must not be described as proof on that device. Unit-family migration M2/M3 stays open in #79; native DAW/engine R3C2 remains independently owned by #172.
+
 
 A frequency-domain audio-warp research project. The goal is a VST3
 audio effect with continuously variable frequency-axis curvature and

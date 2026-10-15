@@ -1,6 +1,6 @@
 # Frequency Warp — Common numeric parameter and unit contract (proposal #77)
 
-Status (2026-10-15): **partial implementation**. Shared pure codec and M1 frequency bindings exist; compact three-icon UI / semitone-cents subunit are tested in Web Draft PRs #184/#185 (unmerged). M2 dimension migration and M3 legacy canonical-state consolidation remain open under #79. Do not confuse Draft UI with deployed main or native DAW automation.
+Status (2026-10-15): **partial implementation**. Shared pure codec and M1 frequency bindings, compact three-icon UI and semitone/cents subunit controls are implemented in the Web release changes recorded by PRs #184/#185/#186. Verify the target main/Pages state before claiming a particular deployment; CI success alone is not a physical iOS test. M2 dimension migration and M3 legacy state consolidation remain open under #79; browser unit changes do not authorize native DAW automation.
 
 ## 1. Separate five layers
 
@@ -108,7 +108,7 @@ Upper band H (`high`) reuses the same `mountFrequencyUnitField` / `defineParamet
 
 The shared `bounds()` logic still owns L/H separation and effective sample-rate caps; if moving one bound changes the other, its canonical binding and slider are silently updated before the single render/graph notification. H is not a globally fixed 20000Hz oscillator if a file sample rate limits the effective processing band. All original graph/AudioWorklet/WAV calls remain unchanged.
 
-Acceptance requires Chrome 390px note+cent roundtrip, rail-percent correctness, invalid H input rollback, optional snapped 880Hz, screen-reader thumb text, plus existing L and native/WASM regressions. This is a stacked Draft change, not the public site. Other frequency knobs remain #79 open work.
+Historical milestone acceptance included Chrome 390px note+cent roundtrip, rail-percent correctness, invalid H input rollback, snapped 880Hz, screen-reader thumb text, and Rust/WASM regression. This paragraph described a then-unmerged stacked Draft; consult PR #186 and the current main/Pages actions for actual released state. Other unit families remain #79 work.
 
 ## 9. M1 pivot P: explicit zero-Hz, positive rail, and H↔P link (staged #79)
 
@@ -166,7 +166,7 @@ The positive pitch ratio `pitch-ratio` (r) is the first M2 non-Hz migration. Its
 - The effect settings reset explicitly resets r to 1, ratio notation, snap OFF. All other harmonic controls retain their existing adapters.
 - Staged Chrome at 390px verifies +7 semitones ↔ 2^(7/12), 700 cents, real r-rail percent, linked P update, opt-in snap and reset. Rust/WASM/graph/audio parity remains mandatory, and this does not modify VST3 ParamIDs/engine ABI.
 
-Other M2 control families (signed slope, fractional percentages, counts and coordinate u) remain future independently bounded migrations. There is no public Pages deployment through this Draft branch.
+Other M2 control families (fractional percentages, counts and coordinate u) remain future independently bounded migrations. The historical Draft at that stage was not publicly deployed; consult the current main and Pages Actions for present deployment.
 
 ## 15. M2 signed slope s: negative/zero allowed, no musical interpretation
 
