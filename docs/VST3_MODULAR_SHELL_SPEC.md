@@ -1,5 +1,8 @@
 # Frequency Warp — モジュール交換式VST3固定シェル仕様 v0.1
 
+> **2026-10-15 正本追補 — 再ビルド最小化／交換式UI:** ユーザーの追加確定要件により、固定VST3シェルは演算だけでなく、HTML/CSS/JSの画面・操作部品・単位表示・パラメータ定義と接続対応も可能な範囲で交換可能にする。新しい共通仕様は [VST3_RELOADABLE_UI_RUNTIME.md](VST3_RELOADABLE_UI_RUNTIME.md) を参照。既存Webサイトを直接再利用し、WindowsではWebView2（実験的・明示opt-in）で表示する。固定128 ParamID・ClassID、既存DAW保存意味、非RT WASM実行、旧エンジン互換は維持する。現行UI-1/2/3 PR #146/#147/#148はソース・CI段階で統合済みだが、UIパッケージ正式形式、汎用64枠セマンティクス、実機FL Studio検証は未完了。以下の「UI方式未定」「ネイティブ未実装」等は**2026-10-14当時の基礎設計履歴**であり、現行実装状態を表すものではない。
+
+
 **状態**: 2026-10-14 設計正本・実装開始用ベースライン。VST3バイナリは未実装。既存音声エンジンを製品音質として受入済みという意味ではない。
 **Owning**: [#81](https://github.com/kinoko34077/frequency-warp-vst/issues/81)、監査 [#80](https://github.com/kinoko34077/frequency-warp-vst/issues/80)。初期要件 [#3](https://github.com/kinoko34077/frequency-warp-vst/issues/3)、音声評価 [#5](https://github.com/kinoko34077/frequency-warp-vst/issues/5)、個別不具合 [#48](https://github.com/kinoko34077/frequency-warp-vst/issues/48)、パラメータ [#79](https://github.com/kinoko34077/frequency-warp-vst/issues/79) と責務分離。現在の主要参照 main `32b3cde5b850f8c575e49c1a2846b4a9c2402cba`。
 
