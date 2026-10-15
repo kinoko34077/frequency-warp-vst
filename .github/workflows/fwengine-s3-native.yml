@@ -94,11 +94,15 @@ jobs:
             _bridge_build/Release/fw_native_generic_capability_test.exe _s3/identity.fwengine _s3/gain.fwengine _s3/identity_legacy.fwengine
             _bridge_build/Release/fw_native_generic_descriptor_test.exe _s3/gain.fwengine _s3/identity.fwengine _s3/identity_legacy.fwengine
             _bridge_build/Release/fw_native_worker_verified_identity_test.exe _s3/identity.fwengine _s3/gain.fwengine
+            _bridge_build/Release/fw_native_authorization_mailbox_test.exe
+            _bridge_build/Release/fw_native_worker_authorization_test.exe _s3/identity.fwengine _s3/gain.fwengine
             _bridge_build/Release/fw_native_worker_service_smoke.exe _s3/identity.fwengine _s3/gain.fwengine _s3/stream.fwengine _s3/stream_legacy.fwengine _s3/stream_legacy14.fwengine
           else
             _bridge_build/fw_native_bridge_smoke _s3/identity.fwengine _s3/gain.fwengine
             _bridge_build/fw_native_generic_capability_test _s3/identity.fwengine _s3/gain.fwengine _s3/identity_legacy.fwengine
             _bridge_build/fw_native_generic_descriptor_test _s3/gain.fwengine _s3/identity.fwengine _s3/identity_legacy.fwengine
             _bridge_build/fw_native_worker_verified_identity_test _s3/identity.fwengine _s3/gain.fwengine
+            _bridge_build/fw_native_authorization_mailbox_test
+            _bridge_build/fw_native_worker_authorization_test _s3/identity.fwengine _s3/gain.fwengine
             _bridge_build/fw_native_worker_service_smoke _s3/identity.fwengine _s3/gain.fwengine _s3/stream.fwengine _s3/stream_legacy.fwengine _s3/stream_legacy14.fwengine
           fi
