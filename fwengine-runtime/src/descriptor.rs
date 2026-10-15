@@ -174,6 +174,52 @@ pub fn preflight(data:&[u8], engine_id:&str, package_sha:&[u8;32],
     let mut visited=HashSet::new();
     target&&graph.keys().copied().all(|id|visit(id,&graph,&mut visiting,&mut visited))
 }
+/// R3C2D2: attest EVERY selected UI binding against the live module's
+/// WASM-owned immutable contract, never just the requested first slot.
+/// UI metadata controls display only; this result is candidate evidence,
+/// NOT DAW/RT authorization or a saved FWS3 ledger.
+pub fn attest_entire_descriptor_set(
+    data:&[u8], engine_id:&str, package_sha:&[u8;32],
+    wasm_mask:u64,
+    canonical_for:impl Fn(u32)->Option<crate::module_contract::Canonical>
+)->Option<u64> {
+    if data.is_empty()||data.len()>MAX_BYTES||wasm_mask==0{return None}
+    let doc=serde_json::from_slice::<DescriptorFile>(data).ok()?;
+    if doc.schema!=SCHEMA || doc.engine.id!=engine_id ||
+       doc.engine.sha256!=hex_sha(package_sha) ||
+       !identifier(&doc.engine.id,true) || !version(&doc.engine.version) ||
+       doc.bindings.is_empty()||doc.bindings.len()>64{return None}
+    let mut selected=0u64;
+    let mut names=HashSet::new();
+    let mut selectors=HashSet::new();
+    let mut graph=HashMap::<&str,Vec<&str>>::new();
+    for b in &doc.bindings {
+        if !valid_binding(b,engine_id) || !names.insert(b.semantic_id.as_str()) ||
+           b.selector.as_ref().is_some_and(|x|!selectors.insert(x.as_str())){
+            return None
+        }
+        let bit=1u64<<(b.host_slot-64);
+        if (wasm_mask&bit)==0 || (selected&bit)!=0{return None}
+        let canonical=canonical_for(b.host_slot)?;
+        if canonical.host_slot!=b.host_slot ||
+           canonical.semantic_id!=b.semantic_id ||
+           canonical.codec_revision!=b.codec_revision ||
+           canonical.dimension!=b.dimension ||
+           canonical.canonical_unit!=b.canonical_unit ||
+           canonical.min!=b.min || canonical.max!=b.max ||
+           canonical.default!=b.default || canonical.scale!=b.scale ||
+           canonical.steps!=b.steps{return None}
+        selected|=bit;
+        graph.insert(&b.semantic_id,b.depends_on.as_ref().map_or_else(
+            Vec::new,|deps|deps.iter().map(String::as_str).collect()));
+    }
+    let mut visiting=HashSet::new();
+    let mut visited=HashSet::new();
+    if !graph.keys().copied().all(|id|visit(id,&graph,&mut visiting,&mut visited)){
+        return None
+    }
+    Some(selected)
+}
 /// R3B3 second, independent proof: compare the external UI view to the
 /// immutable WASM-authored canonical contract copied during preparation.
 /// A designer may change *display-only* fields and widgets, but must not
