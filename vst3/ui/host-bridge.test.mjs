@@ -3,7 +3,21 @@ import assert from "node:assert/strict";
 import { PROTOCOL, DEFAULT_BINDINGS, createHostUiBridge, validateBindings } from "./host-bridge.mjs";
 
 class FakeNode {
-  constructor(value) { this.value = String(value); this.listeners = new Map(); this.renderCount = 0; }
+  constructor(value, registry = null) {
+    this.value = String(value); this.listeners = new Map(); this.renderCount = 0;
+    this.children = []; this.registry = registry; this.style = {}; this.parent = null;
+  }
+  appendChild(child) {
+    this.children.push(child); child.parent = this;
+    if (child.id) this.registry?.set(`#${child.id}`, child);
+    return child;
+  }
+  remove() {
+    if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this);
+    if (this.id) this.registry?.delete(`#${this.id}`);
+    for (const c of [...this.children]) c.remove();
+    this.children = []; this.parent = null;
+  }
   addEventListener(kind, fn) {
     if (!this.listeners.has(kind)) this.listeners.set(kind, new Set());
     this.listeners.get(kind).add(fn);
@@ -28,6 +42,8 @@ function fixture() {
     deliver(data) { listeners.get("message")?.({ data }); }
   };
   const document = {
+    body: new FakeNode("", nodes),
+    createElement() { return new FakeNode("", nodes); },
     querySelector(selector) { return nodes.get(selector) ?? null; },
     defaultView: { Event: class { constructor(type, options) {
       this.type = type; this.bubbles = options?.bubbles;
@@ -124,4 +140,38 @@ test("out-of-range edits do not emit; disposal closes active automation exactly 
   ]);
   x.nodes.get("#curvature").fire("input");
   assert.equal(x.posted.length, 4);
+});
+
+test("native worker-approved generic slots appear, never echo, and revoke dynamically", () => {
+  const x = fixture();
+  const bridge = createHostUiBridge(x);
+  x.webview.deliver({ protocol: PROTOCOL, kind: "snapshot",
+    genericSlots: [64, 65], values: { "64": 0.25, "65": 0.8 } });
+  assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5, 64, 65]);
+  assert.equal(x.nodes.get("#fw-vst-slot-64").value, "0.25");
+  assert.equal(x.nodes.get("#fw-vst-slot-65").value, "0.8");
+  assert.equal(x.posted.length, 1); // host-to-DOM updates never echo automation
+  const slider = x.nodes.get("#fw-vst-slot-64");
+  slider.value = "0.6";
+  slider.fire("input");
+  assert.deepEqual(x.posted.slice(-2), [
+    { protocol: PROTOCOL, kind: "edit-begin", id: 64 },
+    { protocol: PROTOCOL, kind: "edit-perform", id: 64, value: 0.6 }
+  ]);
+  // A revoked native ticket removes both sliders and terminates the
+  // incomplete gesture; a detached node cannot send any further edits.
+  x.webview.deliver({ protocol: PROTOCOL, kind: "snapshot",
+    genericSlots: [], values: {} });
+  assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5]);
+  assert.equal(x.nodes.has("#fw-vst-slot-64"), false);
+  assert.deepEqual(x.posted.at(-1),
+    { protocol: PROTOCOL, kind: "edit-end", id: 64 });
+  const count = x.posted.length;
+  slider.fire("input");
+  assert.equal(x.posted.length, count);
+  // Malformed native slot lists never unlock generic controls.
+  x.webview.deliver({ protocol: PROTOCOL, kind: "snapshot",
+    genericSlots: [64, 64], values: { "64": 0.9 } });
+  assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5]);
+  bridge.dispose();
 });
