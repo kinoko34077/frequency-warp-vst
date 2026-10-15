@@ -29,12 +29,14 @@ struct ExtraControls {
     shift:f64,pivot:f64,slope:f64,gain:f64,decay:f64,
     ring:bool,rational:bool,
     crusher_enabled:bool,crusher_bits:u32,crusher_rate_hz:f64,
+    a_min_hz:f64,a_quality:u32,a_band_bins:u32,a_reverb:f64,
 }
 impl Default for ExtraControls {
     fn default()->Self {
         Self{shift:0.,pivot:350.,slope:1.,gain:1.,decay:0.,
              ring:false,rational:false,
-             crusher_enabled:false,crusher_bits:8,crusher_rate_hz:12000.}
+             crusher_enabled:false,crusher_bits:8,crusher_rate_hz:12000.,
+             a_min_hz:20.,a_quality:0,a_band_bins:1,a_reverb:0.}
     }
 }
 static mut EXTRA:Option<ExtraControls>=None;
@@ -51,7 +53,7 @@ fn defaults(rate:f64)->Settings {
 #[cfg(not(feature="legacy-no-mask"))]
 #[no_mangle]pub extern "C" fn fw_supported_param_mask()->i64 {
     let mut mask=0u64;
-    for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18] {
+    for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18,27,28,29,30] {
         mask|=1u64<<id;
     }
     mask as i64
@@ -101,6 +103,9 @@ fn valid_event(event:Event,sample_rate:f64)->bool{
         10|11|18=>event.value==0.||event.value==1.,
         16=>(2.0..=16.0).contains(&event.value)&&event.value.fract()==0.,
         17=>event.value>=0.&&event.value<=sample_rate,
+        27=>event.value>=0.001&&event.value<=20000.,
+        28|30=>event.value>=0.&&event.value<=1.,
+        29=>(1.0..=8.0).contains(&event.value)&&event.value.fract()==0.,
         _=>false,
     }
 }
@@ -116,6 +121,10 @@ fn modify_extra(extra:&mut ExtraControls,event:Event)->bool {
         11=>extra.crusher_enabled=event.value!=0.,
         16=>extra.crusher_bits=event.value as u32,
         17=>extra.crusher_rate_hz=event.value,
+        27=>extra.a_min_hz=event.value,
+        28=>extra.a_quality=(event.value*100.).round() as u32,
+        29=>extra.a_band_bins=event.value as u32,
+        30=>extra.a_reverb=event.value,
         _=>return false,
     }
     true
@@ -135,6 +144,11 @@ fn apply_extra(engine:&mut Stream,extra:ExtraControls,rate:f64)->Result<(),&'sta
         else {(rate/extra.crusher_rate_hz).round().clamp(1.,1_000_000_000.) as u32};
     let bits=if extra.crusher_enabled {extra.crusher_bits}else{0};
     engine.set_crusher(bits,hold)?;
+    // Engine A controls are the exact canonical Web Rust Stream setters.
+    // No new peak detector, spectral conversion or reverb is introduced.
+    engine.set_a_options(extra.a_min_hz,extra.a_reverb)?;
+    engine.set_a_peak_band(extra.a_band_bins)?;
+    engine.set_a_quality(extra.a_quality)?;
     Ok(())
 }
 fn modify(settings:&mut Settings,event:Event) {
