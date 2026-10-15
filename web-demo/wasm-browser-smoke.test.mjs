@@ -473,6 +473,46 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const metadata=await page.$eval("#file-meta",n=>n.textContent);
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
+
+    // A16: stopped→original audio must bypass invalid wet DSP settings.
+    // Count real AudioWorklet constructions so that accidentally starting
+    // a neutral/bogus DSP is not mistaken for independent original playback.
+    await page.evaluate(()=>{
+      const Native=window.AudioWorkletNode;
+      window.__dryWorkletCount=0;
+      window.AudioWorkletNode=class extends Native{
+        constructor(...args){super(...args);window.__dryWorkletCount++;}
+      };
+    });
+    await page.$eval("#fundamental",el=>{
+      el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click("#play-dry");
+    await page.waitForFunction(()=>
+      !document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中"),
+      {timeout:12000});
+    assert.equal(await page.evaluate(()=>window.__dryWorkletCount),0,
+      "original-audio transport must not instantiate a wet AudioWorklet");
+    await new Promise(resolve=>setTimeout(resolve,550));
+    assert.ok(await page.$eval("#elapsed",el=>Number(el.textContent.split(":")[1]))>0,
+      "direct original-audio buffer must advance its playback timeline");
+    await page.click("#play-wet");
+    assert.match(await page.$eval("#status",el=>el.textContent),/原音再生を継続中.*変換設定は未反映/,
+      "rejected wet switch must preserve original playback");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false);
+    assert.equal(await page.evaluate(()=>window.__dryWorkletCount),0);
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>
+      document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
+      !document.querySelector("#stop").disabled,{timeout:25000});
+    assert.ok(await page.evaluate(()=>window.__dryWorkletCount)>=1,
+      "a valid wet switch must initialize the real Rust/WASM AudioWorklet");
+    await page.click("#stop");
+
     await page.click("#play-wet");
     try{
       await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
