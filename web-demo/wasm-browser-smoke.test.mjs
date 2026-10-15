@@ -764,6 +764,37 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(Math.abs(soughtSeconds-540)<3,
       "600s waveform seek should land near 9:00, got "+soughtSeconds);
     await page.click("#stop");
+    // A18: a genuinely unrecoverable Worklet parameter failure must not
+    // leave the user hearing an untrusted partial-DSP stream or silence.
+    // Inject a fatal processor message into the REAL running Chrome Worklet
+    // port; Rust setter failure timing is tested separately in VM.
+    await page.evaluate(()=>{
+      const Native=window.AudioWorkletNode;
+      window.__a18NativeWorkletNode=Native;
+      window.AudioWorkletNode=class extends Native{
+        constructor(...args){super(...args);window.__a18Worklet=this;}
+      };
+    });
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>
+      !document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),
+      {timeout:25000});
+    await page.evaluate(()=>window.__a18Worklet.port.onmessage({
+      data:{type:"error",revision:0,fatal:true,message:"injected unrecoverable late setter"}
+    }));
+    await page.waitForFunction(()=>
+      !document.querySelector("#stop").disabled &&
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中"),
+      {timeout:20000});
+    assert.match(await page.$eval("#status",el=>el.textContent),
+      /変換の復旧に失敗したため、原音再生へ退避/);
+    await page.click("#stop");
+    await page.evaluate(()=>{
+      window.AudioWorkletNode=window.__a18NativeWorkletNode;
+      delete window.__a18NativeWorkletNode;
+      delete window.__a18Worklet;
+    });
     // Reproduce a cold iOS decoder that never settles on its first path.
     // The first file selection on a NEW page must recover on its own.
     const coldPage=await browser.newPage();
