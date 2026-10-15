@@ -179,8 +179,47 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pivot-unit","hz");
     await page.$eval("#axis-pivot-value",el=>el.blur());
 
+    // Engine A floor reuses the frequency descriptor in its actual Settings UI.
     await page.click("#settings-open");
+    await page.select("#engine","0");
+    assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
+    assert.equal(await page.$eval("#a-min-unit",el=>el.getBoundingClientRect().height>0),true);
+    assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#a-min-snap",el=>el.checked),false);
+    await page.select("#a-min-unit","note");
+    await page.$eval("#a-min-value",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#a-min-unit","hz");
+    await page.focus("#a-min-value");
+    const aMinExact=Number(await page.$eval("#a-min-value",el=>el.value));
+    assert.ok(Math.abs(aMinExact-440*2**(25/1200))<1e-9);
+    await page.$eval("#a-min-value",el=>el.blur());
+    await page.select("#a-min-unit","percent");
+    const aMinPct=Number(await page.$eval("#a-min-value",el=>el.value));
+    const expectedAMinPct=100*(.2+.8*Math.log(aMinExact/20)/Math.log(1000));
+    assert.ok(Math.abs(aMinPct-expectedAMinPct)<.01);
+    await page.select("#a-min-unit","note");
+    await page.$eval("#a-min-value",el=>{
+      el.value="garbage";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.select("#a-min-unit","hz");
+    await page.focus("#a-min-value");
+    assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.value))-aMinExact)<1e-9);
+    await page.$eval("#a-min-value",el=>el.blur());
+    await page.$eval("#a-min-snap",el=>{el.checked=true;});
+    const aMinStep=Math.round(200+800*Math.log(440/20)/Math.log(1000));
+    await page.$eval("#a-min",(el,step)=>{
+      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },aMinStep);
+    await page.focus("#a-min-value");
+    assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.value))-440)<1e-8);
+    await page.$eval("#a-min-value",el=>el.blur());
+
     await page.click("#settings-reset");
+    assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#a-min-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#a-min-value",el=>Number(el.value)),20);
     assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),350);
