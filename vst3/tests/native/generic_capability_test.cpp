@@ -1,4 +1,5 @@
 #include "../../src/native_engine_abi.h"
+#include "../../src/generic_numeric_codec.h"
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -29,6 +30,35 @@ int main(int argc,char** argv) {
                "demo engines must explicitly advertise slot64");
         expect(fw_native_generic_slot_mask(c)==0,
                "old demo missing optional export must be fail-closed");
+        FWNativeGenericCodec attested{};
+        expect(fw_native_copy_generic_codec(b,64,&attested),
+               "verified Gain module must export canonical numeric contract");
+        expect(attested.hostSlot==64 && attested.codecRevision==1 &&
+               attested.scale==0 && attested.steps==0 &&
+               attested.min==0. && attested.max==4. &&
+               attested.defaultValue==0.5,
+               "WASM-authored canonical linear gain range/codec");
+        fw::GenericNumericCodec normalized{};
+        normalized.hostSlot=attested.hostSlot;
+        normalized.codecRevision=attested.codecRevision;
+        normalized.scale=static_cast<fw::GenericScale>(attested.scale);
+        normalized.steps=attested.steps;
+        normalized.min=attested.min;
+        normalized.max=attested.max;
+        normalized.def=attested.defaultValue;
+        double canonical=-1.;
+        expect(fw::validGenericNumericCodec(normalized) &&
+               fw::genericNormalizedToCanonical(normalized,.25,canonical) &&
+               std::abs(canonical-1.)<1e-12,
+               "C++ DAW codec must agree with validated WASM gain contract");
+        const auto preserved=attested;
+        expect(!fw_native_copy_generic_codec(c,64,&attested) &&
+               !fw_native_copy_generic_codec(b,65,&attested) &&
+               !fw_native_copy_generic_codec(nullptr,64,&attested) &&
+               !fw_native_copy_generic_codec(b,64,nullptr) &&
+               attested.hostSlot==preserved.hostSlot &&
+               attested.max==preserved.max,
+               "legacy/unknown/null codec lookups must fail atomically");
         expect(fw_native_generic_value_in_contract(a,64,0.0),
                "WASM-authored Identity gain zero must be allowed");
         expect(fw_native_generic_value_in_contract(b,64,4.0),

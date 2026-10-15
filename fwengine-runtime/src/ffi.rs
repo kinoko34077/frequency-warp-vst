@@ -9,6 +9,17 @@ use sha2::{Digest,Sha256};
 pub extern "C" fn fw_native_abi_major() -> u32 { 1 }
 
 pub struct Opaque {runtime:Runtime,channels:usize,package_hash:[u8;32]}
+#[repr(C)]
+pub struct NativeGenericCodec {
+    pub host_slot:u32,
+    pub codec_revision:u32,
+    pub scale:u32, // 0 linear, 1 log, 2 discrete, 3 band, 4 zero
+    pub steps:u32,
+    pub min:f64,
+    pub max:f64,
+    pub default_value:f64,
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn fw_native_prepare(
     data:*const u8,length:usize,rate:f64,channels:u32,max_frames:u32
@@ -101,6 +112,37 @@ pub unsafe extern "C" fn fw_native_generic_value_in_contract(
     let rt=&(*handle).runtime;
     rt.generic_slot_mask()&(1u64<<(slot-64))!=0 &&
         rt.generic_contract(slot).is_some_and(|b|b.contains_event_value(value))
+}
+/// R3C2C0: read numeric codec from the WASM-authored semantic contract,
+/// NOT from the replaceable HTML UI descriptor. Only call on the non-RT
+/// native worker while the verified handle is owned and still alive.
+/// A positive result alone is NOT host/DAW authorization.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_copy_generic_codec(
+    handle:*const Opaque,slot:u32,out:*mut NativeGenericCodec
+)->bool {
+    if handle.is_null()||out.is_null()||!(64..=127).contains(&slot)||
+       (out as usize)%std::mem::align_of::<NativeGenericCodec>()!=0{
+        return false;
+    }
+    let rt=&(*handle).runtime;
+    if rt.generic_slot_mask()&(1u64<<(slot-64))==0{return false;}
+    let Some(binding)=rt.generic_contract(slot) else{return false};
+    let scale=match binding.scale.as_str(){
+        "linear"=>0,"log"=>1,"discrete"=>2,
+        "frequency-band"=>3,"frequency-with-zero"=>4,
+        _=>return false,
+    };
+    let candidate=NativeGenericCodec {
+        host_slot:binding.host_slot,
+        codec_revision:binding.codec_revision,
+        scale,
+        steps:binding.steps.unwrap_or(0),
+        min:binding.min,max:binding.max,
+        default_value:binding.default,
+    };
+    ptr::write(out,candidate);
+    true
 }
 /// R3B2 necessary-only NON-RT descriptor preflight, NOT DAW edit authority.
 /// Validate exact native worker-prepared engine/hash, declared capability mask,
