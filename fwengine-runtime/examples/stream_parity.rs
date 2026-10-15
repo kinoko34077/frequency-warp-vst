@@ -18,7 +18,7 @@ fn frame_input(start:usize,frames:usize)->Vec<f32>{
     result
 }
 fn native_chunk(stream:&mut Stream,src:&[f32],frames:usize,cut:usize,
-                changed:&mut Settings,geometry_change:bool)->Result<Vec<f32>,Box<dyn Error>>{
+                changed:&mut Settings,geometry_change:bool,crusher_change:bool)->Result<Vec<f32>,Box<dyn Error>>{
     let mut dst=vec![0f32;2*frames];
     let mut pos=0;
     while pos<frames {
@@ -30,6 +30,9 @@ fn native_chunk(stream:&mut Stream,src:&[f32],frames:usize,cut:usize,
                 stream.set_geometry(500.,-0.6)?;
                 stream.set_zero_reflect_gain(0.65)?;
                 stream.set_zero_reflect_decay(0.4)?;
+            }else if crusher_change {
+                // Browser holdFromFrequency(12000 Hz,48000 Hz) = four frames.
+                stream.set_crusher(6,4)?;
             }else{
                 changed.invert=0.72;
                 changed.curvature=0.35;
@@ -68,11 +71,14 @@ fn main()->Result<(),Box<dyn Error>>{
     const BLOCKS:usize=128; // 16K samples, FFT warmup and live parameter sweep
     let mut biggest=0f32;let mut power=0f64;
     let mut after_diff=0f64;
+    let mut crusher_diff=0f64;
+    let mut native_without_crusher=Stream::new(48000.,2,native_settings)?;
+    let mut no_crusher_settings=native_settings;
     let dry_settings=native_settings;
     let mut unchanged=Stream::new(48000.,2,dry_settings,0)?;
     for block in 0..BLOCKS{
         let input=frame_input(block*F,F);
-        let cut=if block==64{32}else if block==80{40}else{F};
+        let cut=if block==64{32}else if block==80{40}else if block==96{24}else{F};
         let events=if block==64{
             vec![ParamEvent{id:4,offset:32,value:0.72},
                  ParamEvent{id:5,offset:32,value:0.35}]
@@ -84,9 +90,16 @@ fn main()->Result<(),Box<dyn Error>>{
                  ParamEvent{id:10,offset:40,value:1.0},
                  ParamEvent{id:13,offset:40,value:0.4},
                  ParamEvent{id:18,offset:40,value:1.0}]
+        }else if block==96 {
+            vec![ParamEvent{id:11,offset:24,value:1.0},
+                 ParamEvent{id:16,offset:24,value:6.0},
+                 ParamEvent{id:17,offset:24,value:12000.0}]
         }else{vec![]};
         let actual=wasm.process(&input,F,&events)?;
-        let expected=native_chunk(&mut native,&input,F,cut,&mut native_settings,block==80)?;
+        let expected=native_chunk(&mut native,&input,F,cut,&mut native_settings,
+                                  block==80,block==96)?;
+        let no_crusher=native_chunk(&mut native_without_crusher,&input,F,
+            if block==96{F}else{cut},&mut no_crusher_settings,block==80,false)?;
         let mut baseline=vec![0.;2*F];
         unchanged.process(&input,&mut baseline,F)?;
         for ((a,b),z) in actual.iter().zip(expected.iter()).zip(baseline.iter()){
@@ -94,10 +107,15 @@ fn main()->Result<(),Box<dyn Error>>{
             power+=(*a as f64)*(*a as f64);
             if block>=72 {after_diff+=((a-z) as f64).abs();}
         }
+        if block>=104 {
+            crusher_diff+=actual.iter().zip(no_crusher.iter())
+                .map(|(a,b)|((*a-*b) as f64).abs()).sum::<f64>();
+        }
         assert!(actual.iter().all(|v|v.is_finite()),"bad real WASM audio");
     }
     assert!(power>1e-6,"shared Stream emitted no audio");
     assert!(after_diff>0.1,"canonical spectral and geometric events produced no PCM difference");
+    assert!(crusher_diff>0.1,"crusher audio was a placebo after its sample-offset change");
     assert!(biggest<0.008,"WASM/native canonical spectral PCM diverged: max={biggest}");
     // A DAW is free to automate L and H independently. Even though each
     // canonical value fits its own range, their combination can be invalid.
@@ -158,6 +176,26 @@ fn main()->Result<(),Box<dyn Error>>{
     assert!(wet_after_zero.iter().zip(native_after_zero.iter())
         .all(|(a,b)|(a-b).abs()<0.008),
         "zero-frame module parameter flush changed spectral stream timing");
+    // DAW sample-clock 0 Hz is an intentional infinite hold, not division
+    // by zero. Disabling crusher must restore the same canonical pipeline.
+    assert!(wasm.process(&[],0,&[
+        ParamEvent{id:17,offset:0,value:0.0}])?.is_empty());
+    native.set_crusher(6,0)?;
+    let frozen_input=frame_input((BLOCKS+3)*F,F);
+    let frozen_pcm=wasm.process(&frozen_input,F,&[])?;
+    let mut native_frozen=vec![0f32;2*F];
+    native.process(&frozen_input,&mut native_frozen,F)?;
+    assert!(frozen_pcm.iter().zip(native_frozen.iter()).all(|(a,b)|(a-b).abs()<0.008),
+        "0Hz crusher freeze differs between native and WASM");
+    assert!(wasm.process(&[],0,&[
+        ParamEvent{id:11,offset:0,value:0.0}])?.is_empty());
+    native.set_crusher(0,0)?;
+    let disabled_input=frame_input((BLOCKS+4)*F,F);
+    let disabled_pcm=wasm.process(&disabled_input,F,&[])?;
+    let mut native_disabled=vec![0f32;2*F];
+    native.process(&disabled_input,&mut native_disabled,F)?;
+    assert!(disabled_pcm.iter().zip(native_disabled.iter()).all(|(a,b)|(a-b).abs()<0.008),
+        "crusher off changed canonical Rust audio");
     // Reject invalid new geometry values without compromising DSP.
     assert!(wasm.process(&frame_input(16896,F),F,&[
         ParamEvent{id:8,offset:0,value:4.1}]).is_err());
@@ -165,6 +203,6 @@ fn main()->Result<(),Box<dyn Error>>{
     // while demo Identity/Gain native regression still accepts ID64.
     let buf=frame_input(16384,F);
     assert!(wasm.process(&buf,F,&[ParamEvent{id:64,offset:0,value:0.5}]).is_err());
-    println!("PASS S4b2a native/WASM Stream: 16K PCM, L/H geometry/ring/reflection sample-offset parity max_error={biggest:.7}, changed_diff={after_diff:.4}, latency=1023");
+    println!("PASS S4b3a native/WASM Stream: 16K PCM, L/H geometry/ring/reflection + crusher at sample24, 0Hz freeze/off, parity max_error={biggest:.7}, changed_diff={after_diff:.4}, crusher_diff={crusher_diff:.4}, latency=1023");
     Ok(())
 }
