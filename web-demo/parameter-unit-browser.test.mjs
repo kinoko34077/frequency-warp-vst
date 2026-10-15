@@ -220,6 +220,48 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#fundamental");
     assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
     await page.$eval("#fundamental",el=>el.blur());
+    // Signed slope s is a dimensionless orientation/scale, not a musical
+    // frequency or semitone interval. Its real rail is -4..+4 linearly.
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll(
+      "#axis-slope-unit option")].map(el=>el.value)),["ratio","percent"]);
+    assert.equal(await page.$eval("#axis-slope-snap",el=>el.checked),false);
+    const slopeRailInitial=await page.$eval("#axis-slope",el=>el.value);
+    await page.select("#axis-slope-unit","percent");
+    assert.equal(await page.$eval("#axis-slope",el=>el.value),slopeRailInitial);
+    assert.equal(Number(await page.$eval("#axis-slope-value",el=>el.value)),62.5);
+    await page.$eval("#axis-slope-value",el=>{
+      el.value="25";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#axis-slope-unit","ratio");
+    await page.focus("#axis-slope-value");
+    assert.equal(Number(await page.$eval("#axis-slope-value",el=>el.value)),-2);
+    await page.$eval("#axis-slope-value",el=>el.blur());
+    await page.$eval("#axis-slope-value",el=>{
+      el.value="-1.25";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.focus("#axis-slope-value");
+    assert.equal(Number(await page.$eval("#axis-slope-value",el=>el.value)),-1.25);
+    await page.$eval("#axis-slope-value",el=>el.blur());
+    await page.$eval("#axis-slope-snap",el=>{el.checked=true;});
+    for(const [thumb,target] of [["-.98",-1],[".02",0],[".98",1]]){
+      await page.$eval("#axis-slope",(el,t)=>{
+        el.value=t;el.dispatchEvent(new Event("input",{bubbles:true}));
+      },thumb);
+      await page.focus("#axis-slope-value");
+      assert.equal(Number(await page.$eval("#axis-slope-value",el=>el.value)),target,
+        "snap actual signed scale to -1/0/+1");
+      await page.$eval("#axis-slope-value",el=>el.blur());
+    }
+    await page.$eval("#axis-slope-value",el=>{
+      el.value="C4";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.focus("#axis-slope-value");
+    assert.equal(Number(await page.$eval("#axis-slope-value",el=>el.value)),1,
+      "signed slope never parses a musical note name");
+    await page.$eval("#axis-slope-value",el=>el.blur());
+    await page.click("#slope-one");
+    assert.equal(await page.$eval("#axis-slope-value",el=>Number(el.value)),1);
+
     // M2 positive ratio r: its units are intervals, NOT absolute note Hz.
     const initialRThumb=await page.$eval("#pitch-ratio-range",el=>el.value);
     assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll(
@@ -381,6 +423,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#pitch-ratio-unit",el=>el.value),"ratio");
     assert.equal(await page.$eval("#pitch-ratio-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#pitch-ratio",el=>Number(el.value)),1);
+    assert.equal(await page.$eval("#axis-slope-unit",el=>el.value),"ratio");
+    assert.equal(await page.$eval("#axis-slope-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#axis-slope-value",el=>Number(el.value)),1);
     await page.click("#settings-done");
 
     // Browser-only reference sine still has ONE physical Hz authority;
