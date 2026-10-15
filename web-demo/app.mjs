@@ -124,7 +124,7 @@ function syncHarmonicToPivot(){
     // Theoretical F may exceed the physical pivot rail; F belongs to the
     // harmonic controls, and must NEVER be rewritten to make P fit.
     $("#harmonic-pivot-link").checked=false;
-    linkFeedback("連動解除：仮想基音 H="+Number(H.toFixed(3))+
+    linkFeedback("連動解除：仮想基音 H="+Number(H.toPrecision(12))+
       " Hz は物理起点Pの操作可能域（0Hz、または0.001〜20,000 Hz）の範囲外です。Fの値と起点Pは保持しました。");
     return scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
   }
