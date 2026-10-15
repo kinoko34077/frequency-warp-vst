@@ -21,6 +21,8 @@ std::uint32_t fw_native_latency(const FWNativeOpaque* handle);
 bool fw_native_faulted(const FWNativeOpaque* handle);
 // Worker-only; may inspect validated manifest, NEVER call from audio thread.
 bool fw_native_supports_stream_controls(const FWNativeOpaque* handle);
+// Off-RT immutable module capability mask, bit positions are fixed ParamIDs.
+std::uint64_t fw_native_stream_control_mask(const FWNativeOpaque* handle);
 std::int32_t fw_native_process(
     FWNativeOpaque* handle, const float* input, float* output,
     std::uint32_t frames, const FWNativeEvent* events, std::uint32_t event_count);
