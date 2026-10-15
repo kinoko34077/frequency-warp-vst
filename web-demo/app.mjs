@@ -667,7 +667,7 @@ lowUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#low-value"),select:$("#low-unit"),snapToggle:$("#low-snap"),
+  field:$("#low-value"),select:$("#low-unit"),
   slider:$("#low"),railRoot:$("#dual-range"),
   getDigits:displayDigits,
   initialValue:hzFromScale($("#low").value),
@@ -683,7 +683,7 @@ highUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#high-value"),select:$("#high-unit"),snapToggle:$("#high-snap"),
+  field:$("#high-value"),select:$("#high-unit"),
   slider:$("#high"),railRoot:$("#dual-range"),
   getDigits:displayDigits,
   initialValue:hzFromScale($("#high").value),
@@ -704,7 +704,7 @@ pivotUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#axis-pivot-value"),select:$("#pivot-unit"),snapToggle:$("#pivot-snap"),
+  field:$("#axis-pivot-value"),select:$("#pivot-unit"),
   slider:$("#axis-pivot"),railRoot:$("#axis-pivot"),
   getDigits:displayDigits,initialValue:350,
   onValueChange:()=>{
@@ -721,7 +721,7 @@ aMinUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#a-min-value"),select:$("#a-min-unit"),snapToggle:$("#a-min-snap"),
+  field:$("#a-min-value"),select:$("#a-min-unit"),
   slider:$("#a-min"),railRoot:$("#a-min"),
   getDigits:displayDigits,initialValue:20,
   onValueChange:()=>{updateParams("a-min");updateEngineInfo();}
@@ -738,7 +738,7 @@ slopeUnitControl=mountParameterUnitField({
           thresholdPx:6,during:["slider"]}
   }),
   field:$("#axis-slope-value"),select:$("#axis-slope-unit"),
-  snapToggle:$("#axis-slope-snap"),slider:$("#axis-slope"),
+  slider:$("#axis-slope"),
   railRoot:$("#axis-slope"),getDigits:displayDigits,initialValue:1,
   onValueChange:()=>{updateParams("axis-slope");updateEngineInfo();}
 });
@@ -1094,7 +1094,7 @@ sineUnitControl=mountFrequencyUnitField({
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
-  field:$("#sine-hz"),select:$("#sine-unit"),snapToggle:$("#sine-snap"),
+  field:$("#sine-hz"),select:$("#sine-unit"),
   slider:$("#sine-pitch"),railRoot:$("#sine-pitch"),
   getDigits:displayDigits,initialValue:440,
   onValueChange:()=>updateSineLabel()
