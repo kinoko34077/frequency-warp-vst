@@ -13,8 +13,8 @@ public:
     static constexpr uint32_t kMax=128;
     // Exact physical IDs accepted by org.kinotch.stream v1. Don't include
     // unrelated host-only controls or demo Gain ID64.
-    inline static constexpr std::array<uint32_t,14> kBindingIds{
-        2,3,4,5,6,7,8,9,10,11,13,16,17,18
+    inline static constexpr std::array<uint32_t,18> kBindingIds{
+        2,3,4,5,6,7,8,9,10,11,13,16,17,18,27,28,29,30
     };
     static constexpr uint32_t kBindingCount=kBindingIds.size();
     static constexpr uint32_t kInitial=kBindingCount;
