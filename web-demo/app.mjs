@@ -727,7 +727,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
 // Compact shared rails. Actual parameter updates still use the same
 // source ranges and existing native Rust AudioWorklet/WAV bindings.
 dualControls.bounds=mountDualThumb($("#dual-range"),["low","high"],[
-  v=>hzText(hzFromScale(v)),v=>hzText(hzFromScale(v))
+  v=>hzText(lowUnitControl?.value??hzFromScale(v)),v=>hzText(hzFromScale(v))
 ]);
 dualControls.reflection=mountDualThumb($("#reflection-dual"),
   ["zero-reflect","zero-decay"],[
