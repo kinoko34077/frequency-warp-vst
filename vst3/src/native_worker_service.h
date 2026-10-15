@@ -5,10 +5,12 @@
 #include "async_pcm_mailbox.h"
 #include "stream_host_events.h"
 #include "native_engine_abi.h"
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -18,6 +20,15 @@ class NativeWorkerService final {
 public:
     enum class Status : uint32_t { Stopped, Starting, Missing, Preparing, Ready,
                                    Rejected, Faulted };
+    struct VerifiedIdentitySnapshot {
+        std::vector<uint8_t> package;
+        std::array<uint8_t,32> packageSha256{};
+        std::string engineId;
+        uint64_t acceptedGeneration=0;
+        // Active only if the worker reports Ready. A retained verified image
+        // on stop/fault is not proof of currently running DSP.
+        bool active=false;
+    };
     NativeWorkerService()=default;
     NativeWorkerService(const NativeWorkerService&)=delete;
     NativeWorkerService& operator=(const NativeWorkerService&)=delete;
@@ -48,12 +59,23 @@ public:
     // replace these exact self-contained engine archive bytes.
     std::vector<uint8_t> verifiedPackageSnapshot() const {
         std::lock_guard<std::mutex> guard(verifiedMutex_);
-        return verifiedPackage_;
+        return verified_.package;
+    }
+    // Non-RT coherent copy of last successfully ACTIVATED package metadata.
+    // Status is read under the same identity mutex, but the caller must
+    // verify generation again when committing a later project save.
+    VerifiedIdentitySnapshot verifiedIdentitySnapshot() const {
+        std::lock_guard<std::mutex> guard(verifiedMutex_);
+        auto snapshot=verified_;
+        snapshot.active=!snapshot.package.empty() &&
+            !snapshot.engineId.empty() && snapshot.acceptedGeneration>0 &&
+            status_.load(std::memory_order_acquire)==Status::Ready;
+        return snapshot;
     }
     bool clearVerifiedWhenStopped() {
         if(thread_.joinable())return false;
         std::lock_guard<std::mutex> guard(verifiedMutex_);
-        verifiedPackage_.clear();
+        verified_=VerifiedIdentitySnapshot{};
         return true;
     }
     bool start() noexcept {
@@ -168,7 +190,7 @@ private:
                 if(active)fw_native_destroy(std::exchange(active,nullptr));
                 {
                     std::lock_guard<std::mutex> guard(verifiedMutex_);
-                    verifiedPackage_.clear();
+                    verified_=VerifiedIdentitySnapshot{};
                 }
                 status_.store(Status::Missing,std::memory_order_release);
                 lastCompleted_.store((req.requestId<<1)|1ull,std::memory_order_release);
@@ -180,7 +202,23 @@ private:
                     req.bytes.data(),req.bytes.size(),req.rate,
                     req.channels,req.frames);
                 const auto latency=candidate?fw_native_latency(candidate):UINT32_MAX;
-                if(candidate&&latency<=AsyncPcmMailbox::kHostPdc&&
+                std::array<uint8_t,32> hash{};
+                std::array<uint8_t,129> name{};
+                std::string engineId;
+                bool identityOk=false;
+                if(candidate) {
+                    const uint32_t nameLength=fw_native_copy_verified_identity(
+                        candidate,hash.data(),hash.size(),name.data(),name.size());
+                    if(nameLength>0&&nameLength<=128&&
+                       name[nameLength]==0) {
+                        try {
+                            engineId.assign(reinterpret_cast<const char*>(name.data()),
+                                            nameLength);
+                            identityOk=!engineId.empty();
+                        }catch(...) {identityOk=false;}
+                    }
+                }
+                if(candidate&&identityOk&&latency<=AsyncPcmMailbox::kHostPdc&&
                     mailbox_.workerConfigure(processNative,candidate,latency)) {
                     auto* retired=std::exchange(active,candidate);
                     // Same worker thread cannot be inside workerStep and
@@ -188,7 +226,11 @@ private:
                     if(retired)fw_native_destroy(retired);
                     {
                         std::lock_guard<std::mutex> guard(verifiedMutex_);
-                        verifiedPackage_=std::move(req.bytes);
+                        verified_.package=std::move(req.bytes);
+                        verified_.engineId=std::move(engineId);
+                        verified_.packageSha256=hash;
+                        verified_.acceptedGeneration=
+                            accepted_.load(std::memory_order_relaxed)+1u;
                     }
                     accepted_.fetch_add(1,std::memory_order_release);
                     activated=true;
@@ -233,7 +275,7 @@ private:
     std::atomic<uint64_t> handled_{0};
     std::atomic<uint64_t> lastCompleted_{0};
     mutable std::mutex verifiedMutex_{};
-    std::vector<uint8_t> verifiedPackage_{}; // success-confirmed only
+    VerifiedIdentitySnapshot verified_{}; // success-confirmed only
 
 };
 } // namespace fw
