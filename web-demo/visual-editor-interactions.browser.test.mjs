@@ -103,6 +103,11 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     await page.click('#settings-open');
     await page.$eval('#debug-mode',el=>{el.checked=false;el.dispatchEvent(new Event('change',{bubbles:true}));});
     assert.equal(await page.$eval('#fw-layout-inspector',el=>el.hidden),true);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('.control-grid > .control')].slice(0,2).map(e=>getComputedStyle(e).order)),['0','0'],'debug OFF hides applied CSS');
+    await page.$eval('#debug-mode',el=>{el.checked=true;el.dispatchEvent(new Event('change',{bubbles:true}));});
+    await page.waitForFunction(()=>document.querySelector('#fw-layout-inspector')&&!document.querySelector('#fw-layout-inspector').hidden);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('.control-grid > .control')].slice(0,2).map(e=>getComputedStyle(e).order)),['1','0'],'re-enabling debug restores local layout');
+    await page.$eval('#debug-mode',el=>{el.checked=false;el.dispatchEvent(new Event('change',{bubbles:true}));});
     await page.click('#settings-done');
     await page.reload({waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready');
