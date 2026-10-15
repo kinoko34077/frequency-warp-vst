@@ -5,6 +5,7 @@
 #include "native_engine_abi.h"
 #include "native_worker_service.h"
 #include "stream_host_events.h"
+#include "generic_host_packet.h"
 #include "engine_project_state.h"
 #include "project_state_stream_reader.h"
 #include "project_binding_association.h"
@@ -334,13 +335,25 @@ public:
         // No host automation changes are silently discarded.
         const bool hasWorker=worker_.mailbox().rtHasPreparedWorker();
         std::array<Queue*,StreamHostEvents::kBindingCount> streamQueues{};
+        std::array<Queue*,64> genericQueues{};
         for(int32 q=0;q<used;q++){
             const int index=StreamHostEvents::indexOf(cursors[q].id);
             if(index>=0)streamQueues[static_cast<size_t>(index)]=&cursors[q];
+            if(cursors[q].id>=64 && cursors[q].id<=127)
+                genericQueues[cursors[q].id-64]=&cursors[q];
         }
         for(int32 start=0;start<data.numSamples;) {
             uint32_t frames=0;
-            StreamHostEvents controls{};
+            GenericHostPacket controls{};
+            // RT audio owns this immutable packet until the next rtAdopt.
+            // A worker-side revocation remains observable through the ticket.
+            const auto* auth=worker_.genericAuthorization().rtLiveSnapshot();
+            AsyncPcmMailbox::AuthorizationTag packetAuth{};
+            if(auth) {
+                packetAuth.ticket=auth->ticket;
+                packetAuth.acceptedGeneration=auth->acceptedGeneration;
+                packetAuth.packageSha256=auth->verifiedPackageSha256;
+            }
             std::array<std::array<float,AsyncPcmMailbox::kMaxFrames>,2> input{};
             std::array<std::array<Sample,AsyncPcmMailbox::kMaxFrames>,2> original{};
             std::array<double,AsyncPcmMailbox::kMaxFrames> wetMix{};
@@ -349,6 +362,7 @@ public:
                   start+static_cast<int32>(frames)<data.numSamples) {
                 const int32 frame=start+static_cast<int32>(frames);
                 std::array<bool,StreamHostEvents::kBindingCount> changed{};
+                std::array<bool,64> changedGeneric{};
                 uint32_t demand=0;
                 if(frames>0) {
                     for(uint32_t k=0;k<StreamHostEvents::kBindingCount;k++) {
@@ -356,19 +370,45 @@ public:
                         changed[k]=q&&q->next<q->count&&q->offset==frame;
                         if(changed[k])demand++;
                     }
+                    if(auth) {
+                        for(std::uint32_t bit=0;bit<64;bit++) {
+                            if(!(auth->allowedMask&(std::uint64_t{1}<<bit)))continue;
+                            const Queue* q=genericQueues[bit];
+                            changedGeneric[bit]=q&&q->next<q->count&&q->offset==frame;
+                            if(changedGeneric[bit])demand++;
+                        }
+                    }
                     if(!controls.hasRoom(demand))break;
                 }
                 apply(frame);
                 if(frames==0) {
                     // Equivalent to all same-sample changes in host order:
                     // only final values can affect a continuously sampled DSP.
-                    if(!controls.start(values_,hostSampleRate_))
+                    StreamHostEvents initial{};
+                    if(!initial.start(values_,hostSampleRate_))
                         return kResultFalse;
+                    for(std::uint32_t k=0;k<initial.count();k++) {
+                        if(!controls.appendPhysical(initial.data()[k]))
+                            return kResultFalse;
+                    }
+                    if(auth)for(std::uint32_t bit=0;bit<64;bit++){
+                        if(!(auth->allowedMask&(std::uint64_t{1}<<bit)))continue;
+                        if(!controls.append(auth->codec[bit],64u+bit,0,values_[64u+bit]))
+                            return kResultFalse;
+                    }
                 }else{
                     for(uint32_t k=0;k<StreamHostEvents::kBindingCount;k++)if(changed[k]){
                         const uint32_t id=StreamHostEvents::idAt(k);
-                        if(!controls.append(id,frames,values_[id],hostSampleRate_))
+                        StreamHostEvents converted{};
+                        // Make a verified numeric translation without new
+                        // per-knob code or any heap/Wasmi calls on RT.
+                        if(!converted.append(id,frames,values_[id],hostSampleRate_) ||
+                           !controls.appendPhysical(converted.data()[0]))
                             return kResultFalse;
+                    }
+                    if(auth)for(std::uint32_t bit=0;bit<64;bit++)if(changedGeneric[bit]){
+                        if(!controls.append(auth->codec[bit],64u+bit,frames,
+                                            values_[64u+bit]))return kResultFalse;
                     }
                 }
                 wetMix[frames]=values_[0];
@@ -393,13 +433,19 @@ public:
                 const float* inputs[2]={input[0].data(),input[1].data()};
                 worker_.mailbox().rtSubmit(inputs,
                     static_cast<uint32_t>(src.numChannels),frames,
-                    controls.data(),controls.count());
+                    controls.data(),controls.count(),
+                    auth?&packetAuth:nullptr);
             }
             for(uint32_t i=0;i<frames;i++) {
                 float wet[2]{};
-                const bool available=hasWorker&&
+                AsyncPcmMailbox::AuthorizationTag wetAuth{};
+                const bool arrived=hasWorker&&
                    worker_.mailbox().rtReadWet(jobStart+i,
-                     static_cast<uint32_t>(src.numChannels),wet);
+                     static_cast<uint32_t>(src.numChannels),wet,&wetAuth);
+                // Every tagged delayed wet sample must still own the current
+                // worker permission; stale packets become delayed Dry.
+                const bool available=arrived && (!wetAuth.ticket ||
+                    worker_.genericAuthorization().rtTicketLive(wetAuth.ticket));
                 for(int32 ch=0;ch<src.numChannels;ch++) {
                     const auto dry=delay_.tick(ch,original[ch][i]);
                     Sample output=dry;
