@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {reconcileFrequencyBounds as R} from "./frequency-bounds.mjs";
 const near=(a,b,tol=1e-10)=>assert.ok(Math.abs(a-b)<tol,`${a} != ${b}`);
 test("changed L moves canonical H, never implicitly edits L on next render",()=>{
-  const a=R({low:15000,high:16000,cap:20000,changed:"low"});
-  assert.equal(a.low,15000);assert.equal(a.high,16200);
+  const a=R({low:15500,high:16000,cap:20000,changed:"low"});
+  assert.equal(a.low,15500);assert.equal(a.high,16740);
   assert.deepEqual(R({...a,cap:20000}),a,"a second labels/settings pass is idempotent");
 });
 test("changed H moves canonical L and all 6% gaps are stable",()=>{
