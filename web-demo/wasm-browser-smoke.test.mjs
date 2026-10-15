@@ -168,7 +168,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#low",el=>el.value),"200");
     // L/H sliders remain continuous down to positive near-zero, and exact
     // 0.001 Hz typed input reaches the Rust/WASM mapping without truncation.
-    assert.equal(await page.$eval("#low-value",el=>el.min),"0.001");
+    assert.equal(await page.$eval("#low-value",el=>el.type),"text",
+      "musical note spelling needs text input; typed Hz bounds live in the shared descriptor");
+    assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
     await page.$eval("#low",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
