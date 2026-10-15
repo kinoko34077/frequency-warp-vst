@@ -1,5 +1,10 @@
 # Frequency Warp — VST3 / Web shared DSP research
 
+## 2026-10-15 Web UI release scope
+
+The source includes responsive graph views (2k/20k/0.001–20Hz theoretical zoom), compact Hz/note/rail unit controls, auxiliary sine gain and bounded live-audio setting validation. PRs [#184](https://github.com/kinoko34077/frequency-warp-vst/pull/184), [#185](https://github.com/kinoko34077/frequency-warp-vst/pull/185) and [#186](https://github.com/kinoko34077/frequency-warp-vst/pull/186) retain implementation/CI history; consult the linked main branch and Pages workflow for live release state. Above 20kHz actual processing is reserved for **possible later oversampling**, not current DSP support. Real failing physical iOS Safari audio-file/codec reproduction remains unverified; staged Chrome tests must not be described as proof on that device. Unit-family migration M2/M3 stays open in #79; native DAW/engine R3C2 remains independently owned by #172.
+
+
 A frequency-domain audio-warp research project. The goal is a VST3
 audio effect with continuously variable frequency-axis curvature and
 invert amount, preserving source stereo and transient cues as far as

@@ -57,7 +57,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#mode",el=>[...el.options].some(x=>x.value==="blend")),false,"simple blend must not be user-selectable");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
-    assert.equal(await page.$eval("#graph-log",el=>el.value),"100");
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"0");
+    assert.equal(await page.$eval("#sine-heading",el=>el.textContent),"補助音");
+    assert.equal(await page.$eval("#sine-volume",el=>el.value),"25");
+    await page.$eval("#sine-volume",el=>{
+      el.value="40";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#sine-volume-value",el=>el.textContent),"40%");
     // Fold/reference Hz must remain visible without opening the tooltip.
     const shapeMarker=await page.$eval("#invert-reference-hz",el=>({
       text:el.textContent,
@@ -239,11 +245,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#axis-pivot",el=>Number(el.value)),0);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
     const beforeLog=await page.$eval("#curve",el=>el.toDataURL());
-    await page.$eval("#graph-log",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#graph-log",el=>{el.value="100";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const afterLog=await page.$eval("#curve",el=>el.toDataURL());
     assert.notEqual(beforeLog,afterLog,"display-axis slider must redraw the graph");
     await page.click("#curve");
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/20kHz/);
+    await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/0.001〜20Hz/);
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"100","subbass zoom uses logarithmic octave spacing");
     await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/2kHz/);
     await page.$eval("#axis-pivot",el=>{
@@ -265,9 +274,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // Information is hidden until requested, available by pointer and keyboard.
     const contextHint=await page.$(".shape-control .info-tip summary");
     assert.ok(contextHint);
-    await contextHint.click();
-    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
+    await contextHint.hover();
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true,
+      "mouse hover opens contextual formula help");
     assert.match(await page.$eval(".shape-control .info-body",el=>el.textContent),/反転/);
+    await page.mouse.move(2,2);
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false,
+      "pointer leave must dismiss it without another click");
+    await contextHint.focus();
+    await contextHint.press("Enter");
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
     await contextHint.press("Enter");
     assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false);
     assert.equal(await page.$eval("#crusher-bits",el=>el.closest(".fx-item").textContent.includes("量子化")),true);
@@ -332,7 +348,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/連動対象なし/);
     await page.select("#mode","fold-h");
     assert.match(await page.$eval("#curvature-log-formula",el=>el.textContent),/ln/);
-    assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/ln/);
+    assert.match(await page.$eval("#graph-log-formula",el=>el.textContent),/α=/);
 
     await page.click("#tab-map");
     // Emulate a Touch PointerEvent at iPhone 390px; verify a lower thumb
@@ -487,6 +503,34 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       node.value=".42";node.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
+    // Live stream must not silently accept theoretical out-of-Rust F values,
+    // even with rational mode OFF. Keep the chosen F, reject the audio update,
+    // then recover to the same real AudioWorklet via valid settings + ACK.
+    await page.$eval("#rational-enabled",el=>{
+      el.checked=false;el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#fundamental",el=>{
+      el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),100000,
+      "future oversampling F remains theoretical rather than secretly clamped");
+    assert.match(await page.$eval("#status",el=>el.textContent),
+      /音声処理へ未反映.*20,000Hz/,
+      "unsupported active Rust settings must surface their actual boundary");
+    assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/設定未反映/,
+      "preflight must not leave an apparently applied DSP value");
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
+      {timeout:15000});
+    await page.$eval("#rational-enabled",el=>{
+      el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
     await page.click(".fx-more summary");

@@ -10,10 +10,12 @@ import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHar
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
+import {validateStreamSettings} from "./stream-parameter-contract.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
 let graphMax=2000;
+let graphAlphaBeforeZoom=0;
 const controls={
   dry:$("#play-dry"),wet:$("#play-wet"),stop:$("#stop"),
   render:$("#render"),download:$("#download")
@@ -100,6 +102,7 @@ function bounds(changed=""){
   }else $("#high").value=String(scaleFromHz(high));
   // Even with both exact values unchanged, refresh coarse handles/ARIA.
   state.effective={low,high};
+  const min=$("#processing-min-hz");if(min&&document.activeElement!==min)min.value=String(low);
   showNumber("low-value",low);
   showNumber("high-value",high);
   const rail=$("#dual-range");
@@ -111,8 +114,14 @@ function bounds(changed=""){
 const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
 function syncHarmonicToPivot(){
   const {F,m,r}=harmonicParameters(),H=r*F/m;
-  if(pivotUnitControl)pivotUnitControl.setCanonical(H);
-  else {state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));}
+  if(pivotUnitControl){
+    pivotUnitControl.setCanonical(H);
+    // When the theoretical F goes beyond the physical 20kHz pivot rail,
+    // reconcile BOTH values instead of silently breaking the lock.
+    if(!Object.is(pivotUnitControl.value,H))setFundamentalFromPivot(pivotUnitControl.value);
+    return pivotUnitControl.value;
+  }
+  state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));
   return H;
 }
 function syncPivotToHarmonic(){
@@ -181,9 +190,12 @@ function labels(id=""){
   dualControls.shape?.sync();
   $("#zero-reflect-status").textContent="合成 "+displayNumber(100*p.zeroReflectGain)+
     "% / 反射 "+displayNumber(100*p.zeroReflectDecay)+"%";
-  $("#zero-reflect-formula").textContent="振幅="+displayNumber(100*p.zeroReflectGain)+
-    "% × (1−"+displayNumber(p.zeroReflectDecay)+")^(反射点からの周波数距離/"+
-    displayNumber(p.axisReference)+"Hz)。L/Hの折返し枝と0Hz越えの成分だけに適用。単なる周波数反転・負の傾きには適用しません。";
+  // Trusted finite scalars only; mathematical notation is native MathML.
+  $("#zero-reflect-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>'+
+    '<mi>A</mi><mo>=</mo><mn>'+displayNumber(p.zeroReflectGain)+'</mn>'+
+    '<msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mn>'+displayNumber(p.zeroReflectDecay)+'</mn><mo>)</mo></mrow>'+
+    '<mfrac><mi>d</mi><mrow><mn>'+displayNumber(p.axisReference)+'</mn><mi>Hz</mi></mrow></mfrac></msup>'+
+    '</mrow></math> 折返し点からの距離 d に適用（単なる負の傾きは対象外）。';
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
   showNumber("a-min-value",p.aMinHz);
@@ -209,7 +221,13 @@ function labels(id=""){
     (p.mode==="reciprocal"?"反転固定点 ":p.mode==="fold-l"?"L折返し ":"H折返し ")+
     (Number.isFinite(hz)?displayNumber(hz)+" Hz":"—");
   const pText=displayNumber(p.curvature);
-  $("#curvature-log-formula").textContent="p="+pText+" · S₀(f)=ln(f/L)、Sₚ(f)=((f/L)ᵖ−1)/p (p>0)。移動量は p=0: f×eᵘ、p=1: f+uR Hz（他の傾き/起点設定は別）。";
+  $("#curvature-log-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML">'+
+    '<mrow><mi>p</mi><mo>=</mo><mn>'+pText+'</mn><mo>;</mo>'+
+    '<msub><mi>S</mi><mn>0</mn></msub><mo>(</mo><mi>f</mi><mo>)</mo><mo>=</mo>'+
+    '<mi>ln</mi><mo>(</mo><mfrac><mi>f</mi><mi>L</mi></mfrac><mo>)</mo>'+
+    '</mrow></math>'+
+    '<math><mrow><msub><mi>S</mi><mi>p</mi></msub><mo>(</mo><mi>f</mi><mo>)</mo>'+
+    '<mo>=</mo><mfrac><mrow><msup><mrow><mo>(</mo><mfrac><mi>f</mi><mi>L</mi></mfrac><mo>)</mo></mrow><mi>p</mi></msup><mo>−</mo><mn>1</mn></mrow><mi>p</mi></mfrac></mrow></math>';
   $("#axis-explainer").textContent=p.curvature===0?
     "移動倍率 ×"+displayNumber(Math.exp(u)):p.curvature===1?
     "移動 "+displayNumber(u*ref)+" Hz":"移動 "+displayNumber(u)+"（中間尺度）";
@@ -294,7 +312,13 @@ function drawCurve(){
   $("#reflection-activity").textContent=hasReflect?
     "反射区間あり · 2つのつまみは音声・グラフに即時反映":
     "現在は反射区間なし。反転や移動で反射が発生すると有効になります。";
-  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×f/"+graphMax+"+α×ln(1+f/20)/ln(1+"+graphMax+"/20)。x/y共通の0Hzを含む表示尺度（音声DSPに影響しません）。";
+  $("#graph-log-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>'+
+    '<mi>α</mi><mo>=</mo><mn>'+displayNumber(alpha)+'</mn>'+
+    '<mo>;</mo><mi>x</mi><mo>(</mo><mi>f</mi><mo>)</mo><mo>=</mo>'+
+    '<mo>(</mo><mn>1</mn><mo>−</mo><mi>α</mi><mo>)</mo>'+
+    '<mfrac><mi>f</mi><mi>M</mi></mfrac><mo>+</mo><mi>α</mi>'+
+    '<msub><mi>g</mi><mtext>log</mtext></msub><mo>(</mo><mi>f</mi><mo>)</mo>'+
+    '</mrow></math> M＝表示上限。低域拡大では 0.001Hz 起点の対数尺度。';
   const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=p.crusherBits===0;
@@ -303,7 +327,7 @@ function drawCurve(){
     (p.crusherHold===1?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
     "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝単一正弦波の標本保持から生じる理論スペクトル像、透明度＝理想応答ゲイン（振幅量子化でさらに変化）。");
   updateListeningGuide();
-  $("#graph-title").textContent=graphMax===2000?"〜2kHz":"〜20kHz";
+  $("#graph-title").textContent=graphMax===20?"0.001〜20Hz":graphMax===2000?"〜2kHz":"〜20kHz";
 }
 async function ensureSharedCore(){
   if(!state.wasmPromise){
@@ -447,7 +471,10 @@ function tuneWet(){
 function playerMessage(node,p){
   return ({data})=>{
     if(state.player!==p)return;
-    if(data.type==="error")message("共通DSP: "+data.message,"error");
+    if(data.type==="error"){
+      indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
+      message("共通DSP: "+data.message,"error");
+    }
     if(data.type==="parameters-applied"){
       p.appliedRevision=data.revision;
       indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
@@ -567,6 +594,8 @@ async function play(mode="wet",offset=null){
   try{
     const {ctx,module}=await prepareCore();
     const current=settings();
+    const preflight=validateStreamSettings(current);
+    if(!preflight.ok)throw Error("設定が現行DSPに非対応: "+preflight.message);
     const worklet=new AudioWorkletNode(ctx,"frequency-warp-rust",{
       numberOfInputs:1,numberOfOutputs:2,
       outputChannelCount:[state.dry.length,state.dry.length]
@@ -631,6 +660,13 @@ function updateParams(changed){
   const p=state.player;
   if(!p)return;
   const current=settings();
+  const preflight=validateStreamSettings(current);
+  if(!preflight.ok){
+    if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
+    message("音声処理へ未反映: "+preflight.message,"error");
+    indicator("設定未反映 · "+preflight.field);
+    return;
+  }
   if(current.qualityIndex!==p.quality||current.hopDiv!==p.hopDiv||current.engine!==p.engine){
     // Debounce costly stream rebuilds while the user is selecting; keep
     // current playback position rather than stopping on every input event.
@@ -691,7 +727,7 @@ highUnitControl=mountFrequencyUnitField({
 });
 // Pivot P has an explicit 0-Hz rail position; positive frequencies begin at
 // 0.001 Hz and retain the original piecewise logarithmic gesture scale.
-// 0 Hz cannot be formatted as a musical note and falls back to Hz view.
+// 0 Hz has no musical pitch; keep the selected note view, displaying “—” instead.
 const pivotNormalizedFromHz=hz=>hz<=0?0:hz<=20?
   (1+199*Math.log(Math.max(.001,hz)/.001)/Math.log(20000))/1000:
   (200+800*Math.log(Math.min(20000,hz)/20)/Math.log(1000))/1000;
@@ -812,9 +848,20 @@ dualControls.shape=mountDualThumb($("#shape-dual"),
     v=>"反転 "+Number((v*100).toFixed(1))+"%",
     v=>"移動尺度 p="+v+"（0=対数、1=線形）"
   ]);
-$("#curve").addEventListener("click",()=>{graphMax=graphMax===2000?20000:2000;drawCurve();});
+function cycleGraphView(){
+  const next=graphMax===2000?20000:graphMax===20000?20:2000;
+  const scale=$("#graph-log");
+  if(next===20){
+    graphAlphaBeforeZoom=Number(scale.value);
+    scale.value="100"; // 0.001Hz to 20Hz requires logarithmic visual resolution.
+  }else if(graphMax===20){
+    scale.value=String(graphAlphaBeforeZoom);
+  }
+  graphMax=next;drawCurve();
+}
+$("#curve").addEventListener("click",()=>{cycleGraphView();});
 $("#curve").addEventListener("keydown",event=>{
-  if(event.key==="Enter"||event.key===" "){event.preventDefault();graphMax=graphMax===2000?20000:2000;drawCurve();}
+  if(event.key==="Enter"||event.key===" "){event.preventDefault();cycleGraphView();}
 });
 for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{
@@ -834,6 +881,11 @@ for(const name of ["mode","outside","quality","overlap","engine"]){
 }
 $("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");updateEngineInfo();});
 $("#graph-log").addEventListener("input",drawCurve);
+$("#processing-min-hz").addEventListener("change",event=>{
+  const v=Number(event.target.value);
+  if(!Number.isFinite(v)||v<.001||v>20000){event.target.value=String(lowUnitControl.value);return;}
+  lowUnitControl.setCanonical(v);updateParams("low");updateEngineInfo();
+});
 $("#decimal-digits").addEventListener("change",()=>{
   labels();drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   lowUnitControl.refresh();
@@ -881,35 +933,29 @@ async function withDecodeDeadline(promise,ms,phase){
   }finally{clearTimeout(timer);}
 }
 async function decodeFileWithoutPlayback(file,token){
-  // No AudioContext.resume(): playback still requires the later user gesture.
-  let firstFailure=null;
-  if(typeof OfflineAudioContext!=="undefined"){
-    try{
-      message("音声を解析中…");
-      const buffer=await withDecodeDeadline(file.arrayBuffer(),10000,"ファイル読み込み");
-      if(token!==state.loadToken)return null;
-      const offline=new OfflineAudioContext(1,1,44100);
-      return await withDecodeDeadline(offline.decodeAudioData(buffer),6500,"初回デコード");
-    }catch(error){firstFailure=error;}
-  }
+  // Read once; decodeAudioData can detach its source buffer. Retry with a copy.
+  const bytes=await withDecodeDeadline(file.arrayBuffer(),20000,"ファイル読み込み");
   if(token!==state.loadToken)return null;
-  message("別の読み込み方法に切り替えています…");
-  const Constructor=window.AudioContext||window.webkitAudioContext;
-  if(!Constructor)throw Error("このブラウザでは音声ファイルを解析できません");
-  let ctx,owned=false;
-  try{
-    // Create a decode-only context. decodeAudioData is allowed while it is
-    // suspended: do not await resume() and lose the picker gesture on iOS.
-    try{ctx=new Constructor();owned=true;}
-    catch(error){if(state.ctx)ctx=state.ctx;else throw error;}
-    const bytes=await withDecodeDeadline(file.arrayBuffer(),12000,"再読み込み");
+  const Native=window.AudioContext||window.webkitAudioContext;
+  const Offline=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  const candidates=[
+    ...(Native?[["通常",()=>new Native()]]:[]),
+    ...(Offline?[["オフライン",()=>new Offline(1,1,44100)]]:[])
+  ];
+  if(!candidates.length)throw Error("このブラウザでは音声を解析できません");
+  const failures=[];
+  for(const [index,[name,create]] of candidates.entries()){
     if(token!==state.loadToken)return null;
-    return await withDecodeDeadline(ctx.decodeAudioData(bytes),16000,"代替デコード");
-  }catch(error){
-    throw Error((firstFailure?firstFailure.message+"。":"")+"代替経路も失敗: "+error.message);
-  }finally{
-    if(owned&&ctx?.close)void ctx.close().catch(()=>{});
+    let ctx;
+    try{
+      message(index?"別の音声デコーダで再試行しています…":"音声を解析中…");
+      ctx=create();
+      const decoded=await withDecodeDeadline(ctx.decodeAudioData(bytes.slice(0)),20000,name+"デコード");
+      return token===state.loadToken?decoded:null;
+    }catch(error){failures.push(name+": "+(error?.message||String(error)));}
+    finally{if(ctx?.close)void ctx.close().catch(()=>{});}
   }
+  throw Error("音声形式・コーデック・ブラウザの対応状況を確認してください。"+failures.join(" / "));
 }
 async function load(file){
   if(!file)return;
@@ -978,9 +1024,14 @@ controls.render.addEventListener("click",()=>{
     message("10分の試聴は可能です。WAV一括書出しはメモリ保護のため合計4000万サンプルまでです。","warning");
     return;
   }
+  const renderSettings=settings();
+  const preflight=validateStreamSettings({...renderSettings,sampleRate:state.decoded.sampleRate});
+  if(!preflight.ok){
+    message("WAV書出し設定未反映: "+preflight.message,"error");
+    return;
+  }
   state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;message("WAV書出し用オフライン処理中（試聴とは独立）…");
-  const renderSettings=settings();
   const worker=new Worker(new URL("./processor.worker.mjs",import.meta.url),{type:"module"});
   state.offlineWorker=worker;
   worker.onmessage=({data})=>{
@@ -1039,7 +1090,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
-    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"0","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   lowUnitControl.reset();
@@ -1134,6 +1185,11 @@ $("#sine-cent").addEventListener("input",()=>{
 });
 $("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(Math.round((sinePitch()-Math.round(sinePitch()))*100));});
 $("#sine-cent").addEventListener("blur",()=>showNumber("sine-cent",Math.round((sinePitch()-Math.round(sinePitch()))*100)));
+$("#sine-volume").addEventListener("input",()=>{
+  const v=Number($("#sine-volume").value);
+  $("#sine-volume-value").textContent=v+"%";
+  if(state.sine&&state.ctx)state.sine.gain.gain.setTargetAtTime(v/100*.32,state.ctx.currentTime,.012);
+});
 $("#sine-enabled").addEventListener("change",async()=>{
   if(!$("#sine-enabled").checked){stopSine();return;}
   try{
@@ -1142,7 +1198,7 @@ $("#sine-enabled").addEventListener("change",async()=>{
     stopSine();
     const osc=ctx.createOscillator(),gain=ctx.createGain();
     osc.type="sine";osc.frequency.value=sineFrequency();
-    gain.gain.value=0.08;
+    gain.gain.value=Number($("#sine-volume").value)/100*.32;
     osc.connect(gain);gain.connect(ctx.destination);
     osc.start();state.sine={osc,gain};updateSineLabel();
   }catch(error){

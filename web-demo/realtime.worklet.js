@@ -128,7 +128,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       const zero=quality===0?e.warp_stream_set_zero_reflect_gain(this.stream,p.zeroReflectGain):quality;
       const decay=zero===0?e.warp_stream_set_zero_reflect_decay(this.stream,p.zeroReflectDecay):zero;
       const fx=decay===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):decay;
-      if(fx!==0)this.port.postMessage({type:"error",message:"Rust DSP parameter status "+fx});
+      if(fx!==0)this.port.postMessage({type:"error",revision:data.revision,message:"Rust DSP parameter status "+fx});
       else this.port.postMessage({type:"parameters-applied",revision:data.revision});
     } else if(data.type==="dispose") {
       this.release();

@@ -42,6 +42,17 @@
       console.warn("Frequency Warp debug editor could not load",error);
     }
   });
+  for(const tip of document.querySelectorAll("details.info-tip,details.help-inline")){
+    const close=()=>tip.open=false;
+    tip.addEventListener("pointerenter",e=>{if(e.pointerType==="mouse")tip.open=true;});
+    tip.addEventListener("pointerleave",e=>{if(e.pointerType==="mouse")close();});
+    tip.addEventListener("focusout",e=>{if(!tip.contains(e.relatedTarget))close();});
+    tip.addEventListener("keydown",e=>{if(e.key==="Escape"){close();e.stopPropagation();}});
+  }
+  document.addEventListener("pointerdown",e=>{
+    for(const tip of document.querySelectorAll("details.info-tip[open],details.help-inline[open]"))
+      if(!tip.contains(e.target))tip.open=false;
+  },true);
   opener.addEventListener("click",show);
   $("#settings-inline").addEventListener("click",show);
   $("#settings-close").addEventListener("click",close);

@@ -1,6 +1,6 @@
 # Frequency Warp — Common numeric parameter and unit contract (proposal #77)
 
-Status: **design candidate**, not a claim that every knob now has a unit menu. Live code initially implements only the shared pure codec in `web-demo/parameter-units.mjs`; the existing main-screen unit labels are unchanged until staged migration.
+Status (2026-10-15): **partial implementation**. Shared pure codec and M1 frequency bindings, compact three-icon UI and semitone/cents subunit controls are implemented in the Web release changes recorded by PRs #184/#185/#186. Verify the target main/Pages state before claiming a particular deployment; CI success alone is not a physical iOS test. M2 dimension migration and M3 legacy state consolidation remain open under #79; browser unit changes do not authorize native DAW automation.
 
 ## 1. Separate five layers
 
@@ -21,13 +21,13 @@ Status: **design candidate**, not a claim that every knob now has a unit menu. L
 | Coordinate displacement | move u | Raw coordinate u; rail %; Hz when p=1 via Δf=uR; ratio when p=0 via exp(u); middle-p inverse mapping requires positive reference |
 | Integer / count | FFT or peaks / denominator m / numerator n / harmonic index q / bits | Integer, sometimes rail%; no physical pitch substitution |
 
-When p∈(0,1), `u` is a nonlinear generalized coordinate. A globally valid constant-Hz label is **not** available. Musical pitch and cents are meaningful for a positive base frequency or dimensionless ratio, not arbitrary percentages. At 0Hz there is no octave/note representation. Music note parses use A4=440Hz by default and can be configured later; output precision does not change the stored Float64 canonical value. For 0.001Hz, numerical pitch formatting is possible but FFT resolution/audio audibility is not implied.
+When p∈(0,1), `u` is a nonlinear generalized coordinate. A globally valid constant-Hz label is **not** available. Musical pitch and cents are meaningful for a positive base frequency or dimensionless ratio, not arbitrary percentages. At 0Hz there is no octave/note representation; the selected note unit stays selected while its value is displayed as unavailable (—), not reset to Hz. Music note parses use A4=440Hz by default and can be configured later; output precision does not change the stored Float64 canonical value. For 0.001Hz, numerical pitch formatting is possible but FFT resolution/audio audibility is not implied.
 
 ## 3. First implementation / opt-in semantic link
 
 `H=rF/m`; user-facing chain `🔗 H ↔ 起点 P` links these two exact quantities, independent of the existing carrier/Fold-link checkbox.
 - **OFF:** mathematical virtual H remains calculated; physical pivot P follows only the existing independent slider/number.
-- **ON:** changing F, m or r recalculates H and sets canonical P. Changing the pivot P calculates F=mP/r, clamps F to its declared 20–2000Hz range and publishes the actual realizable H as P. A clamp cannot silently leave inconsistent equal sign.
+- **ON:** changing F, m or r recalculates H and sets canonical P. Changing the pivot P calculates F=mP/r, clamps F to its expanded theoretical 0.001–5,120,000Hz range and publishes the actual realizable H as P. A clamp cannot silently leave inconsistent equal sign.
 - `n` and `q` remain their existing distinct virtual arithmetic values; activating H–P does **not** secretly enable Rational Layout, Ring Mod or change the inversion progression.
 - The source event is dispatched once. Link-induced updates modify the peer state silently before the existing single render/update callback. No recursive DOM `input` dispatch and no feedback loop. Reset disables the opt-in link; the existing carrier-chain state is not modified.
 - Axis pivot's rail now resolves 0 independently, then positive frequencies 0.001..20..20000Hz, permitting a small virtual H without a false forced 20Hz pivot. Existing direct numeric input retains 0.001Hz precision; default P=350Hz.
@@ -41,7 +41,7 @@ The marker shown beside `変換形状` is a **Fold L/H hinge** only in Fold mode
 ## 5. Migration gates
 
 - M0: shared codec and typed unit matrix with Node tests (this PR). No audible/DSP modifications from view choice.
-- M1: adopt a `ParamBinding` object for selected frequency controls (L/H/P/F/carrier/A floor). Unit dropdown next to typed input; Hz↔note+cents↔rail %; preserve exact Float64 canonical state and existing dual-thumb pointers.
+- M1: accepted in part; use a `ParamBinding` object for selected frequency controls (L/H/P/F/carrier/A floor). Unit dropdown next to typed input; Hz↔note+cents↔rail %; preserve exact Float64 canonical state and existing dual-thumb pointers.
 - M2: adopt r, signed slope, u and fraction/integer controls with correct compatible modes; for u require explicit p and reference, no fake absolute-Hz for intermediate p.
 - M3: replace duplicate `state.precise`, `preciseFields`, sine input glue one parameter at a time; regression for bidirectional updates, clamped typed input, empty/invalid edits, focus blur, reset, roundtrip and Undo (if added), 390px iOS touch, AudioWorklet/WAV/graph parity. Avoid simultaneous bulk replacement without independent CI.
 - M4: only if tests confirm M1–M3, consider a common customizable pitch display mode and saved user preferences. No connection to unrelated repositories is implied.
@@ -108,7 +108,7 @@ Upper band H (`high`) reuses the same `mountFrequencyUnitField` / `defineParamet
 
 The shared `bounds()` logic still owns L/H separation and effective sample-rate caps; if moving one bound changes the other, its canonical binding and slider are silently updated before the single render/graph notification. H is not a globally fixed 20000Hz oscillator if a file sample rate limits the effective processing band. All original graph/AudioWorklet/WAV calls remain unchanged.
 
-Acceptance requires Chrome 390px note+cent roundtrip, rail-percent correctness, invalid H input rollback, optional snapped 880Hz, screen-reader thumb text, plus existing L and native/WASM regressions. This is a stacked Draft change, not the public site. Other frequency knobs remain #79 open work.
+Historical milestone acceptance included Chrome 390px note+cent roundtrip, rail-percent correctness, invalid H input rollback, snapped 880Hz, screen-reader thumb text, and Rust/WASM regression. This paragraph described a then-unmerged stacked Draft; consult PR #186 and the current main/Pages actions for actual released state. Other unit families remain #79 work.
 
 ## 9. M1 pivot P: explicit zero-Hz, positive rail, and H↔P link (staged #79)
 
@@ -166,7 +166,7 @@ The positive pitch ratio `pitch-ratio` (r) is the first M2 non-Hz migration. Its
 - The effect settings reset explicitly resets r to 1, ratio notation, snap OFF. All other harmonic controls retain their existing adapters.
 - Staged Chrome at 390px verifies +7 semitones ↔ 2^(7/12), 700 cents, real r-rail percent, linked P update, opt-in snap and reset. Rust/WASM/graph/audio parity remains mandatory, and this does not modify VST3 ParamIDs/engine ABI.
 
-Other M2 control families (signed slope, fractional percentages, counts and coordinate u) remain future independently bounded migrations. There is no public Pages deployment through this Draft branch.
+Other M2 control families (fractional percentages, counts and coordinate u) remain future independently bounded migrations. The historical Draft at that stage was not publicly deployed; consult the current main and Pages Actions for present deployment.
 
 ## 15. M2 signed slope s: negative/zero allowed, no musical interpretation
 
@@ -199,3 +199,7 @@ The Settings `エフェクト設定を初期値へ戻す` action also restores *
 The global reset is a single user action: do not dispatch synthetic input events for each parameter, and do not change native VST3/DAW ParamIDs. Real Chrome regression deliberately sets conflicting pre-reset numeric, unit view, snap OFF and carrier link, then asserts exact reset across controls.
 
 The remaining M2 fractions/u/count and M3 legacy state migration are future tasks, not accepted by these two audit fixes.
+
+## 2026-10-15 effective audio domain (superseding older draft assumptions)
+
+A theoretical harmonic model may accept F up to 5.12MHz (and graph may display down to 0.001Hz); this is **not** the active DSP passband. The user's current rule defers >20kHz to possible later oversampling. Shared Rust currently validates effective axisReference R in [1,20000]Hz and |shiftHz|<=20000Hz even if rationalEnabled is OFF. Web preflight must reject incompatible *audio application* visibly, preserve the actual chosen F rather than silently clamp it to pass validation, and require successful worklet ACK/offline Rust evidence before claiming application. This validation does not alter the shared Rust ABI or DAW authorization. The physical pivot P still has a maximum of 20kHz.

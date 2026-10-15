@@ -68,14 +68,23 @@ tests remain separate evidence.
 Technical owner: [Issue #14](https://github.com/kinoko34077/frequency-warp-vst/issues/14).
 
 
-## Fixed square 20–2000 Hz graph / #16 formula analysis (Issue #17)
+## Graph display and #16 formula analysis (Issue #17)
 
-The graph is **always 20–2000Hz on both axes**, on a square canvas, even
-when L/H are much higher. Only the transformed [L,H] region is highlighted;
-Pass outside that interval follows the diagonal, and Kill removes its trace.
-Anything above 2kHz is *clipped from the visualization only* and continues to
-be processed normally. A Ring Mod setting plots both sum and difference
-sidebands, not a single invert mapping.
+The 2026-10-13 published baseline used a fixed square 20–2000Hz graph.
+In the 2026-10-15 Web revision, the graph starts in linear display and
+cycles **2kHz / 20kHz / low-frequency 20Hz** views, with a theoretical
+0.001Hz scale for the low-frequency view and a finely dashed guide outside
+the effective L/H processing band. Theoretical graph scale does NOT establish
+actual sub-1Hz DSP resolution. Pass/Kill and Ring Mod remain distinct curves.
+Above **20,000Hz**, physical DSP is **not** currently implemented: any extended
+harmonic F above this boundary is a theoretical value retained for possible
+future oversampling, and must not silently be treated as active audio.
+
+The Web UI checks the current Rust Stream's accepted effective reference
+R=[1,20000]Hz and |shiftHz|<=20000Hz at playback, live parameter update
+and WAV export; incompatible theoretical settings are displayed but their
+audio application is explicitly rejected (not clamped). Physical iOS audio
+decode of the user's reported failing file still requires reproduction.
 
 A read-only *theoretical* table models Issue #16's integer harmonic series:
 - Original ideal fundamental F (entered manually, **not detected**);

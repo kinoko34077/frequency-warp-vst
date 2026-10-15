@@ -19,6 +19,24 @@ const read=id=>id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
 const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log(20000);
+// Match the existing pivot's piecewise octave rail, including the 0Hz
+// endpoint. A linked F maps its virtual H=rF/m onto that SAME rail.
+const harmonicRailFactors=()=>({
+  m:clamp(Math.round(Number($("#denominator")?.value)||4),1,64),
+  r:clamp(ratioUnitControl?.value||Number($("#pitch-ratio")?.value)||1,.25,4)
+});
+const commonHzToRail=hz=>hz<=0?0:hz<=20?
+  (1+199*Math.log(Math.max(.001,hz)/.001)/Math.log(20000))/1000:
+  Math.min(1,(200+800*Math.log(Math.min(20000,hz)/20)/Math.log(1000))/1000);
+const commonRailToHz=t=>t<=0?0:t<=.2?
+  .001*Math.exp(Math.log(20000)*(Math.max(.001,t*1000)-1)/199):
+  20*Math.exp(Math.log(1000)*(t*1000-200)/800);
+// Unlinked F has its own full-range logarithmic rail. A linked F projects H
+// instead, matching the pivot exactly without changing the canonical F value.
+const F_MIN_HZ=.001,F_MAX_HZ=5_120_000;
+const fToUnlinkedRail=F=>Math.log(clamp(F,F_MIN_HZ,F_MAX_HZ)/F_MIN_HZ)/
+  Math.log(F_MAX_HZ/F_MIN_HZ);
+const fFromUnlinkedRail=t=>F_MIN_HZ*Math.exp(clamp(t,0,1)*Math.log(F_MAX_HZ/F_MIN_HZ));
 
 // Global effect reset must restore ALL harmonic binding owners and their
 // integer companions. Otherwise the settings dialog says "reset" while the
@@ -41,7 +59,7 @@ export function linkedCarrierRequested(){
   return $("#carrier-link").checked;
 }
 export function harmonicParameters(){
-  const F=clamp(read("fundamental")||350,20,2000);
+  const F=clamp(read("fundamental")||350,.001,5_120_000);
   const m=clamp(Math.round(Number($("#denominator").value)||4),1,64);
   const n=clamp(Math.round(Number($("#numerator").value)||0),-128,128);
   const q=clamp(Math.round(Number($("#harmonic-index").value)||1),1,32);
@@ -65,7 +83,7 @@ function syncPair(id){
 export function setFundamentalFromPivot(pivot){
   const {m,r}=harmonicParameters();
   if(!Number.isFinite(pivot))return null;
-  const F=clamp(fundamentalUnitControl?pivot*m/r:round3(pivot*m/r),20,2000);
+  const F=clamp(fundamentalUnitControl?pivot*m/r:round3(pivot*m/r),.001,5_120_000);
   if(fundamentalUnitControl)fundamentalUnitControl.setCanonical(F);
   else {preciseFields.set("fundamental",F);$("#fundamental").value=String(F);syncPair("fundamental");}
   return {F,H:r*F/m,clamped:Math.abs(r*F/m-pivot)>.001};
@@ -159,9 +177,20 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
   // preciseFields and number/range listeners must not also own it.
   fundamentalUnitControl=mountFrequencyUnitField({
     descriptor:defineParameter({
-      id:"fundamental",min:20,max:2000,defaultValue:350,
+      id:"fundamental",min:.001,max:5_120_000,defaultValue:350,
       units:["hz","note","percent"],
-      rail:{toPosition:value=>(value-20)/1980,fromPosition:t=>20+1980*t},
+      rail:{
+        toPosition:value=>{
+          const {m,r}=harmonicRailFactors();
+          return $("#harmonic-pivot-link")?.checked?
+            commonHzToRail(value*r/m):fToUnlinkedRail(value);
+        },
+        fromPosition:t=>{
+          const {m,r}=harmonicRailFactors();
+          return $("#harmonic-pivot-link")?.checked?
+            commonRailToHz(t)*m/r:fFromUnlinkedRail(t);
+        }
+      },
       digits:3,
       snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
     }),

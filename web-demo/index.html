@@ -130,11 +130,11 @@
         </div>
       </section>
       <section class="panel sine-monitor" aria-labelledby="sine-heading">
-        <div class="section-header"><div><p class="eyebrow">REFERENCE SINE</p><h2 id="sine-heading">基準音</h2></div>
+        <div class="section-header"><div><p class="eyebrow">AUXILIARY TONE</p><h2 id="sine-heading">補助音</h2></div>
           <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
         <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
-        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="any" value="0" aria-label="基準音 セント"><span class="unit-value-tools"><input class="inline-value" id="sine-hz" type="text" value="440" spellcheck="false" autocapitalize="off" aria-label="基準音周波数・音名入力"><select id="sine-unit" aria-label="基準音の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
-        
+        <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="any" value="0" aria-label="補助音 セント"><span class="unit-value-tools"><input class="inline-value" id="sine-hz" type="text" value="440" spellcheck="false" autocapitalize="off" aria-label="補助音周波数・音名入力"><select id="sine-unit" aria-label="補助音の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
+        <label class="sine-volume">音量 <input id="sine-volume" type="range" min="0" max="100" step="1" value="25" aria-label="補助音量"><output id="sine-volume-value">25%</output></label>
       </section>
     </div>
 
@@ -144,11 +144,11 @@
         <button id="tab-math" type="button" role="tab" aria-selected="false" aria-controls="view-math" tabindex="-1">詳細</button>
       </div>
       <div id="view-map" role="tabpanel" aria-labelledby="tab-map">
-        <div class="graph-title"><strong id="graph-title">〜2kHz</strong><span>タップで表示切替</span></div>
+        <div class="graph-title"><strong id="graph-title">〜2kHz</strong><span>タップで2k / 20k / 低域拡大</span></div>
         <div class="curve-panel">
           <canvas id="curve" tabindex="0" role="button" aria-label="周波数表示を2kHzと20kHzで切り替える"></canvas>
         </div>
-        <div class="graph-scale"><label for="graph-log">表示軸</label><details class="info-tip"><summary aria-label="グラフ表示の説明" title="グラフ表示の説明">ⓘ</summary><div class="info-body">表示の線形／対数の割合を変えます。音声は変化しません。<p id="graph-log-formula" class="slider-formula" aria-live="polite"></p><p>周波数曲線は単音の理論経路で、実測スペクトルではありません。</p></div></details><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="100" aria-label="グラフの対数表示割合"><span>対数</span></div>
+        <div class="graph-scale"><label for="graph-log">表示軸</label><details class="info-tip"><summary aria-label="グラフ表示の説明" title="グラフ表示の説明">ⓘ</summary><div class="info-body">表示の線形／対数の割合を変えます。音声は変化しません。<p id="graph-log-formula" class="slider-formula" aria-live="polite"></p><p>周波数曲線は単音の理論経路で、実測スペクトルではありません。</p></div></details><span>線形</span><input id="graph-log" type="range" min="0" max="100" step="5" value="0" aria-label="グラフの対数表示割合"><span>対数</span></div>
         <div class="graph-legend"><span>━ 変換（Mix）</span><span>┄ 原音（ガイド・Mix100%では非出力）</span><span id="crusher-alias-legend" hidden>━ 間引き後の実線＝折返し音、薄線＝追加スペクトル像</span></div>
         <p id="crusher-alias-note" class="graph-note" hidden></p>
         
@@ -163,7 +163,7 @@
         <div id="math-axis-note" class="math-caption" aria-live="polite"></div>
         <details class="math-debug"><summary>変換の詳しい値</summary><dl id="coordinate-details" class="variable-grid"></dl></details>
         <div class="math-controls">
-          <div class="math-field"><label for="fundamental">元基音 F</label><span class="unit-value-tools"><input id="fundamental" class="inline-value" type="text" value="350" spellcheck="false" autocapitalize="off" aria-label="元基音Fの周波数・音名入力"><select id="fundamental-unit" aria-label="元基音の単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><div class="math-input"><input id="fundamental-range" type="range" min="20" max="2000" step="1" value="350"></div></div>
+          <div class="math-field"><label for="fundamental">元基音 F</label><span class="unit-value-tools"><input id="fundamental" class="inline-value" type="text" value="350" spellcheck="false" autocapitalize="off" aria-label="元基音Fの周波数・音名入力"><select id="fundamental-unit" aria-label="元基音の単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><div class="math-input"><input id="fundamental-range" type="range" min="0" max="1000" step="1" value="531"></div></div>
           <div class="math-field"><label for="denominator">分母 m</label><input id="denominator" type="number" min="1" max="64" step="1" value="4"><div class="math-input"><input id="denominator-range" type="range" min="1" max="64" step="1" value="4"></div></div>
           <div class="math-field"><label for="numerator">分子 n <small>符号付き</small></label><input id="numerator" type="number" min="-128" max="128" step="1" value="-3"><div class="math-input"><input id="numerator-range" type="range" min="-128" max="128" step="1" value="-3"></div></div>
           <div class="math-field"><label for="harmonic-index">折返す倍音 q</label><input id="harmonic-index" type="number" min="1" max="32" step="1" value="1"><div class="math-input"><input id="harmonic-index-range" type="range" min="1" max="32" step="1" value="1"></div></div>
@@ -183,6 +183,23 @@
           <div class="table-scroll"><table><thead><tr><th>k</th><th>kF</th><th>kF+Δ</th><th>|kF−S|</th><th>mk+n</th></tr></thead><tbody id="harmonics-body"></tbody></table></div>
         </details>
       </div>
+        <details class="equation-guide"><summary>各スライダーの計算式</summary>
+          <div class="equation-lines">
+            <p>反転率 a：元の周波数 f と反転関数 I(f) の間を補間（逆数的モード）</p>
+            <math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><msup><mi>f</mi><mrow><mn>1</mn><mo>−</mo><mi>a</mi></mrow></msup><msup><mrow><mi>I</mi><mo>(</mo><mi>f</mi><mo>)</mo></mrow><mi>a</mi></msup></mrow></math>
+            <p>移動 u と尺度 p：p=0は指数倍率、p=1はHz平行移動。中間は共通Rust実装の連続座標。</p>
+            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>v</mi><msup><mi>e</mi><mi>u</mi></msup><mspace width=".6em"/><mtext>(p=0)</mtext></mrow></math>
+            <math><mrow><msup><mi>f</mi><mo>′</mo></msup><mo>=</mo><mi>v</mi><mo>+</mo><mi>u</mi><mi>R</mi><mspace width=".6em"/><mtext>(p=1)</mtext></mrow></math>
+            <p>起点Pと傾きs：変換後入力xとその基準点aを用いて伸縮する中間値v（x=g(f)）。</p>
+            <math><mrow><mi>v</mi><mo>=</mo><mi>P</mi><mo>+</mo><mi>s</mi><mo>(</mo><mi>x</mi><mo>−</mo><mi>a</mi><mo>)</mo></mrow></math>
+            <p>元基音 F・ピッチ比 r・分母 m と仮想基音 H。</p>
+            <math><mrow><mi>H</mi><mo>=</mo><mfrac><mrow><mi>r</mi><mi>F</mi></mrow><mi>m</mi></mfrac></mrow></math>
+            <p>番号移動n、折返し指定q。</p>
+            <math><mrow><mi>Δ</mi><mo>=</mo><mi>n</mi><mi>H</mi><mo>,</mo><mi>S</mi><mo>=</mo><mo>(</mo><mi>q</mi><mo>+</mo><mfrac><mn>1</mn><mi>m</mi></mfrac><mo>)</mo><mi>r</mi><mi>F</mi></mrow></math>
+            <p>L/H：適用区間。Mix・合成率・残響量：振幅を百分率で制御。リング変調の搬送波は和周波数と差周波数を生みます。</p>
+            <math><mrow><msub><mi>f</mi><mo>+</mo></msub><mo>=</mo><mi>f</mi><mo>+</mo><mi>c</mi><mo>,</mo><msub><mi>f</mi><mo>−</mo></msub><mo>=</mo><mo>|</mo><mi>f</mi><mo>−</mo><mi>c</mi><mo>|</mo></mrow></math>
+          </div>
+        </details>
       <details class="advanced-stats"><summary>処理情報</summary><div class="performance-summary"><div id="engine-description"></div><div id="engine-stats"></div></div></details>
     </aside>
   </div>
@@ -227,6 +244,11 @@
       </div>
       <details class="help-inline"><summary>ⓘ 反転方式の説明</summary><p class="setting-help">幾何補間は f′=f^(1−a)×I(f)^a。中間で周波数が一点へ重なる場合があります。L/H折返しは入力側に折れ点を生みます。</p></details>
       
+    </fieldset>
+    <fieldset><legend>処理帯域</legend>
+      <label for="processing-min-hz">最低処理周波数 L（Hz）</label>
+      <input id="processing-min-hz" type="number" min="0.001" max="20000" step="any" value="20" inputmode="decimal">
+      <p class="setting-help">変換範囲の下限Lと共通。FFT分解能以下の音響的分離は保証されません。処理外もグラフに細破線で表示します。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>

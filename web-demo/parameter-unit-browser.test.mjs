@@ -36,8 +36,10 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.deepEqual(await page.$$eval("#low-unit option",options=>options.map(o=>o.value)),["hz","note","percent"]);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
-    const selectorVisible=await page.$eval("#low-unit",el=>el.getBoundingClientRect().height>0);
-    assert.equal(selectorVisible,true,"unit dropdown hidden at mobile width");
+    const selectorVisible=await page.$eval("#low-unit",el=>getComputedStyle(el).opacity!=="0");
+    assert.equal(selectorVisible,false,"unit select is hidden behind three icon controls");
+    assert.equal(await page.$$eval("#low-unit + .unit-switch button",buttons=>buttons.length),3);
+    assert.equal(await page.$eval("#low-unit + .unit-switch button[data-unit=hz]",b=>b.getAttribute("aria-pressed")),"true");
 
     // Existing start at L=20Hz. A unit-only view change must not change L.
     const original=await page.$eval("#low",el=>el.value);
@@ -241,12 +243,13 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#axis-pivot",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz",
-      "zero pivot must revert musical-note view to Hz");
+    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"note",
+      "zero pivot must preserve the chosen notation");
+    assert.equal(await page.$eval("#axis-pivot-value",el=>el.value),"—");
+    await page.select("#pivot-unit","hz");
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
     await page.select("#pivot-unit","note");
-    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz",
-      "do not permit converting the physically meaningful 0Hz into a note");
+    assert.equal(await page.$eval("#pivot-unit",el=>el.value),"note");
 
     // Existing opt-in harmonic link remains bidirectional after P migration.
     await page.click(".harmonic-pivot-link");
@@ -263,7 +266,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // F is now the harmonic panel's one canonical number; its slider is
     // linear rather than logarithmic, and linked H/P uses this same value.
     await page.click("#tab-math");
-    assert.equal(await page.$eval("#fundamental-unit",el=>el.getBoundingClientRect().height>0),true);
+    assert.equal(await page.$eval("#fundamental-unit",el=>getComputedStyle(el).opacity!=="0"),false);
+    assert.equal(await page.$$eval("#fundamental-unit + .unit-switch button",bs=>bs.length),3);
     assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
     await page.select("#fundamental-unit","note");
     await page.$eval("#fundamental",el=>{
@@ -276,7 +280,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#fundamental-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
-      100*(fExact-20)/1980)<.01, "F percent must follow its LINEAR rail");
+      100*(.2+.8*Math.log((fExact/4)/20)/Math.log(1000)))<.01,
+      "linked F percentage must share its pivot octave rail");
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
     assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-fExact)<1e-9);
@@ -286,19 +291,22 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Math.abs(linkedPivot-fExact/4)<.005,
       "harmonic H/P link must read shared exact F");
     await page.$eval("#fundamental-range",el=>{
-      el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
+      const t=.2+.8*Math.log(110/20)/Math.log(1000);
+      el.value=String(Math.round(t*1000));
+      el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#fundamental");
-    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
+    const fromRail=Number(await page.$eval("#fundamental",el=>el.value));
+    assert.ok(Math.abs(fromRail-440)<3,"linked octave rail resolves F");
     await page.$eval("#fundamental",el=>el.blur());
-    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<.005);
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<1);
     await page.select("#fundamental-unit","note");
     await page.$eval("#fundamental",el=>{
       el.value="invalid";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
-    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-fromRail)<1e-6);
     await page.$eval("#fundamental",el=>el.blur());
     // Signed slope s is a dimensionless orientation/scale, not a musical
     // frequency or semitone interval. Its real rail is -4..+4 linearly.
@@ -451,10 +459,14 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#carrier-range",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"note",
+      "0Hz keeps the user's selected musical-note mode");
+    assert.equal(await page.$eval("#carrier",el=>el.value),"—");
+    await page.select("#carrier-unit","hz");
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
     await page.select("#carrier-unit","note");
-    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"note");
+    await page.select("#carrier-unit","hz");
     await page.$eval("#carrier",el=>{
       el.value="350";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
@@ -562,6 +574,62 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#sine-pitch",el=>el.dataset.fwSnap),"on",
       "monitor frequency preserved, but its snap preference returns to ON");
     await page.click("#settings-done");
+
+    // #183: Unlinked theoretical F must use its entire .001..5.12MHz rail
+    // rather than silently saturating at 20kHz.
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.tabIndex),-1);
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.getAttribute("aria-hidden")),"true");
+    await page.$eval("#fundamental",el=>{
+      el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","percent");
+    const theoreticalPct=Number(await page.$eval("#fundamental",el=>el.value));
+    assert.ok(Math.abs(theoreticalPct-
+      100*Math.log(100000/.001)/Math.log(5120000/.001))<.02,
+      "unlinked F rail travels across the declared physical F range");
+    const theoreticalThumb=Number(await page.$eval("#fundamental-range",el=>el.value));
+    assert.ok(theoreticalThumb>0&&theoreticalThumb<1000,
+      "F=100kHz must not collapse onto the upper thumb endpoint");
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),100000);
+    await page.$eval("#fundamental",el=>el.blur());
+
+    // Changing only the link mode projects F through H without rewriting F.
+    await page.$eval("#fundamental",el=>{
+      el.value="10000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.focus("#fundamental");
+    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),10000);
+    await page.$eval("#fundamental",el=>el.blur());
+    const linkedThumb=Number(await page.$eval("#fundamental-range",el=>el.value));
+    const expectedLinked=Math.round(1000*(.2+.8*Math.log(2500/20)/Math.log(1000)));
+    assert.ok(Math.abs(linkedThumb-expectedLinked)<2,
+      "linked F rail must align to physical H=2500Hz pivot scale");
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+
+    // Three icon buttons retain four distinct ratio representations.
+    await page.select("#pitch-ratio-unit","semitones");
+    assert.equal(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.textContent),"♩");
+    await page.click("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]");
+    assert.equal(await page.$eval("#pitch-ratio-unit",el=>el.value),"cents");
+    assert.equal(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.textContent),"¢");
+    assert.match(await page.$eval("#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",
+      el=>el.getAttribute("aria-label")),/セント/);
+    await page.select("#pitch-ratio-unit","ratio");
 
     // Browser-only reference sine still has ONE physical Hz authority;
     // the MIDI36..96 source track must keep its .01 semitone granularity.
