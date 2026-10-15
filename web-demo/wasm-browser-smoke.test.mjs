@@ -58,6 +58,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"0");
+    assert.equal(await page.$eval("#sine-heading",el=>el.textContent),"補助音");
+    assert.equal(await page.$eval("#sine-volume",el=>el.value),"25");
+    await page.$eval("#sine-volume",el=>{
+      el.value="40";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#sine-volume-value",el=>el.textContent),"40%");
     // Fold/reference Hz must remain visible without opening the tooltip.
     const shapeMarker=await page.$eval("#invert-reference-hz",el=>({
       text:el.textContent,

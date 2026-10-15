@@ -561,3 +561,16 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .slider-formula math{display:inline-block;font-size:12px;vertical-align:middle;padding:1px 3px;max-width:100%;overflow-x:auto}
 .slider-formula math + math{margin-left:5px}
 .help-inline[open]{z-index:10}
+
+/* #183 workstation density; keep interactive touch controls unchanged. */
+.workspace-grid{gap:12px}
+.workspace-left{gap:12px}
+.panel{padding:15px}
+.section-header{margin-bottom:9px}
+.control-grid{row-gap:12px;column-gap:12px}
+.control-heading{margin-bottom:4px}
+.panel-tabs{margin-bottom:9px}
+.quick-panel .bounds{margin-top:12px;padding-top:12px}
+.sine-monitor{padding:7px 11px!important}
+@media(max-width:800px){.workspace-grid{row-gap:8px;column-gap:6px}.quick-panel,.workspace-right{padding:11px}}
+@media(max-width:450px){.panel{padding:10px}.sine-monitor{padding:7px 9px!important}.quick-panel .control-grid{row-gap:10px}.workspace-right .math-controls{gap:6px}}
