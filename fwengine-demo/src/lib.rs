@@ -26,6 +26,10 @@ static mut CHANNELS: usize = 0;
 static mut GAIN: f64 = INITIAL_GAIN;
 
 #[no_mangle] pub extern "C" fn fw_abi_major() -> u32 { 1 }
+// Optional v1 generic-slot capability: bit0=stable Host ParamID64.
+// Older engines without this export report no generic slot permission.
+#[no_mangle] pub extern "C" fn fw_supported_generic_slot_mask() -> u64 { 1u64 }
+
 #[no_mangle] pub extern "C" fn fw_input_offset() -> u32 { addr_of!(INPUT) as usize as u32 }
 #[no_mangle] pub extern "C" fn fw_output_offset() -> u32 { addr_of_mut!(OUTPUT) as usize as u32 }
 #[no_mangle] pub extern "C" fn fw_event_offset() -> u32 { addr_of_mut!(EVENTS) as usize as u32 }
