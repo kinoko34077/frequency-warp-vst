@@ -511,8 +511,19 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .bounds-heading .unit-value-tools .inline-value{width:104px!important;max-width:104px;min-width:80px}
 .unit-value-tools select{min-width:65px;max-width:110px;background:#102b2e;
  border:1px solid #35635d;border-radius:6px;color:#d8f2e6;font-size:11px;padding:4px 2px}
-.bounds-heading .unit-value-tools .snap-toggle{display:inline-flex;align-items:center;gap:2px;font-size:10px}
-.unit-value-tools .snap-toggle input{width:13px;height:13px;margin:0;accent-color:#71d2b0}
+/* Compact, transient long-press / right-click snap menu. The controls
+   themselves have no permanent snap button or keyboard-focus obstruction. */
+#fw-unit-snap-menu{position:fixed;z-index:2147483645;min-width:180px;
+ max-width:calc(100vw - 16px);padding:5px;border:1px solid #477e75;
+ border-radius:9px;background:#132b2f;box-shadow:0 12px 32px #000a;
+ color:#e6f8f2;font:13px/1.3 system-ui,sans-serif}
+#fw-unit-snap-menu[hidden]{display:none!important}
+#fw-unit-snap-menu button{display:block;width:100%;border:0;border-radius:6px;
+ padding:11px 14px;text-align:left;background:transparent;color:inherit;font:inherit;
+ cursor:pointer;white-space:nowrap}
+#fw-unit-snap-menu button:hover,#fw-unit-snap-menu button:focus-visible{
+ background:#315f56;outline:2px solid #8edec7;outline-offset:-2px}
+
 @media(max-width:450px){
  .bounds-heading .unit-value-tools .inline-value{width:86px!important;min-width:72px}
  .unit-value-tools select{min-width:58px;font-size:10px}
