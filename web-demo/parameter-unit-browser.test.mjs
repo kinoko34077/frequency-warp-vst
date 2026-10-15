@@ -179,6 +179,48 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pivot-unit","hz");
     await page.$eval("#axis-pivot-value",el=>el.blur());
 
+    // F is now the harmonic panel's one canonical number; its slider is
+    // linear rather than logarithmic, and linked H/P uses this same value.
+    await page.click("#tab-math");
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.getBoundingClientRect().height>0),true);
+    assert.equal(await page.$eval("#fundamental-snap",el=>el.checked),false);
+    await page.select("#fundamental-unit","note");
+    await page.$eval("#fundamental",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    const fExact=Number(await page.$eval("#fundamental",el=>el.value));
+    assert.ok(Math.abs(fExact-440*2**(25/1200))<1e-9);
+    await page.$eval("#fundamental",el=>el.blur());
+    await page.select("#fundamental-unit","percent");
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
+      100*(fExact-20)/1980)<.01, "F percent must follow its LINEAR rail");
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-fExact)<1e-9);
+    await page.$eval("#fundamental",el=>el.blur());
+    // The preexisting opt-in H/P link remains tied to the precise F.
+    const linkedPivot=Number(await page.$eval("#axis-pivot-value",el=>el.value));
+    assert.ok(Math.abs(linkedPivot-fExact/4)<.005,
+      "harmonic H/P link must read shared exact F");
+    await page.$eval("#fundamental-snap",el=>{el.checked=true;});
+    await page.$eval("#fundamental-range",el=>{
+      el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#fundamental");
+    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
+    await page.$eval("#fundamental",el=>el.blur());
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<.005);
+    await page.select("#fundamental-unit","note");
+    await page.$eval("#fundamental",el=>{
+      el.value="invalid";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),440);
+    await page.$eval("#fundamental",el=>el.blur());
+
     // Engine A floor reuses the frequency descriptor in its actual Settings UI.
     await page.click("#settings-open");
     await page.select("#engine","0");
