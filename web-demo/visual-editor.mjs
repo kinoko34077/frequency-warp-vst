@@ -96,6 +96,10 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'||localStorage.
     if(selected)selected.setAttribute('data-fw-edit-selected','');
     refresh();
   }
+  function isSettingsAction(event){
+    const target=event.target;
+    return target instanceof Element&&Boolean(target.closest('#settings-dialog,#settings-open,#settings-inline'));
+  }
   function pick(enabled){
     picking=enabled;
     shadow.querySelector('[data-action=pick]').setAttribute('aria-pressed',String(enabled));
@@ -104,12 +108,12 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'||localStorage.
     status(enabled?'要素をクリックして編集してください。':'通常の音声操作ができます。');
   }
   document.addEventListener('click',event=>{
-    if(!picking||host.hidden||event.composedPath().includes(host))return;
+    if(!picking||host.hidden||event.composedPath().includes(host)||isSettingsAction(event))return;
     event.preventDefault();event.stopImmediatePropagation();
     choose(event.target instanceof Element?event.target:event.target.parentElement);
   },true);
   document.addEventListener('pointerover',event=>{
-    if(!picking||host.hidden||event.composedPath().includes(host))return;
+    if(!picking||host.hidden||event.composedPath().includes(host)||isSettingsAction(event))return;
     if(hovered)hovered.removeAttribute('data-fw-edit-hover');
     hovered=event.target instanceof Element?event.target:null;
     if(hovered&&hovered!==document.body)hovered.setAttribute('data-fw-edit-hover','');
