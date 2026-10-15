@@ -9,11 +9,17 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <commctrl.h>
 #include <WebView2.h>
 #include <wrl.h>
 #include <wrl/client.h>
 #include <filesystem>
 #include <cstring>
+#include <array>
+#include <sstream>
+#include <locale>
+#include <iomanip>
+#include "web_ui_message.h"
 #include <memory>
 #include <string>
 #include "public.sdk/source/vst/vsteditcontroller.h"
@@ -30,9 +36,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> view;
         std::filesystem::path siteRoot;
+        Steinberg::Vst::EditController* host=nullptr;
+        std::array<bool,128> editing{};
+        bool uiReady=false;
     };
     std::shared_ptr<Shared> state_=std::make_shared<Shared>();
     bool ownsCom_=false;
+    Steinberg::Vst::EditController* editController_=nullptr;
 
     static std::filesystem::path bundledUiRoot() {
         // Locate the installed VST3 binary, NOT the host DAW executable.
@@ -52,6 +62,62 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                           const wchar_t* detail) noexcept {
         if (state && state->alive && IsWindow(state->child))
             SetWindowTextW(state->child,detail);
+    }
+    // Always run on the VST3 GUI/COM STA. Never touch audio callbacks here.
+    static void sendSnapshot(Shared& state) {
+        if(!state.alive||!state.uiReady||!state.view||!state.host)return;
+        std::ostringstream json;
+        json.imbue(std::locale::classic());
+        json.precision(17);
+        json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","values":{)";
+        bool first=true;
+        for(uint32_t id=2;id<=5;id++){
+            if(state.editing[id])continue; // never fight an in-progress drag
+            const auto value=state.host->getParamNormalized(id);
+            if(!std::isfinite(value)||value<0.||value>1.)continue;
+            if(!first)json<<",";
+            first=false;
+            json<<R"(")"<<id<<R"(":)"<<value;
+        }
+        json<<"}}";
+        const std::string ascii=json.str();
+        const std::wstring message(ascii.begin(),ascii.end());
+        state.view->PostWebMessageAsJson(message.c_str());
+    }
+    static void receive(Shared& state,std::wstring_view raw) {
+        if(!state.alive||!state.host)return;
+        const auto msg=parseUiWireMessage(raw);
+        if(!msg)return;
+        if(msg->kind==UiWireKind::Hello){
+            state.uiReady=true;
+            sendSnapshot(state);
+            return;
+        }
+        // Stage UI-3 intentionally permits ONLY the four canonical, already
+        // DSP-bound host controls; generic 64..127 MUST await semantic IDs,
+        // engine capability negotiation and saved project binding identity.
+        const auto id=msg->id;
+        if(id<2||id>5)return;
+        if(msg->kind==UiWireKind::Begin && !state.editing[id]){
+            state.host->beginEdit(id);
+            state.editing[id]=true;
+        }else if(msg->kind==UiWireKind::Perform && state.editing[id]){
+            if(state.host->setParamNormalized(id,msg->normalized)==Steinberg::kResultOk)
+                state.host->performEdit(id,msg->normalized);
+        }else if(msg->kind==UiWireKind::End && state.editing[id]){
+            state.host->endEdit(id);
+            state.editing[id]=false;
+        }
+    }
+    static LRESULT CALLBACK browserWindowProc(HWND hwnd,UINT message,
+                                               WPARAM w,LPARAM l,
+                                               UINT_PTR,DWORD_PTR ref) {
+        if(message==WM_TIMER && w==1){
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state)sendSnapshot(*state);
+            return 0;
+        }
+        return DefSubclassProc(hwnd,message,w,l);
     }
     static void createBrowser(const std::shared_ptr<Shared>& state) {
         std::weak_ptr<Shared> weak=state;
@@ -94,6 +160,31 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                       COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
                                     showError(target,L"Local Web UI mapping unsupported.");return S_OK;
                                 }
+                                // Accept only trusted top-level local page messages.
+                                // Slot and numeric validation additionally occur in
+                                // parseUiWireMessage + receive(), not in JavaScript.
+                                std::weak_ptr<Shared> messageTarget=target;
+                                EventRegistrationToken msgToken{};
+                                target->view->add_WebMessageReceived(
+                                    Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                                        [messageTarget](ICoreWebView2*,
+                                           ICoreWebView2WebMessageReceivedEventArgs* args)->HRESULT {
+                                            const auto owner=messageTarget.lock();
+                                            if(!owner||!owner->alive||!args)return S_OK;
+                                            LPWSTR source=nullptr;
+                                            if(FAILED(args->get_Source(&source)))return S_OK;
+                                            const std::wstring origin=source?source:L"";
+                                            CoTaskMemFree(source);
+                                            if(origin!=L"https://fwvst.local/index.html")return S_OK;
+                                            LPWSTR payload=nullptr;
+                                            if(FAILED(args->get_WebMessageAsJson(&payload)))return S_OK;
+                                            if(payload){
+                                                const std::wstring_view input(payload);
+                                                if(input.size()<=512)receive(*owner,input);
+                                                CoTaskMemFree(payload);
+                                            }
+                                            return S_OK;
+                                        }).Get(),&msgToken);
                                 // Refuse navigation to external origins in the embedded UI.
                                 std::weak_ptr<Shared> nav=target;
                                 EventRegistrationToken navToken{};
@@ -153,7 +244,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     }
 public:
     explicit Win32WebView2Editor(Steinberg::Vst::EditController* controller)
-        :EditorView(controller,&kWebUiEditorRect){}
+        :EditorView(controller,&kWebUiEditorRect),editController_(controller){}
     static bool runtimeAvailable() noexcept {
         LPWSTR version=nullptr;
         const HRESULT hr=GetAvailableCoreWebView2BrowserVersionString(nullptr,&version);
@@ -167,6 +258,7 @@ public:
     Steinberg::tresult PLUGIN_API attached(void* parent,Steinberg::FIDString type) override {
         if(!parent || isPlatformTypeSupported(type)!=Steinberg::kResultTrue)return Steinberg::kResultFalse;
         if(state_->child)return Steinberg::kResultFalse;
+        state_->host=editController_;
         state_->siteRoot=bundledUiRoot();
         if(state_->siteRoot.empty()||
            !std::filesystem::is_regular_file(state_->siteRoot / L"index.html")||
@@ -183,6 +275,13 @@ public:
             systemWindow=nullptr;CoUninitialize();ownsCom_=false;
             return Steinberg::kResultFalse;
         }
+        if(!SetWindowSubclass(state_->child,browserWindowProc,
+             reinterpret_cast<UINT_PTR>(this),
+             reinterpret_cast<DWORD_PTR>(state_.get()))) {
+            DestroyWindow(state_->child);state_->child=nullptr;systemWindow=nullptr;
+            CoUninitialize();ownsCom_=false;return Steinberg::kResultFalse;
+        }
+        SetTimer(state_->child,1,250,nullptr);
         attachedToParent();
         createBrowser(state_);
         return Steinberg::kResultOk;
@@ -190,6 +289,14 @@ public:
     Steinberg::tresult PLUGIN_API removed() override {
         if(!state_->child)return Steinberg::kResultFalse;
         state_->alive=false;
+        KillTimer(state_->child,1);
+        RemoveWindowSubclass(state_->child,browserWindowProc,
+            reinterpret_cast<UINT_PTR>(this));
+        if(state_->host){
+            for(uint32_t id=2;id<=5;id++)
+                if(state_->editing[id])state_->host->endEdit(id);
+            state_->host=nullptr;
+        }
         if(state_->controller)state_->controller->Close();
         state_->view.Reset();state_->controller.Reset();
         DestroyWindow(state_->child);
