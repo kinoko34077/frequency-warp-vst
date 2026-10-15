@@ -6,6 +6,8 @@
 #include "native_worker_service.h"
 #include "stream_host_events.h"
 #include "engine_project_state.h"
+#include "project_state_stream_reader.h"
+#include "project_binding_association.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
 #include <cstdlib>
@@ -69,24 +71,9 @@ static bool writeExact(IBStream* stream,const void* data,size_t count) {
 }
 static bool readStateImage(IBStream* stream,EngineProjectState& result) {
     if(!stream)return false;
-    try {
-        std::vector<uint8_t> image(EngineProjectState::kLegacySize);
-        if(!readExact(stream,image.data(),image.size()))return false;
-        const auto schema=state_detail::get32(image.data(),4);
-        if(schema!=EngineProjectState::kV1&&schema!=EngineProjectState::kV2)
-            return false;
-        if(schema==EngineProjectState::kV2){
-            uint8_t four[4]{};
-            if(!readExact(stream,four,4))return false;
-            const auto length=state_detail::get32(four,0);
-            if(length>EngineProjectState::kMaxPackage)return false;
-            image.insert(image.end(),four,four+4);
-            const auto tail=image.size();
-            image.resize(EngineProjectState::kMinV2Size+length);
-            if(!readExact(stream,image.data()+tail,4+length))return false;
-        }
-        return decodeEngineProjectState(image.data(),image.size(),result);
-    }catch(...){return false;}
+    return readProjectStateStream([stream](void* dest,std::size_t bytes){
+        return readExact(stream,dest,bytes);
+    },result);
 }
 static bool readState(IBStream* stream,Values& values){
     EngineProjectState decoded{};
@@ -133,6 +120,9 @@ public:
         return result;
     }
     tresult PLUGIN_API setActive(TBool active) override {
+        // Non-RT lifecycle is serialized with project restore/snapshot.
+        // Never take this mutex from the audio callback.
+        std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
         // Lifecycle is non-RT. Keep the last worker-verified exact archive
         // across host suspend/reactivation; pending project restore overrides it.
         if(!active) {
@@ -220,12 +210,27 @@ public:
     }
     uint32 PLUGIN_API getLatencySamples() override {return kLatency;}
     tresult PLUGIN_API getState(IBStream* stream) override {
-        // Persist exactly the last worker-confirmed bytes. A queued/rejected
-        // replacement is never elevated to a verified project engine.
+        // Only the exact previously worker-verified archive may carry an
+        // FWS3 semantic ledger. Never silently downgrade an unmatched FWS3
+        // project to FWS2, even while a new engine is being prepared.
+        std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
         EngineProjectState image{};
         if(!parameterMailbox_.uiSnapshot(image.values))return kResultFalse;
-        try {image.package=worker_.verifiedPackageSnapshot();}
-        catch(...) {return kResultFalse;}
+        try {
+            auto accepted=worker_.verifiedIdentitySnapshot();
+            image.package=accepted.package;
+            if(!savedBindingLedger_.empty()) {
+                image.bindingLedger=savedBindingLedger_;
+                VerifiedProjectEngine identity{};
+                identity.package=std::move(accepted.package);
+                identity.engineId=std::move(accepted.engineId);
+                identity.sha256=accepted.packageSha256;
+                identity.acceptedGeneration=accepted.acceptedGeneration;
+                identity.active=accepted.active;
+                if(!matchSavedBindingToVerifiedEngine(image,identity))
+                    return kResultFalse; // preserved ledger stays inert, not discarded
+            }
+        }catch(...) {return kResultFalse;}
         return writeStateImage(stream,image)?kResultOk:kResultFalse;
     }
     tresult PLUGIN_API setState(IBStream* stream) override {
@@ -233,6 +238,7 @@ public:
         if(!readStateImage(stream,image))return kResultFalse;
         // Decode is atomic. Do not modify host params if the non-RT worker
         // cannot accept the restore/unload command at this moment.
+        std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
         if(workerActive_) {
             const bool queued=image.package.empty()
                 ? worker_.postClear(0)
@@ -248,6 +254,7 @@ public:
             deferredRestorePackage_=std::move(image.package);
             deferredRestorePending_=true;
         }
+        savedBindingLedger_=std::move(image.bindingLedger);
         parameterMailbox_.uiStage(image.values);
         return kResultOk;
     }
@@ -422,6 +429,8 @@ private:
     ParameterStateMailbox<kParamCount> parameterMailbox_{defaults()};
     Delay delay_;
     NativeWorkerService worker_{}; // per-instance worker, never process()
+    std::mutex projectStateMutex_{}; // GUI/host lifecycle only; never RT
+    std::vector<uint8_t> savedBindingLedger_{}; // FWS3 intent, never DSP authority
     std::vector<uint8_t> deferredRestorePackage_{}; // non-RT only
     bool deferredRestorePending_=false,workerActive_=false;
     double hostSampleRate_=48000.;
