@@ -107,7 +107,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false,
       "impossible physical link must visibly disengage");
     assert.match(await page.$eval("#harmonic-pivot-link-note",el=>el.textContent),
-      /連動解除.*40,000.*20,000.*Fの値と起点Pは保持/);
+      /連動解除.*H=40000.*20,000.*Fの値と起点Pは保持/);
     await page.$eval("#fundamental",el=>{
       el.value="600";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
