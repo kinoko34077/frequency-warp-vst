@@ -191,9 +191,15 @@ public:
             reply->setMessageID("FrequencyWarp.SavedGenericStatusV1");
             auto* result=reply->getAttributes();
             const auto done=worker_.lastAuthorizationWord();
+            // Historical success alone is NOT current edit authority.
+            // The worker can revoke on unload/swap/fault after this result.
+            const bool currentlyActive=(done&1u)!=0 &&
+                worker_.status()==NativeWorkerService::Status::Ready &&
+                worker_.genericAuthorization().workerCurrentTicket()!=0;
             const bool ok=result &&
                 result->setInt("request",static_cast<int64>(done>>1))==kResultTrue &&
-                result->setInt("succeeded",static_cast<int64>(done&1u))==kResultTrue;
+                result->setInt("succeeded",static_cast<int64>(done&1u))==kResultTrue &&
+                result->setInt("active",static_cast<int64>(currentlyActive))==kResultTrue;
             const auto response=ok?sendMessage(reply):kResultFalse;
             reply->release();
             return response;
@@ -677,6 +683,9 @@ public:
     uint64_t lastSavedGenericAuthorizationWord() const noexcept {
         return lastSavedGenericStatus_.load(std::memory_order_acquire);
     }
+    bool lastSavedGenericActiveSnapshot() const noexcept {
+        return lastSavedGenericActive_.load(std::memory_order_acquire);
+    }
     void querySavedGenericAuthorization() {
         auto* msg=allocateMessage();
         if(!msg)return;
@@ -701,13 +710,19 @@ public:
                        "FrequencyWarp.SavedGenericStatusV1")==0) {
             auto* attrs=message->getAttributes();
             if(!attrs)return kResultFalse;
-            int64 request=0,succeeded=0;
+            int64 request=0,succeeded=0,active=0;
             if(attrs->getInt("request",request)!=kResultTrue ||
                attrs->getInt("succeeded",succeeded)!=kResultTrue ||
-               request<0 || (succeeded!=0&&succeeded!=1))return kResultFalse;
+               attrs->getInt("active",active)!=kResultTrue ||
+               request<0 || (succeeded!=0&&succeeded!=1) ||
+               (active!=0&&active!=1) || (active && !succeeded))
+                return kResultFalse;
+            // The completed word is historical; the separate active bit is
+            // informational only and must NOT bypass worker/RT authority.
             const auto word=(static_cast<uint64_t>(request)<<1) |
                             static_cast<uint64_t>(succeeded);
             lastSavedGenericStatus_.store(word,std::memory_order_release);
+            lastSavedGenericActive_.store(active==1,std::memory_order_release);
             uint64_t pending=genericInFlight_.load(std::memory_order_acquire);
             if(pending && static_cast<uint64_t>(request)==pending)
                 genericInFlight_.compare_exchange_strong(
@@ -762,6 +777,7 @@ private:
     std::atomic<uint64_t> nextRequest_{0},inFlight_{0};
     std::atomic<uint64_t> nextAuthRequest_{0},genericInFlight_{0},
                           lastSavedGenericStatus_{0};
+    std::atomic<bool> lastSavedGenericActive_{false};
 #ifdef _WIN32
     std::mutex snapshotMutex_{};
     EngineStatusSnapshot lastSnapshot_{};
