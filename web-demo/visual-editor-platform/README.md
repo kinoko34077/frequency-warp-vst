@@ -69,3 +69,13 @@ The callback is app-owned and must reject when its render/state projection canno
 Keep [PR #163](https://github.com/kinoko34077/frequency-warp-vst/pull/163) and [LINE PR #53](https://github.com/kinoko34077/line-style-viewer/pull/53) as Draft until exact-head CI, separate review and applicable release authorization. Published Pages remain on existing accepted main. Never infer that CI success in a draft branch means live production verification.
 
 **Global phase rule:** after M4 pilot evidence and durable state reconciliation, **STOP** rather than starting M5 implicitly.
+
+## M5 draft: reusable package and per-page strategy
+
+The canonical reusable ESM package lives in this folder with private `package.json` v0.5.0 and explicit `index.mjs` exports. This remains source-only; no npm publish, deployment or background fetch. Consumer copies on non-releasing branches are pinned/reviewed and must be synchronized explicitly; runtime CDN/auto-sync prohibited. Future dedicated package repository may be considered separately but is not needed to validate the source contract.
+
+`resolvePageProfile({target,ownership,sourceNodeMap,breakpoints,requiredOperations})` deterministically chooses static DOM / React-owned model / scene-owned model logic. Ownership and capabilities are provided by each page, not guessed from hosting, CSS or incidental DOM. Common algorithms stay shared; denied operations fail closed. Browser editor and React game model have distinct history owners.
+
+`exportCss()` creates a validated stylesheet mapped to app-declared source IDs; `createSourceProposal()` emits a **review-only** CSS file/diff proposal, never an automatic repository write; `exportStaticHtml()` accepts only exact trusted static source and unique literal source IDs (no React/JSX reverse-mapping). Unsupported structure, dynamic source, stale revision and capability mismatches must be represented as explicit errors.
+
+M5 tracking: [#175](https://github.com/kinoko34077/frequency-warp-vst/issues/175) / [devflow #560](https://github.com/kinoko34077/devflow/issues/560). Existing M1–M4 claims remain pilot-only. Exact-head cross-repo CI and separate release approval are required before adopting publicly.
