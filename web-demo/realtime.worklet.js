@@ -26,6 +26,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     this.recentInputEnergy = 0;
     this.recentWetEnergy = 0;
     this.recentSamples = 0;
+    this.lastGoodSettings = null;
     this.port.onmessage = ({data}) => this.command(data);
   }
   initialize(data) {
@@ -88,12 +89,15 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       this.position=0;this.blocks=0;this.renderCost=0;this.overBudget=0;
       this.inputEnergy=0;this.wetEnergy=0;
       this.recentInputEnergy=0;this.recentWetEnergy=0;this.recentSamples=0;
+      // Created and configured in full before the first "ready" ACK.
+      this.lastGoodSettings={...options};
       this.port.postMessage({type:"ready",latencyFrames:this.latency,sampleRate});
     } catch(err) {
       this.port.postMessage({type:"error",message:String(err.message||err)});
     }
   }
   release() {
+    this.lastGoodSettings=null;
     if (!this.exports) return;
     const e=this.exports;
     if(this.stream)e.warp_stream_free(this.stream);
@@ -102,6 +106,33 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     if(this.dst)e.warp_free_f32(this.dst,count);
     this.stream=0;this.src=0;this.dst=0;this.exports=null;
     this.inputView=null;this.outputView=null;
+  }
+  // Apply one complete numeric snapshot in the same Rust-setter order used
+  // by the initial stream. Only call this on a params message, never in the
+  // 128-frame rendering loop. No normal-success-path allocation is needed.
+  applySettings(p) {
+    const e=this.exports,stream=this.stream;
+    const mode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
+    const code=e.warp_stream_set_ext(stream,p.low,p.high,p.curvature,p.invert,
+      mode,p.qualityIndex,p.outside==="pass"?1:0,p.engine,p.pitchRatio,
+      p.shiftHz,p.carrierHz,p.zeroMode);
+    if(code!==0)return code;
+    const axis=e.warp_stream_set_transform(stream,p.axisShift,p.axisReference,
+      p.ringEnabled?1:0,p.rationalEnabled?1:0);
+    if(axis!==0)return axis;
+    const geometry=e.warp_stream_set_geometry(stream,p.axisPivot,p.axisSlope);
+    if(geometry!==0)return geometry;
+    const a=e.warp_stream_set_a_options(stream,p.aMinHz,p.aReverb);
+    if(a!==0)return a;
+    const band=e.warp_stream_set_a_band(stream,p.aBandBins);
+    if(band!==0)return band;
+    const quality=e.warp_stream_set_a_quality(stream,p.aQuality);
+    if(quality!==0)return quality;
+    const zero=e.warp_stream_set_zero_reflect_gain(stream,p.zeroReflectGain);
+    if(zero!==0)return zero;
+    const decay=e.warp_stream_set_zero_reflect_decay(stream,p.zeroReflectDecay);
+    if(decay!==0)return decay;
+    return e.warp_stream_set_crusher(stream,p.crusherBits,p.crusherHold);
   }
   command(data) {
     if (!data) return;
@@ -121,21 +152,35 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         this.port.postMessage({type:"rebuild-needed",settings:p});
         return;
       }
-      const code=e.warp_stream_set_ext(this.stream,p.low,p.high,p.curvature,p.invert,
-        p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0,
-        p.qualityIndex,p.outside==="pass"?1:0,p.engine,p.pitchRatio,
-        p.shiftHz,p.carrierHz,p.zeroMode);
-      const axis=code===0?e.warp_stream_set_transform(this.stream,p.axisShift,
-        p.axisReference,p.ringEnabled?1:0,p.rationalEnabled?1:0):code;
-      const geometry=axis===0?e.warp_stream_set_geometry(this.stream,p.axisPivot,p.axisSlope):axis;
-      const a=geometry===0?e.warp_stream_set_a_options(this.stream,p.aMinHz,p.aReverb):geometry;
-      const band=a===0?e.warp_stream_set_a_band(this.stream,p.aBandBins):a;
-      const quality=band===0?e.warp_stream_set_a_quality(this.stream,p.aQuality):band;
-      const zero=quality===0?e.warp_stream_set_zero_reflect_gain(this.stream,p.zeroReflectGain):quality;
-      const decay=zero===0?e.warp_stream_set_zero_reflect_decay(this.stream,p.zeroReflectDecay):zero;
-      const fx=decay===0?e.warp_stream_set_crusher(this.stream,p.crusherBits,p.crusherHold):decay;
-      if(fx!==0)this.port.postMessage({type:"error",revision:data.revision,message:"Rust DSP parameter status "+fx});
-      else this.port.postMessage({type:"parameters-applied",revision:data.revision});
+      const code=this.applySettings(p);
+      if(code===0){
+        this.lastGoodSettings={...p};
+        this.port.postMessage({type:"parameters-applied",revision:data.revision});
+        return;
+      }
+      // A later setter can fail after earlier setters changed the stream.
+      // Reapply the last complete ACKed numeric snapshot rather than leave
+      // partly mutated parameters sounding as though they were accepted.
+      // DSP history (e.g. reverb/FFT buffers) may have reset, and is NOT a
+      // bit-exact transaction rollback of earlier audio frames.
+      const previous=this.lastGoodSettings;
+      const restored=previous&&this.applySettings(previous)===0;
+      if(restored){
+        this.port.postMessage({
+          type:"error",revision:data.revision,recovered:true,
+          message:"Rust DSP parameter status "+code+
+            " · 前回の正常設定値へ復旧（DSP内部状態は一部リセットされる可能性）"
+        });
+      }else{
+        // A failed rollback means wet output is no longer trustworthy.
+        // Stop this partial stream and ask the UI to restore direct original.
+        this.release();
+        this.port.postMessage({
+          type:"error",revision:data.revision,fatal:true,
+          message:"Rust DSP parameter status "+code+
+            " · 復旧失敗のため変換を停止し原音へ退避"
+        });
+      }
     } else if(data.type==="dispose") {
       this.release();
     }
