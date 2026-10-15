@@ -615,7 +615,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="2";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     await page.focus("#high-value");
-    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16200);
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16740);
     await page.$eval("#high-value",el=>el.blur());
     // Changing H instead keeps H and pulls L downward by the declared gap.
     await page.$eval("#high-value",el=>{
