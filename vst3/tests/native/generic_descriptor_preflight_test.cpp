@@ -68,8 +68,14 @@ int main(int argc,char** argv){
                 "short semantic buffer must stay untouched");
         require(fw_native_copy_generic_semantic_id(g,65,unchanged.data(),unchanged.size())==0,
                 "undeclared slot65 semantic ID leaked");
-        require(fw_native_copy_generic_semantic_id(i,64,unchanged.data(),unchanged.size())==0,
-                "foreign identity module semantic ID leaked");
+        // The Identity demo intentionally advertises the SAME semantic
+        // token "gain" with a different canonical default and engine ID.
+        // A name match alone cannot authorize a foreign saved FWS3 project.
+        const auto otherLen=fw_native_copy_generic_semantic_id(
+            i,64,unchanged.data(),unchanged.size());
+        require(otherLen==4 &&
+                std::string(reinterpret_cast<const char*>(unchanged.data()),otherLen)=="gain",
+                "Identity demo canonical semantic ID mismatch");
         require(fw_native_copy_generic_semantic_id(l,64,unchanged.data(),unchanged.size())==0,
                 "legacy module semantic ID leaked");
         require(fw_native_copy_generic_semantic_id(nullptr,64,unchanged.data(),unchanged.size())==0,
