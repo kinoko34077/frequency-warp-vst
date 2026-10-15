@@ -112,8 +112,14 @@ function bounds(changed=""){
 const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
 function syncHarmonicToPivot(){
   const {F,m,r}=harmonicParameters(),H=r*F/m;
-  if(pivotUnitControl)pivotUnitControl.setCanonical(H);
-  else {state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));}
+  if(pivotUnitControl){
+    pivotUnitControl.setCanonical(H);
+    // When the theoretical F goes beyond the physical 20kHz pivot rail,
+    // reconcile BOTH values instead of silently breaking the lock.
+    if(!Object.is(pivotUnitControl.value,H))setFundamentalFromPivot(pivotUnitControl.value);
+    return pivotUnitControl.value;
+  }
+  state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));
   return H;
 }
 function syncPivotToHarmonic(){

@@ -548,3 +548,11 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .unit-switch button[aria-pressed="true"]{color:#081c19;background:#77dfbd;font-weight:700}
 .unit-switch button:focus-visible{outline:2px solid #fcde96;outline-offset:2px}
 @media(max-width:450px){.unit-value-tools{gap:2px}.unit-switch{gap:0}.unit-switch button{min-width:20px;padding:3px 2px;font-size:9px}}
+
+/* #183: math is rendered as MathML, not an ASCII/code-font pseudo-equation */
+.equation-guide{font-size:11px;color:#b8dcd0;margin:6px 0}
+.equation-guide summary{cursor:pointer;padding:5px 0}
+.equation-lines{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;border:1px solid #36564e;border-radius:8px;padding:8px}
+.equation-lines math{display:block;font-size:15px;overflow-x:auto;max-width:100%}
+.equation-lines p{margin:3px 0 0;font-size:10px;color:#b2cfca}
+.slider-formula,.math-caption{font-family:system-ui,sans-serif}
