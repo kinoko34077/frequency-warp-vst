@@ -70,6 +70,8 @@ int main() {
     require(!binding_detail::legal(beyond),"host slot beyond 127 rejected");
     auto badCode=binding();badCode.codecRevision=0;
     require(!binding_detail::legal(badCode),"zero codec disallowed");
+    auto noHash=binding();noHash.packageSha256.fill(0);
+    require(!binding_detail::legal(noHash),"unverified empty content hash is not binding identity");
     auto badName=binding();badName.semanticId="../injection";
     require(!binding_detail::legal(badName),"unsafe semantic path rejected");
     bool threw=false;
