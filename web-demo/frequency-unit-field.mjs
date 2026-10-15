@@ -13,9 +13,12 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
   const position=()=>descriptor.rail.toPosition(binding.value);
   const coarseSync=()=>{slider.value=String(Math.round(position()*
     (Number(slider.max)-Number(slider.min))+Number(slider.min)));};
+  let lastRendered="";
   const display=(force=false)=>{
-    if(force || field.ownerDocument.activeElement!==field)
+    if(force || field.ownerDocument.activeElement!==field){
       field.value=String(binding.display(getDigits()));
+      lastRendered=field.value;
+    }
   };
   let dirty=false;
   const commitTyped=()=>{
@@ -36,11 +39,15 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
   field.addEventListener("focus",()=>{
     if(binding.unit==="hz")field.value=String(binding.value);
     else field.value=String(binding.display(8));
+    lastRendered=field.value;
     field.select();
   });
   field.addEventListener("input",()=>{dirty=true;commitTyped();});
   field.addEventListener("change",()=>{
-    if(dirty)commitTyped();
+    // A normal browser emits input then change; programmatic keyboard
+    // commits and existing Web regression clients may emit change only.
+    // Never reparse a merely formatted unchanged field (precision loss).
+    if(dirty || field.value!==lastRendered){dirty=true;commitTyped();}
     dirty=false;display(true);
   });
   field.addEventListener("blur",()=>{
