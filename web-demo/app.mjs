@@ -193,7 +193,7 @@ function labels(id=""){
   $("#zero-reflect-formula").innerHTML='<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>'+
     '<mi>A</mi><mo>=</mo><mn>'+displayNumber(p.zeroReflectGain)+'</mn>'+
     '<msup><mrow><mo>(</mo><mn>1</mn><mo>−</mo><mn>'+displayNumber(p.zeroReflectDecay)+'</mn><mo>)</mo></mrow>'+
-    '<mfrac><mi>d</mi><mn>'+displayNumber(p.axisReference)+'</mn></mfrac></msup>'+
+    '<mfrac><mi>d</mi><mrow><mn>'+displayNumber(p.axisReference)+'</mn><mi>Hz</mi></mrow></mfrac></msup>'+
     '</mrow></math> 折返し点からの距離 d に適用（単なる負の傾きは対象外）。';
   showNumber("wet-value",100*p.wet);
   showNumber("axis-shift-value",p.axisShift);
