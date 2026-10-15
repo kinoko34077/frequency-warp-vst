@@ -31,6 +31,9 @@ std::uint32_t fw_native_copy_verified_identity(
     std::size_t engine_capacity);
 // Off-RT immutable module capability mask, bit positions are fixed ParamIDs.
 std::uint64_t fw_native_stream_control_mask(const FWNativeOpaque* handle);
+// Optional generic slot64..127 WASM capabilities, bit0=ParamID64.
+// Off-RT only; identity/codec validation still required before host binding.
+std::uint64_t fw_native_generic_slot_mask(const FWNativeOpaque* handle);
 std::int32_t fw_native_process(
     FWNativeOpaque* handle, const float* input, float* output,
     std::uint32_t frames, const FWNativeEvent* events, std::uint32_t event_count);
