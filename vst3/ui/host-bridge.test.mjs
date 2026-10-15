@@ -173,7 +173,8 @@ test("verified generic binding creates local controls, handles DAW no-echo and r
   assert.equal(low.value, "0.5");
   assert.equal(x.posted.length, count);
   x.webview.deliver({ protocol: PROTOCOL, kind: "bindings", bindings: DEFAULT_BINDINGS });
-  assert.ok(low.removed && high.removed);
+  // Detaching the label removes its descendant input from the real DOM.
+  assert.ok(mounted[0].children.every(row => row.removed));
   assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5]);
   bridge.dispose();
   assert.ok(mounted[0].removed);
