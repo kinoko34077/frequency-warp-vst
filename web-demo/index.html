@@ -35,8 +35,7 @@
           <button id="play-dry" disabled>原音</button>
           <button id="stop" disabled>■ 停止</button>
         </div>
-        <audio id="background-output" playsinline preload="none" aria-hidden="true" hidden></audio><div id="rt-indicator" class="rt-indicator" role="status">停止中 · Rust/WASM</div><div id="rt-telemetry" class="rt-indicator" aria-live="off"></div>
-        <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを選択してください。</div>
+        <audio id="background-output" playsinline preload="none" aria-hidden="true" hidden></audio>
       </section>
 
       <section class="panel quick-panel" aria-labelledby="control-title">
@@ -213,6 +212,13 @@
     <footer><span>音声は端末内で処理 · 研究試作</span><a href="https://github.com/kinoko34077/frequency-warp-vst">GitHub / Source</a></footer>
   </div>
 </main>
+<!-- Audio status is an overlay, not a child of the player layout. Updating
+     text at audio-block cadence must never resize/shift any controls. -->
+<aside id="runtime-hud" class="runtime-hud" aria-label="再生・DSP状態">
+  <div id="rt-indicator" class="rt-indicator" role="status">停止中 · Rust/WASM</div>
+  <div id="rt-telemetry" class="rt-indicator" aria-live="off"></div>
+  <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを選択してください。</div>
+</aside>
 
 <dialog id="settings-dialog" aria-labelledby="settings-title">
   <div class="settings-head"><div><p class="eyebrow">PREFERENCES</p><h2 id="settings-title">設定</h2><p>変更内容は再生中にも反映されます。</p></div><button id="settings-close" type="button" aria-label="設定を閉じる">×</button></div>
