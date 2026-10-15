@@ -183,7 +183,7 @@ int main(int argc,char** argv) {
             const auto advertised=fw_native_stream_control_mask(modern);
             ensure((advertised&expectedMask)==expectedMask &&
                    (advertised&~((1ull<<31)-1ull))==0,
-                   "new Stream lost active host IDs or returned an invalid capability bit");
+                   "modern Stream did not advertise all 18 host controls");
             // A new .fwengine can advertise additional native capabilities
             // before this stable host exposes them; worker intersects both.
             ensure((advertised&(1ull<<27))!=0 &&
@@ -217,9 +217,13 @@ int main(int argc,char** argv) {
                 FWNativeEvent crusher[]={
                     {11,24,1.0},{16,24,6.0},{17,24,12000.0}
                 };
-                const bool change=block==8,crush=block==12;
+                FWNativeEvent aControls[]={
+                    {27,20,70.0},{28,20,0.65},{29,20,3.0},{30,20,0.55}
+                };
+                const bool change=block==8,crush=block==12,quality=block==15;
                 ensure(service.mailbox().rtSubmit(src,2,128,
-                    change?geometry:(crush?crusher:nullptr),change?7:(crush?3:0)),
+                    change?geometry:(crush?crusher:(quality?aControls:nullptr)),
+                    change?7:(crush?3:(quality?4:0))),
                     "spectral native PCM ingress rejected");
                 const std::uint64_t due=block*128+fw::AsyncPcmMailbox::kHostPdc-1023;
                 float wet[2]{};
@@ -233,7 +237,7 @@ int main(int argc,char** argv) {
             }
             ensure(energy>0.01,"spectral .fwengine emitted no wet audio");
             ensure(service.mailbox().stats().workerFailures==0,
-                   "valid geometry/crusher host events faulted the Rust interpreter");
+                   "valid geometry/crusher/Engine A host events faulted the Rust interpreter");
             service.stop();
             if(argc==5){
                 // This package is built from the same core with capability
@@ -266,9 +270,11 @@ int main(int argc,char** argv) {
                     }
                     const float* src[]={left.data(),right.data()};
                     FWNativeEvent unsupported[]={
-                        {11,24,1.0},{16,24,6.0},{17,24,12000.0}
+                        {11,24,1.0},{16,24,6.0},{17,24,12000.0},
+                        {27,24,70.0},{28,24,0.65},
+                        {29,24,3.0},{30,24,0.55}
                     };
-                    ensure(service.mailbox().rtSubmit(src,2,128,unsupported,3),
+                    ensure(service.mailbox().rtSubmit(src,2,128,unsupported,7),
                            "legacy PCM ingress rejected new host automation");
                     const auto due=block*128+fw::AsyncPcmMailbox::kHostPdc-1023;
                     float wet[2]{};
@@ -285,7 +291,7 @@ int main(int argc,char** argv) {
                 service.stop();
             }
         }
-        std::cout<<"PASS native worker: verified project swap, 14 host controls, legacy capabilities, PDC, stop/restart\n";
+        std::cout<<"PASS native worker: verified project swap, 18 host controls, legacy capabilities, PDC, stop/restart\n";
         return 0;
     }catch(const std::exception& err){
         std::cerr<<"FAIL native worker: "<<err.what()<<"\n";return 1;
