@@ -504,3 +504,16 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
  .shape-title>.shape-marker{font-size:10px}
  .harmonic-pivot-link{font-size:10px}
 }
+
+/* #79 M1: unit selector is adjacent to its own canonical numeric field.
+   Small screens may wrap controls; do not clip the editable note spelling. */
+.unit-value-tools{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0}
+.bounds-heading .unit-value-tools .inline-value{width:104px!important;max-width:104px;min-width:80px}
+.unit-value-tools select{min-width:65px;max-width:110px;background:#102b2e;
+ border:1px solid #35635d;border-radius:6px;color:#d8f2e6;font-size:11px;padding:4px 2px}
+.bounds-heading .unit-value-tools .snap-toggle{display:inline-flex;align-items:center;gap:2px;font-size:10px}
+.unit-value-tools .snap-toggle input{width:13px;height:13px;margin:0;accent-color:#71d2b0}
+@media(max-width:450px){
+ .bounds-heading .unit-value-tools .inline-value{width:86px!important;min-width:72px}
+ .unit-value-tools select{min-width:58px;font-size:10px}
+}
