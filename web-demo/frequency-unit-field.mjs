@@ -126,7 +126,9 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
       (Number(slider.max)-Number(slider.min));
     binding.setPosition(normalized,{
       origin:"slider",
-      snap:snapEnabled && !(held.alt||held.ctrl),
+      // Physical minimum/maximum are explicit endpoints, never replace
+      // them with a nearby musical grid snap (e.g. carrier 20 kHz).
+      snap:snapEnabled && normalized>0 && normalized<1 && !(held.alt||held.ctrl),
       railPixels:Math.max(1,railRoot.getBoundingClientRect().width)
     });
     coarseSync();
