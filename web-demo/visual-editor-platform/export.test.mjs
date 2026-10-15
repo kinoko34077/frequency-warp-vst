@@ -26,7 +26,7 @@ test('M5 export returns stable scoped CSS without injection or unapproved target
   assert.match(exportCss(document,profile,{selectorMode:'runtime'}),/data-ve-id="header.title"/);
   const rogue=structuredClone(document);rogue.nodes['missing']={base:{color:'#112233'}};
   assert.throws(()=>exportCss(rogue,profile),{code:'UNMAPPED_SOURCE_NODE'});
-  rogue.nodes={...document.nodes,'__proto__':{base:{color:'#123456'}}};
+  rogue.nodes=structuredClone(document.nodes);
   rogue.nodes['header.title'].base.color='red; background:url(https://evil)';
   assert.throws(()=>exportCss(rogue,profile),EditError);
 });
