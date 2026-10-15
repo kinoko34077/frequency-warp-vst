@@ -28,7 +28,7 @@ export async function mountVisualEditor({
    '<label>画面<select id="bp"><option value="base">共通</option><option value="mobile">スマホ</option></select></label>'+
    '<div class="buttons"><button id="apply">反映</button><button id="clear">項目を戻す</button></div>'+
    '<div class="buttons"><button id="undo">元に戻す</button><button id="redo">やり直し</button></div>'+
-   '<div class="small">このブラウザ内だけ保存。GitHubへ自動送信しません。</div><div id="status" role="status" class="small"></div></div>';
+   '<div class="small">このブラウザ内だけ保存。動作確認中は画面を透過します。再編集はAlt+Shift+L、または再読込。</div><div id="status" role="status" class="small"></div></div>';
   const el=id=>shadow.getElementById(id);
   const report=message=>{el('status').textContent=message;};
   let session;
@@ -37,8 +37,13 @@ export async function mountVisualEditor({
   const valid=map.filter(([id])=>{try{adapter.resolve(id);return true}catch{return false}});
   for(const [id] of valid){const opt=document.createElement('option');opt.value=id;opt.textContent=id;el('node').append(opt);}
   let picking=false;
-  function mode(value){picking=value;el('pick').disabled=picking;el('preview').disabled=!picking;report(picking?'画面上の要素を選択できます':'アプリを操作できます');}
-  mode(false);
+  function mode(value){picking=value;host.style.pointerEvents=value?'auto':'none';el('pick').disabled=picking;el('preview').disabled=!picking;report(picking?'画面上の要素を選択できます':'プレビュー中：Alt+Shift+Lで再編集できます');}
+  mode(true);
+  window.addEventListener('keydown',event=>{
+    if(event.altKey&&event.shiftKey&&event.code==='KeyL'){
+      event.preventDefault();mode(!picking);
+    }
+  });
   el('pick').addEventListener('click',()=>mode(true));
   el('preview').addEventListener('click',()=>mode(false));
   document.addEventListener('click',event=>{
