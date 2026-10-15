@@ -1,6 +1,6 @@
 import {deriveHarmonics} from "./harmonics.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
-import {mountFrequencyUnitField} from "./frequency-unit-field.mjs";
+import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
@@ -10,15 +10,17 @@ const fmt=value=>Number.isFinite(value)?Number(value.toFixed(precision())).toStr
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const preciseFields=new Map();
-let fundamentalUnitControl=null,carrierUnitControl=null;
+let fundamentalUnitControl=null,carrierUnitControl=null,ratioUnitControl=null;
 const round3=v=>Math.round((v+Number.EPSILON)*1000)/1000;
 const read=id=>id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl.value:
   id==="carrier"&&carrierUnitControl?carrierUnitControl.value:
+  id==="pitch-ratio"&&ratioUnitControl?ratioUnitControl.value:
   preciseFields.has(id)?preciseFields.get(id):Number($("#"+id).value);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
 const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log(20000);
 
+export function resetRatioUnit(){ratioUnitControl?.reset();}
 export function linkedCarrierRequested(){
   return $("#carrier-link").checked;
 }
@@ -63,6 +65,7 @@ export function resolvedCarrierHz(foldPoint){
 export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
   fundamentalUnitControl?.refresh();
   carrierUnitControl?.refresh();
+  ratioUnitControl?.refresh();
   const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
   const count=Number($("#harmonic-count").value)||5;
   const z=deriveHarmonics(F,m,n,q,r,count);
@@ -170,8 +173,24 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
     onValueChange:()=>respond("carrier")
   });
   $("#carrier-range").addEventListener("input",()=>carrierUnitControl.fromSlider());
+  // Pitch ratio r is positive and dimensionless. Half-step/cent interval
+  // notation is meaningful here, unlike for the signed slope parameter.
+  ratioUnitControl=mountParameterUnitField({
+    descriptor:defineParameter({
+      id:"pitch-ratio",min:.25,max:4,defaultValue:1,
+      units:["ratio","semitones","cents","percent"],
+      rail:{toPosition:r=>(r-.25)/3.75,fromPosition:t=>.25+3.75*t},
+      digits:3,
+      snap:{unit:"semitones",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+    }),
+    field:$("#pitch-ratio"),select:$("#pitch-ratio-unit"),
+    snapToggle:$("#pitch-ratio-snap"),slider:$("#pitch-ratio-range"),
+    railRoot:$("#pitch-ratio-range"),getDigits:precision,initialValue:1,
+    onValueChange:()=>respond("pitch-ratio")
+  });
+  $("#pitch-ratio-range").addEventListener("input",()=>ratioUnitControl.fromSlider());
   for(const id of IDS){
-    if(id==="fundamental"||id==="carrier")continue;
+    if(id==="fundamental"||id==="carrier"||id==="pitch-ratio")continue;
     const number=$("#"+id),range=$("#"+id+"-range");
     // Preserve direct typing for exact values while making typical changes
     // a one-finger drag; invalid numbers are clamped on change.
