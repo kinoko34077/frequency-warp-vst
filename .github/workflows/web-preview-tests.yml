@@ -34,7 +34,7 @@ jobs:
           cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm web-demo/dsp_core.wasm
           test -s web-demo/dsp_core.wasm
       - name: UI-only helper checks
-        run: node --test web-demo/dsp.test.mjs web-demo/harmonics.test.mjs web-demo/engine-policy.test.mjs web-demo/export-policy.test.mjs web-demo/crusher-visual.test.mjs web-demo/audio-route.test.mjs web-demo/stage-pages.test.mjs web-demo/parameter-units.test.mjs web-demo/visual-editor-core.test.mjs web-demo/visual-editor-platform/core.test.mjs web-demo/visual-editor-platform/model-adapter.test.mjs
+        run: node --test web-demo/dsp.test.mjs web-demo/harmonics.test.mjs web-demo/engine-policy.test.mjs web-demo/export-policy.test.mjs web-demo/crusher-visual.test.mjs web-demo/audio-route.test.mjs web-demo/stage-pages.test.mjs web-demo/parameter-units.test.mjs web-demo/visual-editor-core.test.mjs web-demo/visual-editor-platform/core.test.mjs web-demo/visual-editor-platform/model-adapter.test.mjs web-demo/visual-editor-platform/export.test.mjs
       - name: Shared WASM math and real audio output checks
         run: node --test web-demo/core-wasm.test.mjs web-demo/all-reflections.test.mjs
       - name: Install headless Chrome client
