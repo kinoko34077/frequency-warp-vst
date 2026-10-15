@@ -39,7 +39,7 @@ export function validateStreamSettings(p){
     return failed("mode","反転進行の種類が現行DSPに非対応です。");
   if(p.outside!=="pass"&&p.outside!=="kill")
     return failed("outside","L/H外側の処理が現行DSPに非対応です。");
-    if(p.low>=p.high)return failed("low","処理周波数は L < H が必要です。");
+  if(p.low>=p.high)return failed("low","処理周波数は L < H が必要です。");
   const rate=p.sampleRate;
   if(!finite(rate)||rate<=0)return failed("sampleRate","処理サンプルレートが不正です。");
   if(p.high>=rate/2)return failed("high","上限Hは現在のサンプルレートのナイキスト周波数未満にしてください。");
