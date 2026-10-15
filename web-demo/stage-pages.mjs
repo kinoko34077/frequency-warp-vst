@@ -4,7 +4,7 @@
  * This is a build-only script; no tooling or tests are published.
  */
 import {readFile,copyFile,mkdir,rm,writeFile} from "node:fs/promises";
-import {resolve,join,dirname,relative,isAbsolute,sep} from "node:path";
+import {resolve,join,dirname,relative,isAbsolute,sep,posix} from "node:path";
 import {fileURLToPath} from "node:url";
 
 const here=dirname(fileURLToPath(import.meta.url));
@@ -36,7 +36,7 @@ export async function collectAssets({sourceDir=here,wasmPath}={}){
     for(const pattern of [assetReference,cssReference]){
       pattern.lastIndex=0;
       for(const match of source.matchAll(pattern)){
-        const dependency=join(dirname(name),safePath(match[1]));
+        const dependency=posix.join(posix.dirname(name),safePath(match[1]));
         if(!seen.has(dependency))queue.push(dependency);
       }
     }

@@ -1,10 +1,10 @@
 name: Windows VST3 S2 fixed shell and Steinberg Validator
 on:
   pull_request:
-    paths: ['vst3/**','fwengine-runtime/**','fwengine-package/**','.github/workflows/vst3-s2-windows.yml']
+    paths: ['vst3/**','fwengine-runtime/**','fwengine-package/**','web-demo/stage-pages.mjs','.github/workflows/vst3-s2-windows.yml']
   push:
     branches: [main]
-    paths: ['vst3/**','.github/workflows/vst3-s2-windows.yml']
+    paths: ['vst3/**','web-demo/stage-pages.mjs','.github/workflows/vst3-s2-windows.yml']
 permissions:
   contents: read
 jobs:
