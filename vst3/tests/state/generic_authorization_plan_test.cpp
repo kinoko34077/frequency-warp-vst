@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <stdexcept>
 #include <vector>
 static void require(bool ok,const char* message) {
     if(!ok){std::fprintf(stderr,"R3C2A plan FAIL: %s\n",message);std::abort();}
@@ -60,6 +61,13 @@ int main() {
         (1ull|1ull<<63),external,
         [&](const auto& item,const auto&){return item.hostSlot==64;});
     require(notAttested.allowedMask==0,"one mismatched WASM contract rejects entire plan");
+    const auto thrown=buildGenericAuthorizationPlan(state,worker,
+        (1ull|1ull<<63),external,
+        [](const auto&,const auto&)->bool{
+            throw std::runtime_error("module attestation failed");
+        });
+    require(thrown.allowedMask==0 && thrown.acceptedGeneration==0,
+            "attestation exception cannot partially grant permissions");
     require(buildGenericAuthorizationPlan(state,worker,~0ull,{},
         preflight).allowedMask==0,"missing descriptor does not grant permissions");
     require(buildGenericAuthorizationPlan(state,worker,~0ull,
