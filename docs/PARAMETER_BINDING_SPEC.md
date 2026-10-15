@@ -177,3 +177,15 @@ Its value now lives in the same dimension-neutral Float64 binding as the positiv
 Settings reset restores s=1, signed multiplier view and snap OFF. Staged Chrome at 390px verifies s=+1→62.5% rail; 25%→s=-2; typed -1.25 full-precision; snap to -1/0/+1; musical note names invalid; original reset button parity. This does not alter the Rust DSP/native host interface.
 
 Other M2 classes such as fractions/counts and the coordinate u remain unmodified.
+
+## 16. M1/M2 user-facing snap interaction and cents precision display (2026-10-15)
+
+The latest explicit UI decision supersedes prior statements in this document that snap is opt-in/OFF by default. All nine existing bound units **default snap ON** and reset ON, with no visible snap checkbox or permanent indicator. Snapping still affects **slider gesture only**, within each descriptor's 6px real physical rail threshold, never numeric typing, unit selection or silent linked updates. The existing stable Hz/ratio/slope and DSP parameter identities are unchanged.
+
+- **Context toggle:** right-click, touch/pen long-press (~550ms) or keyboard Shift+F10 / ContextMenu key on a parameter range/dual thumb, value field or unit menu opens one transient menu for that parameter. The menu item switches persistent-for-the-current-page snap ON/OFF, without touching canonical numeric values. Touch hold is canceled on movement >10px, pointerup/cancel or scroll. There is no hidden checkbox retained in the source DOM.
+- **Temporary precision modifier:** while **Alt or Ctrl is held**, slider operations bypass snap (both single ranges and L/H dual thumbs), without switching the stored ON preference. Releasing the modifier returns to default snap behavior. Keyboard/window focus transitions clear stale modifiers.
+- **Integer cent display:** visible twelve-tone note labels (`A4+25c` etc.), interval cents field (`pitch-ratio`) and the reference sine's separate `sine-cent` readout show **zero decimal places**. User input such as `A4+25.375c` or `700.375` cents is still valid, and canonical Float64 values retain the fractional difference; switching representations, focus/blur and formatting must never feed rounded text back to DSP.
+- **Layout inspector compatibility:** its opt-in right-click / touch-hold element menu ignores recognized parameter snap controls, while keeping normal inspector interactions for all other elements. In the settings modal the menu must render within the top-layer dialog. Existing graph/AudioWorklet/WAV processing stays unchanged.
+- **Acceptance:** actual staged 390px Chrome DOM checks no visible snap buttons; default/reset ON; menu right-click, touch-hold, Shift+F10; Ctrl+Alt transient bypass, fractional-cent typed precision; snap value and sample-rate links unchanged; explicit inspector coexistence, Rust/WASM, offline, exact-main Pages and live-public checks before publication.
+
+Other unimplemented M2 dimension families and M3 state cleanup remain open.
