@@ -239,11 +239,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#axis-pivot",el=>Number(el.value)),0);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
     const beforeLog=await page.$eval("#curve",el=>el.toDataURL());
-    await page.$eval("#graph-log",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#graph-log",el=>{el.value="100";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const afterLog=await page.$eval("#curve",el=>el.toDataURL());
     assert.notEqual(beforeLog,afterLog,"display-axis slider must redraw the graph");
     await page.click("#curve");
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/20kHz/);
+    await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/0.001〜20Hz/);
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"100","subbass zoom uses logarithmic octave spacing");
     await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/2kHz/);
     await page.$eval("#axis-pivot",el=>{
