@@ -13,7 +13,7 @@ pub struct Runtime {
     pub manifest:Manifest,
     store:Store<StoreLimits>,memory:Memory,run:ProcessFn,handle:i32,
     channels:usize,max_frames:usize,input:usize,output:usize,event:usize,
-    capacity:usize,faulted:bool,
+    capacity:usize,faulted:bool,sample_rate:f64,
 }
 fn section(start:usize,size:usize,limit:usize,align:usize)->Result<(usize,usize)>{
     ensure!(start>0&&start%align==0,"invalid ABI offset");
@@ -74,7 +74,7 @@ impl Runtime{
         let _=inst.get_typed_func::<i32,i32>(&store,"fw_reset")?;
         let _=inst.get_typed_func::<i32,()>(&store,"fw_destroy")?;
         Ok(Self{manifest:p.manifest,store,memory,run,handle,channels,max_frames,
-            input,output,event,capacity:capacity as usize,faulted:false})
+            input,output,event,capacity:capacity as usize,faulted:false,sample_rate:rate})
     }
     pub fn faulted(&self)->bool{self.faulted}
     /// Test/offline convenience function. Allocates a Vec; not for audio callbacks.
@@ -92,8 +92,8 @@ impl Runtime{
         ensure!(events.len()<=self.capacity,"event capacity exceeded");
         let mut last=0;
         for (i,e) in events.iter().enumerate(){
-            // S4a binds ONLY the stable physical host IDs 2..5 to the
-            // actual shared Stream; all other IDs remain unbound until S4b.
+            // Only verified physical Stream bindings are accepted; host
+            // generic, shell-only and unbound param IDs remain excluded.
             // The demo Gain fixture retains its separate ID64 contract.
             let allowed=if self.manifest.engine_id=="org.kinotch.stream" {
                 match e.id {
@@ -102,7 +102,10 @@ impl Runtime{
                     6 => e.value.is_finite()&&(-2.0..=2.0).contains(&e.value),
                     7 => e.value.is_finite()&&(0.0..=20000.0).contains(&e.value),
                     8 => e.value.is_finite()&&(-4.0..=4.0).contains(&e.value),
-                    10|18 => e.value==0.0||e.value==1.0,
+                    10|11|18 => e.value==0.0||e.value==1.0,
+                    16 => e.value.is_finite()&&(2.0..=16.0).contains(&e.value)
+                        &&e.value.fract()==0.0,
+                    17 => e.value.is_finite()&&e.value>=0.0&&e.value<=self.sample_rate,
                     _=>false
                 }
             }else{e.id==64&&e.value.is_finite()&&(0.0..=4.0).contains(&e.value)};
