@@ -18,7 +18,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
-let lowUnitControl=null;
+let lowUnitControl=null,highUnitControl=null;
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -60,10 +60,12 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 const displayDigits=()=>Number($("#decimal-digits")?.value||3);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
-const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:(state.precise[name]??fallback());
+const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
+  name==="high"&&highUnitControl?highUnitControl.value:(state.precise[name]??fallback());
 function showNumber(id,value){
   const field=$("#"+id);
   if(id==="low-value"&&lowUnitControl){lowUnitControl.refresh();return;}
+  if(id==="high-value"&&highUnitControl){highUnitControl.refresh();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -89,6 +91,7 @@ function bounds(changed=""){
   high=Math.min(scalar("high",()=>hzFromScale($("#high").value)),cap);
   if(low>=high)low=high/1.08;
   if(lowUnitControl&&!Object.is(lowUnitControl.value,low))lowUnitControl.setCanonical(low);
+  if(highUnitControl&&!Object.is(highUnitControl.value,high))highUnitControl.setCanonical(high);
   state.effective={low,high};
   showNumber("low-value",low);
   showNumber("high-value",high);
@@ -663,14 +666,28 @@ lowUnitControl=mountFrequencyUnitField({
   initialValue:hzFromScale($("#low").value),
   onValueChange:()=>{updateParams("low");updateEngineInfo();}
 });
-// Other controls retain the legacy input binding until their own M1/M2
-// migrations are accepted. There is no duplicated canonical value for low.
+// The upper H frequency shares exactly the same descriptor/interaction
+// contract as L, retaining the existing dual-thumb event transport.
+highUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"high",min:MIN_POSITIVE_HZ,max:20000,defaultValue:16000,
+    units:["hz","note","percent"],
+    rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#high-value"),select:$("#high-unit"),snapToggle:$("#high-snap"),
+  slider:$("#high"),railRoot:$("#dual-range"),
+  getDigits:displayDigits,
+  initialValue:hzFromScale($("#high").value),
+  onValueChange:()=>{updateParams("high");updateEngineInfo();}
+});
+// Other controls retain the legacy input binding until independently migrated.
 const inline={
   "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",MIN_POSITIVE_HZ,20000],
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
-  "high-value":["high",v=>scaleFromHz(v),"high",MIN_POSITIVE_HZ,20000],
   "axis-pivot-value":["axis-pivot",v=>scaleFromPivot(v),"axis-pivot",0,20000],
   "invert-value":["invert",v=>v/100,"invert",0,100],
   "zero-reflect-value":["zero-reflect",v=>v,"zero-reflect",0,100],
@@ -727,7 +744,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
 // Compact shared rails. Actual parameter updates still use the same
 // source ranges and existing native Rust AudioWorklet/WAV bindings.
 dualControls.bounds=mountDualThumb($("#dual-range"),["low","high"],[
-  v=>hzText(lowUnitControl?.value??hzFromScale(v)),v=>hzText(hzFromScale(v))
+  v=>hzText(lowUnitControl?.value??hzFromScale(v)),v=>hzText(highUnitControl?.value??hzFromScale(v))
 ]);
 dualControls.reflection=mountDualThumb($("#reflection-dual"),
   ["zero-reflect","zero-decay"],[
@@ -745,6 +762,7 @@ $("#curve").addEventListener("keydown",event=>{
 for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{
     if(name==="low"){lowUnitControl.fromSlider();return;}
+    if(name==="high"){highUnitControl.fromSlider();return;}
     delete state.precise[name];
     if(name==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams(name);updateEngineInfo();
@@ -759,6 +777,7 @@ $("#graph-log").addEventListener("input",drawCurve);
 $("#decimal-digits").addEventListener("change",()=>{
   labels();drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   lowUnitControl.refresh();
+  highUnitControl.refresh();
   updateSineLabel();
 });
 $("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
@@ -962,6 +981,7 @@ $("#settings-reset").addEventListener("click",()=>{
   };
   state.precise=Object.create(null);
   lowUnitControl.reset();
+  highUnitControl.reset();
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#harmonic-pivot-link").checked=false;
