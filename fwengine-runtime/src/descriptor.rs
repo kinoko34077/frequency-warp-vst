@@ -238,36 +238,17 @@ pub fn matches_wasm_semantics(data:&[u8],attested:&crate::module_contract::Canon
         b.steps==attested.steps
     })
 }
-/// R3C2D2: attest EVERY requested UI binding against the same verified
-/// native WASM contract. UI JSON is an untrusted proposal, not host authority.
-/// None of its bindings may claim an unknown/mismatched semantic/numeric slot.
-/// The result is an exact candidate subset mask, NOT permission to edit DAW.
+/// Compatibility helper for callers which already borrow the canonical
+/// WASM contract. Both native ABI variants share the SAME whole-set proof,
+/// preventing semantic drift between optional mask/read interfaces.
 pub fn attested_mask<'a,F>(
     data:&[u8],engine_id:&str,package_sha:&[u8;32],
     declared_mask:u64,lookup:F
 )->Option<u64>
 where F: Fn(u32)->Option<&'a crate::module_contract::Canonical> {
-    if data.is_empty()||data.len()>MAX_BYTES||declared_mask==0{return None;}
-    let doc:DescriptorFile=serde_json::from_slice(data).ok()?;
-    if doc.bindings.is_empty()||doc.bindings.len()>64{return None;}
-    let mut mask=0u64;
-    // Each native per-slot preflight verifies the exact whole JSON, engine
-    // identity, package SHA, duplicate fields/slots and dependency graph.
-    // The second independent WASM comparison covers canonical dimensions,
-    // units, min/max/default, scales, steps, semantic and codec revision.
-    for b in &doc.bindings {
-        if !(64..=127).contains(&b.host_slot){return None;}
-        let bit=1u64<<(b.host_slot-64);
-        let attested=lookup(b.host_slot)?;
-        if (declared_mask&bit)==0 ||
-            !preflight(data,engine_id,package_sha,declared_mask,
-                       b.host_slot,&b.semantic_id,b.codec_revision) ||
-            !matches_wasm_semantics(data,attested){return None;}
-        mask|=bit;
-    }
-    (mask!=0).then_some(mask)
+    attest_entire_descriptor_set(data,engine_id,package_sha,declared_mask,
+        |slot|lookup(slot).cloned())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
