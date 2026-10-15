@@ -45,6 +45,16 @@ fn defaults(rate:f64)->Settings {
     Settings{low:20.,high:16000_f64.min(rate*0.45),curvature:1.,
              invert:0.,mode:Progression::Blend,quality:0}
 }
+// Optional capability export: legacy .fwengine without this symbol is
+// conservatively limited by the host to original physical IDs2..5.
+// Bit positions are permanent DAW ParamIDs, not a new remapping.
+#[no_mangle]pub extern "C" fn fw_supported_param_mask()->i64 {
+    let mut mask=0u64;
+    for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18] {
+        mask|=1u64<<id;
+    }
+    mask as i64
+}
 #[no_mangle]pub extern "C" fn fw_abi_major()->i32{1}
 #[no_mangle]pub extern "C" fn fw_input_offset()->u32{addr_of!(INPUT) as usize as u32}
 #[no_mangle]pub extern "C" fn fw_output_offset()->u32{addr_of_mut!(OUTPUT) as usize as u32}
