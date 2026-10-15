@@ -23,7 +23,7 @@ export function exportCss(document,profile,{selectorMode='source'}={}){
     const selector=attrSelector(selectorMode==='source'?'id':'data-ve-id',value);
     for(const bp of ['base','mobile']){
       if(!Object.prototype.hasOwnProperty.call(byScope,bp))continue;
-      const declarations=Object.entries(byScope[bp]).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>'  '+k+': '+v+';');
+      const declarations=Object.entries(byScope[bp]).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>'  '+k+': '+v+' !important;');
       if(!declarations.length)continue;
       if(bp==='base')lines.push(selector+' {',...declarations,'}');
       else{
