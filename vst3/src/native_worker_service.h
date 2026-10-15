@@ -240,6 +240,9 @@ private:
             } else if(haveCommand && req.authorize) {
                 // Every authority check below is worker-owned and non-RT.
                 bool approved=false;
+                // A malformed external descriptor or allocation failure may
+                // deny authorization, but must never terminate the worker.
+                try {
                 if(active && status_.load(std::memory_order_acquire)==Status::Ready) {
                     const auto current=verifiedIdentitySnapshot();
                     VerifiedProjectEngine verified{};
@@ -271,6 +274,7 @@ private:
                             snapshot,current.acceptedGeneration,current.packageSha256);
                     }
                 }
+                }catch(...) {approved=false;}
                 if(!approved)genericAuthorization_.workerRevoke();
                 lastAuthorization_.store((req.requestId<<1)|(approved?1ull:0ull),
                                          std::memory_order_release);
