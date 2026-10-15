@@ -179,8 +179,74 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pivot-unit","hz");
     await page.$eval("#axis-pivot-value",el=>el.blur());
 
+    // M1 fundamental F: same unit registry, a linear 20..2000Hz slider,
+    // and one shared canonical value feeding the existing harmonic math.
+    await page.click("#tab-math");
+    assert.deepEqual(await page.$eval("#fundamental-unit option",items=>items.map(i=>i.value)),
+      ["hz","note","percent"]);
+    assert.equal(await page.$eval("#fundamental-snap",el=>el.checked),false);
+    const existingLinkedP=Number(await page.$eval("#axis-pivot-value",el=>el.value));
+    await page.select("#fundamental-unit","note");
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-existingLinkedP)<.001,
+      "unit-only F change must not alter linked pivot P");
+
+    await page.$eval("#fundamental",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    const preciseF=Number(await page.$eval("#fundamental",el=>el.value));
+    assert.ok(Math.abs(preciseF-440*2**(25/1200))<1e-9);
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-preciseF/4)<.002,
+      "F with H link ON must update P=F/4");
+    await page.$eval("#fundamental",el=>el.blur());
+    await page.select("#fundamental-unit","percent");
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
+      100*(preciseF-20)/1980)<.01,"F rail% is physical linear travel");
+    await page.$eval("#fundamental",el=>{
+      el.value="50";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),1010);
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-252.5)<.002);
+    await page.$eval("#fundamental",el=>el.blur());
+
+    await page.select("#fundamental-unit","note");
+    await page.$eval("#fundamental",el=>{
+      el.value="INVALID";el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.select("#fundamental-unit","hz");
+    await page.focus("#fundamental");
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),1010);
+    await page.$eval("#fundamental",el=>el.blur());
+
+    await page.$eval("#fundamental-snap",el=>{el.checked=true;});
+    await page.$eval("#fundamental-range",el=>{
+      el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#fundamental");
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),440);
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<.002);
+    await page.$eval("#fundamental",el=>el.blur());
+
+    // The reverse P -> F path must no longer lose fractional cents.
+    await page.select("#pivot-unit","note");
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="A3+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#fundamental");
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
+      4*220*2**(25/1200))<1e-9,"linked P→F must retain full precision");
+    await page.$eval("#fundamental",el=>el.blur());
+    await page.select("#pivot-unit","hz");
+
     await page.click("#settings-open");
     await page.click("#settings-reset");
+    assert.equal(await page.$eval("#fundamental-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#fundamental-snap",el=>el.checked),false);
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),350);
     assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),350);
