@@ -1,0 +1,20 @@
+{
+  "name": "@kinotch/visual-editor-platform",
+  "version": "0.5.0",
+  "description": "Versioned offline reusable visual editor primitives and safe exporters",
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": "./index.mjs",
+    "./core": "./core.mjs",
+    "./dom": "./dom-adapter.mjs",
+    "./model": "./model-adapter.mjs",
+    "./profiles": "./profiles.mjs",
+    "./export": "./export.mjs",
+    "./ui": "./ui.mjs"
+  }
+}
