@@ -115,16 +115,16 @@ int main(){
     check(sameImage(v3,decodedV3),"truncated V3 remains atomic");
     EngineProjectState noEngineBinding=v3;
     noEngineBinding.package.clear();
-    threw=false;
+    bool v3Threw=false;
     try{(void)fw::encodeEngineProjectState(noEngineBinding);}
-    catch(const std::invalid_argument&){threw=true;}
-    check(threw,"binding without engine archive forbidden");
+    catch(const std::invalid_argument&){v3Threw=true;}
+    check(v3Threw,"binding without engine archive forbidden");
     EngineProjectState invalidBinding=v3;
     invalidBinding.bindingLedger[invalidBinding.bindingLedger.size()-1]^=0xff;
-    threw=false;
+    v3Threw=false;
     try{(void)fw::encodeEngineProjectState(invalidBinding);}
-    catch(const std::invalid_argument&){threw=true;}
-    check(threw,"corrupt nested binding image must not be serialized");
+    catch(const std::invalid_argument&){v3Threw=true;}
+    check(v3Threw,"corrupt nested binding image must not be serialized");
     check(fw::state_detail::get32(original.data(),4)==EngineProjectState::kV2,
           "existing V2 image did not migrate automatically");
 
