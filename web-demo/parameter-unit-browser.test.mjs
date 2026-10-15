@@ -309,6 +309,53 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#a-min-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#a-min-value",el=>Number(el.value)),20);
+    await page.click("#settings-done");
+
+    // Browser-only reference sine still has ONE physical Hz authority;
+    // the MIDI36..96 source track must keep its .01 semitone granularity.
+    assert.equal(await page.$eval("#sine-unit",el=>el.getBoundingClientRect().height>0),true);
+    assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
+    assert.equal(await page.$eval("#sine-snap",el=>el.checked),false);
+    await page.select("#sine-unit","note");
+    await page.$eval("#sine-hz",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#sine-unit","hz");
+    await page.focus("#sine-hz");
+    const sineExact=Number(await page.$eval("#sine-hz",el=>el.value));
+    assert.ok(Math.abs(sineExact-440*2**(25/1200))<1e-9);
+    assert.ok(Math.abs(Number(await page.$eval("#sine-cent",el=>el.value))-25)<.01);
+    await page.$eval("#sine-hz",el=>el.blur());
+    await page.select("#sine-unit","percent");
+    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
+      100*(69.25-36)/60)<.01);
+    await page.select("#sine-unit","hz");
+    await page.$eval("#sine-pitch",el=>{
+      el.value="69.01";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#sine-pitch",el=>el.value),"69.01",
+      "MIDI rail must not be rounded to integer semitones");
+    await page.$eval("#sine-cent",el=>{
+      el.value="20";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(Number(await page.$eval("#sine-pitch",el=>el.value))-69.2)<.0001);
+    await page.select("#sine-unit","note");
+    await page.$eval("#sine-hz",el=>{
+      el.value="bad";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.select("#sine-unit","hz");
+    await page.focus("#sine-hz");
+    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
+      440*2**(.2/12))<1e-9);
+    await page.$eval("#sine-hz",el=>el.blur());
+    await page.$eval("#sine-snap",el=>{el.checked=true;});
+    await page.$eval("#sine-pitch",el=>{
+      el.value="69.05";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.focus("#sine-hz");
+    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-440)<1e-8);
+    await page.$eval("#sine-hz",el=>el.blur());
+
     assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#pivot-snap",el=>el.checked),false);
     assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),350);
