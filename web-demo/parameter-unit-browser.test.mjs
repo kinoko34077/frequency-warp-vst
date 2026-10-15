@@ -144,6 +144,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c",
       "focus must not reveal fractional cents");
     await page.select("#low-unit","hz");
+    // Puppeteer's select() dispatches change without focusing the select.
+    // Explicitly blur and refocus to expose the full canonical Hz editor.
+    await page.$eval("#low-value",el=>el.blur());
     await page.focus("#low-value");
     const recoveredLow=Number(await page.$eval("#low-value",el=>el.value));
     assert.ok(Math.abs(recoveredLow-440*2**(25.375/1200))<1e-9,
