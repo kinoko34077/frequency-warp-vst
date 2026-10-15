@@ -9,6 +9,7 @@
 #include "engine_project_state.h"
 #include "project_state_stream_reader.h"
 #include "project_binding_association.h"
+#include "generic_descriptor_authorization_request.h"
 #include "parameter_state_mailbox.h"
 #include <climits>
 #include <cstdlib>
@@ -208,24 +209,20 @@ public:
                requestId<=0 || requestId>(INT64_MAX>>1))return kResultFalse;
             try {
                 std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
-                EngineProjectState project{};
                 const auto current=worker_.verifiedIdentitySnapshot();
-                if(!current.active || current.package.empty() ||
-                   savedBindingLedger_.empty())return kResultFalse;
-                project.package=current.package;
-                project.bindingLedger=savedBindingLedger_;
                 VerifiedProjectEngine verified{};
                 verified.package=current.package;
                 verified.engineId=current.engineId;
                 verified.sha256=current.packageSha256;
                 verified.acceptedGeneration=current.acceptedGeneration;
                 verified.active=current.active;
-                if(!matchSavedBindingToVerifiedEngine(project,verified))
+                GenericDescriptorAuthorizationRequest request{};
+                if(!buildGenericDescriptorAuthorizationRequest(
+                       verified,savedBindingLedger_,
+                       static_cast<const std::uint8_t*>(bytes),size,request))
                     return kResultFalse;
-                const auto* src=static_cast<const std::uint8_t*>(bytes);
-                std::vector<std::uint8_t> descriptor(src,src+size);
-                return worker_.postAuthorization(std::move(project),
-                           std::move(descriptor),
+                return worker_.postAuthorization(std::move(request.project),
+                           std::move(request.descriptor),
                            static_cast<std::uint64_t>(requestId))
                     ? kResultOk:kResultFalse;
             }catch(...){return kResultFalse;}
