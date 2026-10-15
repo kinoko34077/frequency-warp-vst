@@ -607,7 +607,23 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.click("#play-dry");
     await page.waitForFunction(()=>
       document.querySelector("#rt-indicator").textContent.includes("原音再生中") &&
-      !document.querySelector("#stop").disabled,{timeout:12000});
+      !document.querySelector("#stop").disabled,{timeout:12000}).catch(async error=>{
+      const evidence=await page.evaluate(()=>({
+        indicator:document.querySelector("#rt-indicator")?.textContent,
+        status:document.querySelector("#status")?.textContent,
+        statusKind:document.querySelector("#status")?.dataset.kind,
+        meta:document.querySelector("#file-meta")?.textContent,
+        dryDisabled:document.querySelector("#play-dry")?.disabled,
+        wetDisabled:document.querySelector("#play-wet")?.disabled,
+        stopDisabled:document.querySelector("#stop")?.disabled,
+        workletLoadPending:typeof window.__auditModuleRelease==="function",
+        audioContexts:Array.from(document.querySelectorAll("audio")).map(a=>({
+          paused:a.paused,hasStream:!!a.srcObject
+        })),
+        boot:document.documentElement.dataset.fwBoot
+      })).catch(e=>({diagnosticError:e.message}));
+      throw Error("Stale-Wet→new-Dry state: "+JSON.stringify(evidence)+" | "+error.message);
+    });
     await page.evaluate(()=>window.__auditModuleRelease());
     await new Promise(resolve=>setTimeout(resolve,250));
     assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/原音再生中/,
