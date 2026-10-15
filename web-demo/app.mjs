@@ -6,7 +6,7 @@ import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
-import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetFundamentalUnit,refreshFundamentalUnit} from "./harmonics-panel.mjs";
+import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetFundamentalUnit,refreshFundamentalUnit,resetCarrierUnit,refreshCarrierUnit} from "./harmonics-panel.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField} from "./frequency-unit-field.mjs";
 
@@ -805,6 +805,7 @@ $("#decimal-digits").addEventListener("change",()=>{
   highUnitControl.refresh();
   pivotUnitControl.refresh();
   refreshFundamentalUnit();
+  refreshCarrierUnit();
   updateSineLabel();
 });
 $("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
@@ -1011,6 +1012,7 @@ $("#settings-reset").addEventListener("click",()=>{
   highUnitControl.reset();
   pivotUnitControl.reset();
   resetFundamentalUnit();
+  resetCarrierUnit();
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#harmonic-pivot-link").checked=false;
