@@ -511,6 +511,55 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
+    // AUD-03: a stale wet request waiting on worklet module registration
+    // must not start or replace a newer decoded file's original playback.
+    // This deliberately holds the *first* audio-worklet module load.
+    const replacementPath=path.join(temp,"replacement.wav");
+    await writeFile(replacementPath,sineWav(3));
+    await page.evaluate(()=>{
+      const proto=AudioWorklet.prototype;
+      const original=proto.addModule;
+      window.__auditWorkletProto=proto;
+      window.__auditAddModule=original;
+      window.__auditModuleRelease=null;
+      let held=false;
+      proto.addModule=function(...args){
+        if(held)return original.apply(this,args);
+        held=true;
+        return new Promise((resolve,reject)=>{
+          window.__auditModuleRelease=()=>{
+            original.apply(this,args).then(resolve,reject);
+          };
+        });
+      };
+    });
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>typeof window.__auditModuleRelease==="function",
+      {timeout:10000});
+    await (await page.$("#audio-file")).uploadFile(replacementPath);
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("replacement.wav"),
+      {timeout:20000});
+    await page.click("#play-dry");
+    await page.waitForFunction(()=>
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中") &&
+      !document.querySelector("#stop").disabled,{timeout:12000});
+    await page.evaluate(()=>window.__auditModuleRelease());
+    await new Promise(resolve=>setTimeout(resolve,250));
+    assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/原音再生中/,
+      "late first wet startup must not take over a newer source/player");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false);
+    await page.click("#stop");
+    await page.evaluate(()=>{
+      window.__auditWorkletProto.addModule=window.__auditAddModule;
+      delete window.__auditModuleRelease;
+      delete window.__auditAddModule;
+      delete window.__auditWorkletProto;
+    });
+    await (await page.$("#audio-file")).uploadFile(wavPath);
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("twelve.wav"),
+      {timeout:20000});
+    assert.equal(await page.$eval("#stop",n=>n.disabled),true);
+
     // A16: stopped→original audio must bypass invalid wet DSP settings.
     // Count real AudioWorklet constructions so that accidentally starting
     // a neutral/bogus DSP is not mistaken for independent original playback.
