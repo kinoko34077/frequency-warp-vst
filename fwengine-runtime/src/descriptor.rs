@@ -174,6 +174,52 @@ pub fn preflight(data:&[u8], engine_id:&str, package_sha:&[u8;32],
     let mut visited=HashSet::new();
     target&&graph.keys().copied().all(|id|visit(id,&graph,&mut visiting,&mut visited))
 }
+/// R3C2D2: attest EVERY selected UI binding against the live module's
+/// WASM-owned immutable contract, never just the requested first slot.
+/// UI metadata controls display only; this result is candidate evidence,
+/// NOT DAW/RT authorization or a saved FWS3 ledger.
+pub fn attest_entire_descriptor_set(
+    data:&[u8], engine_id:&str, package_sha:&[u8;32],
+    wasm_mask:u64,
+    canonical_for:impl Fn(u32)->Option<crate::module_contract::Canonical>
+)->Option<u64> {
+    if data.is_empty()||data.len()>MAX_BYTES||wasm_mask==0{return None}
+    let doc=serde_json::from_slice::<DescriptorFile>(data).ok()?;
+    if doc.schema!=SCHEMA || doc.engine.id!=engine_id ||
+       doc.engine.sha256!=hex_sha(package_sha) ||
+       !identifier(&doc.engine.id,true) || !version(&doc.engine.version) ||
+       doc.bindings.is_empty()||doc.bindings.len()>64{return None}
+    let mut selected=0u64;
+    let mut names=HashSet::new();
+    let mut selectors=HashSet::new();
+    let mut graph=HashMap::<&str,Vec<&str>>::new();
+    for b in &doc.bindings {
+        if !valid_binding(b,engine_id) || !names.insert(b.semantic_id.as_str()) ||
+           b.selector.as_ref().is_some_and(|x|!selectors.insert(x.as_str())){
+            return None
+        }
+        let bit=1u64<<(b.host_slot-64);
+        if (wasm_mask&bit)==0 || (selected&bit)!=0{return None}
+        let canonical=canonical_for(b.host_slot)?;
+        if canonical.host_slot!=b.host_slot ||
+           canonical.semantic_id!=b.semantic_id ||
+           canonical.codec_revision!=b.codec_revision ||
+           canonical.dimension!=b.dimension ||
+           canonical.canonical_unit!=b.canonical_unit ||
+           canonical.min!=b.min || canonical.max!=b.max ||
+           canonical.default!=b.default || canonical.scale!=b.scale ||
+           canonical.steps!=b.steps{return None}
+        selected|=bit;
+        graph.insert(&b.semantic_id,b.depends_on.as_ref().map_or_else(
+            Vec::new,|deps|deps.iter().map(String::as_str).collect()));
+    }
+    let mut visiting=HashSet::new();
+    let mut visited=HashSet::new();
+    if !graph.keys().copied().all(|id|visit(id,&graph,&mut visiting,&mut visited)){
+        return None
+    }
+    Some(selected)
+}
 /// R3B3 second, independent proof: compare the external UI view to the
 /// immutable WASM-authored canonical contract copied during preparation.
 /// A designer may change *display-only* fields and widgets, but must not
@@ -191,6 +237,17 @@ pub fn matches_wasm_semantics(data:&[u8],attested:&crate::module_contract::Canon
         b.default==attested.default && b.scale==attested.scale &&
         b.steps==attested.steps
     })
+}
+/// Compatibility helper for callers which already borrow the canonical
+/// WASM contract. Both native ABI variants share the SAME whole-set proof,
+/// preventing semantic drift between optional mask/read interfaces.
+pub fn attested_mask<'a,F>(
+    data:&[u8],engine_id:&str,package_sha:&[u8;32],
+    declared_mask:u64,lookup:F
+)->Option<u64>
+where F: Fn(u32)->Option<&'a crate::module_contract::Canonical> {
+    attest_entire_descriptor_set(data,engine_id,package_sha,declared_mask,
+        |slot|lookup(slot).cloned())
 }
 #[cfg(test)]
 mod tests {
@@ -223,6 +280,33 @@ mod tests {
         assert!(!accept(&s.replace(r#""default":1.0"#,r#""default":1e999"#)));
         assert!(!accept(&s.repeat(10000)));
         assert!(!accept("{"));
+    }
+    #[test] fn complete_two_slot_wasm_attestation_or_total_denial(){
+        use crate::module_contract::Canonical;
+        let first=fixture("gain");
+        let second=r#",{"host_slot":65,"semantic_id":"drive","label":"Drive","dimension":"ratio","canonical_unit":"ratio","min":0.25,"max":4.0,"default":1.0,"scale":"log","widget":"knob","display_units":["ratio"],"codec_revision":1}"#;
+        let doc=format!("{}{}]}}",first.strip_suffix("]}").unwrap(),second);
+        let verify=|text:&str,declared:u64|{
+            attest_entire_descriptor_set(text.as_bytes(),"org.kinotch.gainhalf",
+                &[0x37;32],declared,|slot|{
+                    if slot!=64&&slot!=65{return None}
+                    Some(Canonical{
+                        host_slot:slot,
+                        semantic_id:(if slot==64{"gain"}else{"drive"}).into(),
+                        codec_revision:1,dimension:"ratio".into(),
+                        canonical_unit:"ratio".into(),min:0.25,max:4.0,
+                        default:1.0,scale:"log".into(),steps:None,
+                    })
+                })
+        };
+        assert_eq!(verify(&doc,3),Some(3));
+        assert_eq!(verify(&doc,1),None); // cannot silently skip slot65
+        assert_eq!(verify(&doc.replace(r#""semantic_id":"drive""#,
+                                        r#""semantic_id":"foreign""#),3),None);
+        assert_eq!(verify(&doc.replace(r#""host_slot":65"#,
+                                        r#""host_slot":64"#),3),None);
+        assert_eq!(verify(&doc.replace(r#""max":4.0"#,
+                                        r#""max":3.0"#),3),None);
     }
     #[test] fn dependencies_and_utf8_limit(){
         let s=fixture("gain");

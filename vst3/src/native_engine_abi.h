@@ -56,6 +56,20 @@ bool fw_native_copy_generic_codec(
 std::uint32_t fw_native_copy_generic_semantic_id(
     const FWNativeOpaque* handle,std::uint32_t hostSlot,
     std::uint8_t* out,std::size_t capacity);
+// NON-RT read-only WHOLE-descriptor proof: all requested slots must match
+// the same verified WASM's engine hash, semantic IDs and numeric dimensions.
+// Returns exact candidate mask or 0. NOT permission to edit DAW/RT events.
+std::uint64_t fw_native_attest_generic_descriptor_mask(
+    const FWNativeOpaque* handle,const std::uint8_t* descriptor_json,
+    std::size_t descriptor_len);
+// R3C2D2 non-RT, live-WASM attestation for the WHOLE UI descriptor set.
+// All submitted bindings must match engine/package SHA and WASM-owned
+// semantic ID, numeric range, scale, dimensions, default and codec.
+// Returns candidate mask ONLY; no UI, DAW, saved-ledger or RT permission.
+// On rejection the caller's output is untouched.
+bool fw_native_attest_generic_descriptor_set(
+    const FWNativeOpaque* handle,const std::uint8_t* descriptor_json,
+    std::size_t descriptor_len,std::uint64_t* selected_mask);
 // NON-RT necessary-only JSON descriptor preflight; positive result alone
 // NEVER authorizes new audio events or saved DAW generic automation.
 bool fw_native_preflight_generic_descriptor(
