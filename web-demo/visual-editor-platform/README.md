@@ -79,3 +79,9 @@ The canonical reusable ESM package lives in this folder with private `package.js
 `exportCss()` creates a validated stylesheet mapped to app-declared source IDs; `createSourceProposal()` emits a **review-only** CSS file/diff proposal, never an automatic repository write; `exportStaticHtml()` accepts only exact trusted static source and unique literal source IDs (no React/JSX reverse-mapping). Unsupported structure, dynamic source, stale revision and capability mismatches must be represented as explicit errors.
 
 M5 tracking: [#175](https://github.com/kinoko34077/frequency-warp-vst/issues/175) / [devflow #560](https://github.com/kinoko34077/devflow/issues/560). Existing M1–M4 claims remain pilot-only. Exact-head cross-repo CI and separate release approval are required before adopting publicly.
+
+## Patch source consistency (2026-10-15)
+
+Private package v0.5.1 fixes static HTML export identity validation: `data-id`, attribute text, comments and script/style markup cannot stand in for a literal quoted HTML `id`. The accepted code change is FW [#187](https://github.com/kinoko34077/frequency-warp-vst/issues/187) / PR #188. Consumers LINE and Gomoku copy byte-identical shared source from a pinned accepted canonical commit and validate every blob hash offline. This is a reviewed source-only patch, not an npm publication or cross-origin editor.
+
+Previous M1–M4 and M5 non-releasing draft descriptions in this document are **historical pilot checkpoints**, not live product status: the opt-in editor has been released to Frequency Warp and LINE GitHub Pages, while Gomoku source is merged and its initial Pages creation remains blocked by repository permissions. Current cross-repository state belongs to [devflow #560](https://github.com/kinoko34077/devflow/issues/560).
