@@ -36,7 +36,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.deepEqual(await page.$$eval("#low-unit option",options=>options.map(o=>o.value)),["hz","note","percent"]);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
-    const selectorVisible=await page.$eval("#low-unit",el=>el.getBoundingClientRect().height>0);
+    const selectorVisible=await page.$eval("#low-unit",el=>getComputedStyle(el).opacity!=="0");
     assert.equal(selectorVisible,false,"unit select is hidden behind three icon controls");
     assert.equal(await page.$eval("#low-unit + .unit-switch button",buttons=>buttons.length),3);
     assert.equal(await page.$eval("#low-unit + .unit-switch button[data-unit=hz]",b=>b.getAttribute("aria-pressed")),"true");
