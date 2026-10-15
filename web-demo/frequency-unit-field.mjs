@@ -50,7 +50,8 @@ export function mountParameterUnitField({descriptor,field,select,snapToggle,slid
     return true;
   };
   field.addEventListener("focus",()=>{
-    if(binding.unit==="hz")field.value=String(binding.value);
+    if(["hz","ratio","coordinate","integer"].includes(binding.unit))
+      field.value=String(binding.value);
     else field.value=String(binding.display(8));
     lastRendered=field.value;
     field.select();
