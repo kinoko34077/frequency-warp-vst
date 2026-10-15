@@ -248,6 +248,70 @@ public:
                     static_cast<uint64_t>(request)) ? kResultOk:kResultFalse;
             }catch(...) {return kResultFalse;}
         }
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.PrepareNewGenericV1")==0) {
+            auto* a=message->getAttributes();
+            if(!a)return kResultFalse;
+            const void* bytes=nullptr;
+            uint32 size=0;
+            int64 request=0,explicitIntent=0;
+            if(a->getBinary("descriptor",bytes,size)!=kResultTrue ||
+               a->getInt("request",request)!=kResultTrue ||
+               a->getInt("explicit",explicitIntent)!=kResultTrue ||
+               explicitIntent!=1 || request<=0 ||
+               !validGenericUiRequest(static_cast<uint64_t>(request),
+                                     static_cast<const uint8_t*>(bytes),size))
+                return kResultFalse;
+            std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
+            if(!workerActive_||!savedBindingLedger_.empty())return kResultFalse;
+            try {
+                const auto* start=static_cast<const uint8_t*>(bytes);
+                std::vector<uint8_t> proposal(start,start+size);
+                return worker_.postPrepareNewLedger(
+                    std::move(proposal),static_cast<uint64_t>(request))
+                    ? kResultOk:kResultFalse;
+            } catch(...) {return kResultFalse;}
+        }
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.CommitNewGenericV1")==0) {
+            auto* a=message->getAttributes();
+            if(!a)return kResultFalse;
+            int64 request=0,explicitIntent=0;
+            if(a->getInt("request",request)!=kResultTrue ||
+               a->getInt("explicit",explicitIntent)!=kResultTrue ||
+               explicitIntent!=1||request<=0)return kResultFalse;
+            std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
+            if(!workerActive_||!savedBindingLedger_.empty())return kResultFalse;
+            return worker_.postCommitPreparedNewLedger(
+                static_cast<uint64_t>(request),true)?kResultOk:kResultFalse;
+        }
+        if(std::strcmp(message->getMessageID(),
+                       "FrequencyWarp.QueryNewGenericV1")==0) {
+            std::lock_guard<std::mutex> projectGuard(projectStateMutex_);
+            const auto prepared=worker_.lastPreparedLedgerWord();
+            const auto committed=worker_.lastCommittedLedgerWord();
+            bool saved=!savedBindingLedger_.empty();
+            if(!saved&&(committed&1u)!=0) {
+                try {saved=absorbCommittedNewLedger();}catch(...){saved=false;}
+            }
+            const bool active=saved&&worker_.status()==
+                NativeWorkerService::Status::Ready &&
+                worker_.genericAuthorization().workerCurrentTicket()!=0;
+            auto* reply=allocateMessage();
+            if(!reply)return kResultFalse;
+            reply->setMessageID("FrequencyWarp.NewGenericStatusV1");
+            auto* a=reply->getAttributes();
+            const bool ok=a &&
+                a->setInt("preparedRequest",static_cast<int64>(prepared>>1))==kResultTrue &&
+                a->setInt("prepared",static_cast<int64>(prepared&1u))==kResultTrue &&
+                a->setInt("committedRequest",static_cast<int64>(committed>>1))==kResultTrue &&
+                a->setInt("committed",static_cast<int64>(committed&1u))==kResultTrue &&
+                a->setInt("saved",static_cast<int64>(saved))==kResultTrue &&
+                a->setInt("active",static_cast<int64>(active))==kResultTrue;
+            const auto result=ok?sendMessage(reply):kResultFalse;
+            reply->release();
+            return result;
+        }
         if(std::strcmp(message->getMessageID(),"FrequencyWarp.LoadFwengineV1")!=0)
             return AudioEffect::notify(message);
         auto* attrs=message->getAttributes();
