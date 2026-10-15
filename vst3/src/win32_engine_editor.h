@@ -13,6 +13,7 @@
 #include <shellapi.h>
 #include "public.sdk/source/vst/vsteditcontroller.h"
 #include "verified_engine_history.h"
+#include "native_binding_flow.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -31,15 +32,21 @@ struct EngineStatusSnapshot {
     bool succeeded=false;
     uint32_t state=0;
 };
-inline Steinberg::ViewRect kEngineEditorRect{0,0,560,210};
+inline Steinberg::ViewRect kEngineEditorRect{0,0,560,330};
 class Win32EngineEditor final:public Steinberg::Vst::EditorView {
 public:
     using SendBytes=std::function<uint64_t(const std::vector<uint8_t>&)>;
     using PollState=std::function<EngineStatusSnapshot()>;
+    using PrepareBinding=std::function<uint64_t(const std::vector<uint8_t>&)>;
+    using CommitBinding=std::function<bool(uint64_t)>;
+    using PollBinding=std::function<NewBindingStatus()>;
     Win32EngineEditor(Steinberg::Vst::EditController* controller,
-                      SendBytes sender,PollState poll)
+                      SendBytes sender,PollState poll,
+                      PrepareBinding prepare={},CommitBinding commit={},
+                      PollBinding bindingPoll={})
         :EditorView(controller,&kEngineEditorRect),send_(std::move(sender)),
-         poll_(std::move(poll)){}
+         poll_(std::move(poll)),prepareBinding_(std::move(prepare)),
+         commitBinding_(std::move(commit)),pollBinding_(std::move(bindingPoll)){}
     Steinberg::tresult PLUGIN_API isPlatformTypeSupported(
         Steinberg::FIDString type) override {
         return type&&std::strcmp(type,Steinberg::kPlatformTypeHWND)==0
@@ -83,6 +90,23 @@ public:
             L"Engine activation status not yet available. Browse to select.",
             WS_CHILD|WS_VISIBLE|SS_LEFT,16,151,525,44,hwnd_,nullptr,
             GetModuleHandleW(nullptr),nullptr);
+        CreateWindowExW(0,L"STATIC",
+            L"Optional new FWS3 engine binding (separate from DSP load)",
+            WS_CHILD|WS_VISIBLE|SS_LEFT,16,202,525,22,hwnd_,nullptr,
+            GetModuleHandleW(nullptr),nullptr);
+        bindBrowse_=CreateWindowExW(0,L"BUTTON",L"Select binding JSON...",
+            WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,
+            16,230,215,30,hwnd_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(104)),
+            GetModuleHandleW(nullptr),nullptr);
+        bindConfirm_=CreateWindowExW(0,L"BUTTON",L"Confirm Binding",
+            WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,
+            243,230,180,30,hwnd_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(105)),
+            GetModuleHandleW(nullptr),nullptr);
+        if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+        bindStatus_=CreateWindowExW(0,L"STATIC",
+            L"Binding optional. Loaded engine and original audio remain available.",
+            WS_CHILD|WS_VISIBLE|SS_LEFT,16,277,525,36,hwnd_,nullptr,
+            GetModuleHandleW(nullptr),nullptr);
         DragAcceptFiles(hwnd_,TRUE);
         SetTimer(hwnd_,1,250,nullptr);
         attachedToParent();
@@ -95,7 +119,7 @@ public:
         RemoveWindowSubclass(hwnd_,SubclassProc,
                              reinterpret_cast<UINT_PTR>(this));
         DestroyWindow(hwnd_);
-        hwnd_=status_=nullptr;
+        hwnd_=status_=bindStatus_=bindBrowse_=bindConfirm_=nullptr;
         systemWindow=nullptr;
         removedFromParent();
         return Steinberg::kResultOk;
@@ -115,6 +139,8 @@ private:
             if(LOWORD(w)==101){view->browse();return 0;}
             if(LOWORD(w)==102){view->reload();return 0;}
             if(LOWORD(w)==103){view->back();return 0;}
+            if(LOWORD(w)==104){view->browseBinding();return 0;}
+            if(LOWORD(w)==105){view->confirmBinding();return 0;}
         }
         if(msg==WM_TIMER && w==1){view->poll();return 0;}
         if(msg==WM_DROPFILES){
@@ -132,6 +158,92 @@ private:
     }
     void setStatus(const wchar_t* status) noexcept {
         if(status_)SetWindowTextW(status_,status);
+    }
+    void setBindingStatus(const wchar_t* message) noexcept {
+        if(bindStatus_)SetWindowTextW(bindStatus_,message);
+    }
+    void pollBinding() {
+        if(!pollBinding_||bindingFlow_.phase()==NativeBindingFlow::Phase::Idle)
+            return;
+        const auto status=pollBinding_();
+        if(!bindingFlow_.observe(status))return;
+        switch(bindingFlow_.phase()) {
+        case NativeBindingFlow::Phase::NeedsConfirmation:
+            if(bindConfirm_)EnableWindow(bindConfirm_,TRUE);
+            setBindingStatus(L"Worker verified JSON. Select Confirm Binding to save.");
+            break;
+        case NativeBindingFlow::Phase::Accepted:
+            if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+            setBindingStatus(L"FWS3 saved; current worker authorized this binding.");
+            break;
+        case NativeBindingFlow::Phase::Rejected:
+            if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+            setBindingStatus(L"Binding rejected; existing engine/audio retained.");
+            break;
+        default:break;
+        }
+    }
+    void browseBinding() {
+        if(!prepareBinding_) {
+            setBindingStatus(L"Binding workflow unavailable; original audio unaffected.");
+            return;
+        }
+        const auto phase=bindingFlow_.phase();
+        if(phase==NativeBindingFlow::Phase::Preparing ||
+           phase==NativeBindingFlow::Phase::NeedsConfirmation ||
+           phase==NativeBindingFlow::Phase::Committing) {
+            setBindingStatus(L"Resolve the pending binding request first.");
+            return;
+        }
+        wchar_t filename[32768]{};
+        OPENFILENAMEW dlg{};
+        dlg.lStructSize=sizeof(dlg);dlg.hwndOwner=hwnd_;
+        dlg.lpstrFile=filename;dlg.nMaxFile=32768;
+        dlg.lpstrFilter=L"Engine binding JSON (*.json)\0*.json\0\0";
+        dlg.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+        if(!GetOpenFileNameW(&dlg))return;
+        const std::filesystem::path path{filename};
+        if(_wcsicmp(path.extension().c_str(),L".json")!=0) {
+            setBindingStatus(L"Choose a JSON binding descriptor.");
+            return;
+        }
+        std::ifstream file(path,std::ios::binary|std::ios::ate);
+        if(!file) {
+            setBindingStatus(L"Binding JSON cannot be opened; engine unaffected.");
+            return;
+        }
+        const auto size=file.tellg();
+        if(size<=0||size>65536) {
+            setBindingStatus(L"Binding JSON must contain 1..65536 bytes.");
+            return;
+        }
+        file.seekg(0);
+        std::vector<uint8_t> bytes(static_cast<size_t>(size));
+        if(!file.read(reinterpret_cast<char*>(bytes.data()),size) ||
+           std::find(bytes.begin(),bytes.end(),0)!=bytes.end()) {
+            setBindingStatus(L"Unreadable or binary JSON; engine unaffected.");
+            return;
+        }
+        const uint64_t request=prepareBinding_(bytes);
+        if(!bindingFlow_.begin(request)) {
+            setBindingStatus(L"Worker busy or disconnected; existing audio retained.");
+            return;
+        }
+        if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+        setBindingStatus(L"JSON sent to worker for verification; NOT saved.");
+    }
+    void confirmBinding() {
+        if(!bindingFlow_.canConfirm()||!commitBinding_)return;
+        const auto request=bindingFlow_.request();
+        if(!commitBinding_(request)) {
+            bindingFlow_.invalidate();
+            if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+            setBindingStatus(L"Commit request unavailable; reload JSON to retry.");
+            return;
+        }
+        bindingFlow_.confirmQueued();
+        if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+        setBindingStatus(L"Commit queued; checking worker state. Not yet confirmed.");
     }
     void browse(){
         wchar_t file[32768]{};
@@ -156,6 +268,11 @@ private:
     }
     void submit(const std::vector<uint8_t>& bytes,const std::wstring& path){
         if(history_.awaiting()){setStatus(L"Verification is still pending.");return;}
+        if(bindingFlow_.phase()!=NativeBindingFlow::Phase::Idle) {
+            bindingFlow_.invalidate();
+            if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+            setBindingStatus(L"Engine changed; prior pending binding cannot be confirmed.");
+        }
         const uint64_t request=send_?send_(bytes):0;
         if(request==0){
             setStatus(L"Could not queue engine (host inactive/busy/disconnected).");
@@ -167,10 +284,16 @@ private:
         setStatus(L"Queued for verification; NOT yet confirmed active.");
     }
     void poll() {
+        pollBinding();
         if(!poll_)return;
         const auto state=poll_();
         if(!state.known)return;
         if(state.state==0){
+            if(bindingFlow_.phase()!=NativeBindingFlow::Phase::Idle) {
+                bindingFlow_.invalidate();
+                if(bindConfirm_)EnableWindow(bindConfirm_,FALSE);
+                setBindingStatus(L"Worker stopped; any uncommitted JSON request cancelled.");
+            }
             if(history_.awaiting())history_.cancel();
             setStatus(L"Host worker stopped. Select or reload engine when active.");
             return;
@@ -216,7 +339,12 @@ private:
     }
     SendBytes send_;
     PollState poll_;
+    PrepareBinding prepareBinding_{};
+    CommitBinding commitBinding_{};
+    PollBinding pollBinding_{};
+    NativeBindingFlow bindingFlow_{};
     HWND hwnd_=nullptr,status_=nullptr,backButton_=nullptr;
+    HWND bindBrowse_=nullptr,bindConfirm_=nullptr,bindStatus_=nullptr;
     VerifiedEngineHistory history_{};
 };
 } // namespace fw

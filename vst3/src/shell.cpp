@@ -853,6 +853,11 @@ public:
             a->setInt("explicit",1)==kResultTrue;
         const auto r=ok?sendMessage(msg):kResultFalse;
         msg->release();
+        if(r!=kResultTrue) {
+            std::uint64_t expected=request;
+            newInFlight_.compare_exchange_strong(
+                expected,0,std::memory_order_acq_rel);
+        }
         return r==kResultTrue;
     }
     void queryNewGenericStatus() {
@@ -893,6 +898,20 @@ public:
         msg->release();
     }
 #ifdef _WIN32
+    NewBindingStatus pollNewGenericStatus() {
+        // Native UI poll is non-RT. An async processor query provides
+        // correlated prepared/committed/saved/live status and can report a
+        // safe engine-off state without aborting loaded original audio.
+        queryNewGenericStatus();
+        const auto prepared=lastNewPreparedWord_.load(std::memory_order_acquire);
+        const auto committed=lastNewCommittedWord_.load(std::memory_order_acquire);
+        return NewBindingStatus{
+            prepared>>1,committed>>1,
+            (prepared&1u)!=0,(committed&1u)!=0,
+            lastNewSaved_.load(std::memory_order_acquire),
+            lastNewActive_.load(std::memory_order_acquire)
+        };
+    }
     EngineStatusSnapshot pollWorkerStatus(){
         if(auto* message=allocateMessage()){
             message->setMessageID("FrequencyWarp.QueryEngineV1");
@@ -995,6 +1014,21 @@ public:
         const auto pending=inFlight_.load(std::memory_order_acquire);
         if(pending>0&&(request==static_cast<int64>(pending)||state==0))
             inFlight_.store(0,std::memory_order_release);
+        // A new engine generation must not leave an older pending binding
+        // request stuck forever. Discard only Controller bookkeeping here;
+        // the Worker separately revokes the old candidate/ticket.
+        const auto prior=lastBindingEngineAccepted_.exchange(
+            static_cast<std::uint64_t>(accepted),std::memory_order_acq_rel);
+        if(state==0 || (prior!=0 &&
+                        prior!=static_cast<std::uint64_t>(accepted))) {
+            newInFlight_.store(0,std::memory_order_release);
+            lastNewPreparedWord_.store(0,std::memory_order_release);
+            lastNewCommittedWord_.store(0,std::memory_order_release);
+            lastNewSaved_.store(false,std::memory_order_release);
+            lastNewActive_.store(false,std::memory_order_release);
+            lastUiMask_.store(0,std::memory_order_release);
+            uiMaskVerifiedMs_.store(0,std::memory_order_release);
+        }
         return kResultOk;
     }
     IPlugView* PLUGIN_API createView(FIDString type) override {
@@ -1016,7 +1050,12 @@ public:
 #endif
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
-        },[this](){return pollWorkerStatus();});
+        },[this](){return pollWorkerStatus();},
+        [this](const std::vector<uint8_t>& descriptor){
+            return sendPrepareNewGenericDescriptor(descriptor);
+        },[this](uint64_t request){
+            return sendCommitNewGeneric(request);
+        },[this](){return pollNewGenericStatus();});
 #else
         (void)type;
         return nullptr;
@@ -1030,6 +1069,7 @@ private:
     std::atomic<uint64_t> nextNewRequest_{0},newInFlight_{0},
                           lastNewPreparedWord_{0},lastNewCommittedWord_{0};
     std::atomic<bool> lastNewSaved_{false},lastNewActive_{false};
+    std::atomic<std::uint64_t> lastBindingEngineAccepted_{0};
     std::atomic<std::uint64_t> lastUiMask_{0};
     std::atomic<std::int64_t> uiMaskVerifiedMs_{0};
 #ifdef _WIN32
