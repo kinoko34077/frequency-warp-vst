@@ -22,12 +22,25 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   const amount=Math.min(1,Math.max(0,logAmount));
   // log1p keeps zero physically on both axes. Unlike ln(f/20),
   // there is no artificial discontinuity/clamp below 20Hz.
-  const position=f=>(1-amount)*Math.max(0,f)/MAX+
-    amount*Math.log1p(Math.max(0,f)/20)/Math.log1p(MAX/20);
+  const position=f=>{
+    const linear=Math.max(0,f)/MAX;
+    const logarithmic=MAX===20?Math.max(0,Math.log(Math.max(.001,f)/.001)/Math.log(20000)):
+      Math.log1p(Math.max(0,f)/20)/Math.log1p(MAX/20);
+    return Math.max(0,Math.min(1,(1-amount)*linear+amount*logarithmic));
+  };
   const x=f=>left+position(f)*width;
   const y=f=>bottom-position(f)*height;
   ctx.clearRect(0,0,size,size);
   ctx.fillStyle="#081a1f";ctx.fillRect(left,top,width,height);
+  // The segment below L remains visible as a dashed reference, not claimed
+  // as an audible processed frequency or a false line within the band.
+  const cutoff=Math.min(MAX,Math.max(.001,settings.low));
+  if(cutoff>.001){
+    ctx.save();ctx.strokeStyle="#66858a";ctx.globalAlpha=.75;
+    ctx.setLineDash([2*ratio,3*ratio]);ctx.lineWidth=ratio*.7;
+    ctx.beginPath();ctx.moveTo(x(.001),y(.001));ctx.lineTo(x(cutoff),y(cutoff));ctx.stroke();
+    ctx.restore();
+  }
   {
     const lo=Math.max(DISPLAY_MIN,settings.low),hi=Math.min(MAX,settings.high);
     if(hi>lo){ctx.fillStyle="rgba(60,212,168,.12)";ctx.fillRect(x(lo),top,x(hi)-x(lo),height);}
@@ -35,8 +48,8 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   ctx.font=(10*ratio)+"px system-ui";ctx.textAlign="center";ctx.textBaseline="top";
   ctx.strokeStyle="#244149";ctx.lineWidth=ratio;
   const ticks=logAmount>=.5?
-    (MAX===20000?[0,20,50,100,200,500,1000,2000,5000,10000,20000]:[0,20,50,100,200,500,1000,2000]):
-    (MAX===20000?[0,5000,10000,15000,20000]:[0,500,1000,1500,2000]);
+    (MAX===20?[.001,.01,.1,1,5,10,20]:MAX===20000?[0,20,50,100,200,500,1000,2000,5000,10000,20000]:[0,20,50,100,200,500,1000,2000]):
+    (MAX===20?[.001,5,10,15,20]:MAX===20000?[0,5000,10000,15000,20000]:[0,500,1000,1500,2000]);
   let lastTick=-Infinity;
   for(const value of ticks){
     const xx=x(value),yy=y(value);
@@ -73,8 +86,8 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
   // A linear 512-bin frequency grid gave almost no line detail below 100 Hz
   // in the 20 kHz view despite spreading that range across much of the plot.
   const inversePosition=t=>{
-    if(amount===0)return MAX*t;
-    if(amount===1)return 20*Math.expm1(Math.log1p(MAX/20)*t);
+    if(amount===0)return Math.max(.001,MAX*t);
+    if(amount===1)return MAX===20?.001*Math.exp(Math.log(20000)*t):20*Math.expm1(Math.log1p(MAX/20)*t);
     let lower=0,upper=MAX;
     for(let j=0;j<20;j++){
       const mid=(lower+upper)/2;
@@ -162,6 +175,7 @@ export function drawFrequencyGraph(canvas,settings,warp,translate,maxHz=DISPLAY_
            Math.abs(current.y-previous.y)<height*.32){
           ctx.globalAlpha=Math.min(1,(current.gain+previous.gain)/2);
           if(ctx.globalAlpha>1e-4){
+            ctx.setLineDash(current.inside?[]:[2*ratio,4*ratio]);
             ctx.beginPath();ctx.moveTo(previous.x,previous.y);
             ctx.lineTo(current.x,current.y);ctx.stroke();
           }

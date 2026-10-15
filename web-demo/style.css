@@ -539,3 +539,12 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .sine-volume output{min-width:32px;text-align:right}
 .info-tip:not([open]) .info-body{display:none}
 @media(hover:hover) and (pointer:fine){.info-tip:hover{z-index:150}.info-tip:hover .info-body{display:block}}
+
+/* #183: compact mutually exclusive physical unit buttons */
+.unit-value-tools{position:relative}
+.unit-select-source{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;clip-path:inset(50%)}
+.unit-switch{display:inline-flex;align-items:center;gap:2px;border:1px solid #365f59;border-radius:7px;padding:2px;max-width:100%}
+.unit-switch button{min-width:24px;min-height:27px;padding:3px 4px;border:0;border-radius:4px;background:transparent;color:#9dc5bb;font-size:10px;line-height:1.1;cursor:pointer}
+.unit-switch button[aria-pressed="true"]{color:#081c19;background:#77dfbd;font-weight:700}
+.unit-switch button:focus-visible{outline:2px solid #fcde96;outline-offset:2px}
+@media(max-width:450px){.unit-value-tools{gap:2px}.unit-switch{gap:0}.unit-switch button{min-width:20px;padding:3px 2px;font-size:9px}}

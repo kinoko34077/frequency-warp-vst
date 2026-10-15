@@ -3,7 +3,7 @@
  * These functions do NOT extract pitch, infer a chord, or process audio.
  * DSP processing is exclusively in Rust core/src/stream.rs.
  */
-export const DISPLAY_MIN=20, DISPLAY_MAX=2000;
+export const DISPLAY_MIN=.001, DISPLAY_MAX=2000;
 export function deriveHarmonics(F=350,m=4,n=-3,q=1,r=1,count=7){
   if(!(F>0&&F<=20000&&Number.isInteger(m)&&m>=1&&m<=64&&
        Number.isInteger(n)&&Math.abs(n)<=128&&Number.isInteger(q)&&q>=1&&q<=32&&

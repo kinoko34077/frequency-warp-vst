@@ -295,7 +295,7 @@ function drawCurve(){
   $("#reflection-activity").textContent=hasReflect?
     "反射区間あり · 2つのつまみは音声・グラフに即時反映":
     "現在は反射区間なし。反転や移動で反射が発生すると有効になります。";
-  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+" · x(f)=(1−α)×f/"+graphMax+"+α×ln(1+f/20)/ln(1+"+graphMax+"/20)。x/y共通の0Hzを含む表示尺度（音声DSPに影響しません）。";
+  $("#graph-log-formula").textContent="α="+displayNumber(alpha)+"（0＝線形、1＝対数）。表示のみ変更します。";
   const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=p.crusherBits===0;

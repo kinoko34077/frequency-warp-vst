@@ -49,30 +49,31 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
       typeof onValueChange !== "function")
     throw new TypeError("frequency unit field controls are required");
   const binding=createParameterBinding(descriptor,{initialValue});
+  let unitButtons=null;
   const position=()=>descriptor.rail.toPosition(binding.value);
   // The slider remains a gesture proxy. Respect its own physical step:
   // harmonic F has step=1, reference sine has MIDI pitch step=.01.
   const coarseSync=()=>{
     const min=Number(slider.min),max=Number(slider.max),rawStep=Number(slider.step);
-    const step=Number.isFinite(rawStep)&&rawStep>0?rawStep:1;
+    const step=Number.isFinite(rawStep)&&rawStep>0?rawStep:0;
     const raw=min+position()*(max-min);
     const quantized=Math.max(min,Math.min(max,
-      min+Math.round((raw-min)/step)*step));
+      step?min+Math.round((raw-min)/step)*step:raw));
     slider.value=String(Number(quantized.toFixed(9)));
   };
   let snapEnabled=true;
   let lastRendered="";
   const viewDigits=digits=>(binding.unit==="note"||binding.unit==="cents")?0:digits;
   const display=(force=false)=>{
-    // A 0-Hz pivot has no musical-note spelling. Recover into a valid
-    // physical view instead of throwing and breaking live controls.
-    if(binding.value<=0&&binding.unit==="note"){
-      binding.selectUnit("hz");select.value="hz";
-    }
+    // Zero has no pitch notation, but a unit choice must not silently change.
     if(force || field.ownerDocument.activeElement!==field){
-      field.value=String(binding.display(viewDigits(getDigits())));
+      field.value=binding.value<=0&&binding.unit==="note"?"—":
+        String(binding.display(viewDigits(getDigits())));
+      field.placeholder=binding.unit==="note"?"音名を入力":"";
       lastRendered=field.value;
     }
+    if(unitButtons)for(const button of unitButtons.querySelectorAll("button[data-unit]"))
+      button.setAttribute("aria-pressed",String(button.dataset.unit===binding.unit));
   };
   let dirty=false;
   const commitTyped=()=>{
@@ -93,7 +94,7 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
   field.addEventListener("focus",()=>{
     if(["hz","ratio","coordinate","integer"].includes(binding.unit))
       field.value=String(binding.value);
-    else field.value=String(binding.display(viewDigits(8)));
+    else field.value=binding.value<=0&&binding.unit==="note"?"":String(binding.display(viewDigits(8)));
     lastRendered=field.value;
     field.select();
   });
@@ -113,13 +114,42 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     if(event.key==="Enter")field.blur();
   });
   select.addEventListener("change",()=>{
-    if(select.value==="note" && binding.value<=0){
-      select.value="hz"; // 0Hz is undefined as musical pitch
-    }
     binding.selectUnit(select.value);
     dirty=false;
     display(true); // unit notation must never change DSP value
   });
+  // Compact tap targets are the user interface; retain the select as an
+  // accessible compatibility value source for legacy tests and adapters.
+  const glyph={hz:"Hz",note:"♪",percent:"%",ratio:"×",semitones:"♩",cents:"¢",coordinate:"u",integer:"#"};
+  unitButtons=field.ownerDocument.createElement("div");
+  unitButtons.className="unit-switch";unitButtons.setAttribute("role","group");
+  unitButtons.setAttribute("aria-label",select.getAttribute("aria-label")||"単位");
+  for(const option of select.options){
+    if(!option.value||option.disabled)continue;
+    const button=field.ownerDocument.createElement("button");
+    button.type="button";button.dataset.unit=option.value;
+    button.textContent=glyph[option.value]||option.textContent;
+    button.title=option.textContent;button.setAttribute("aria-label",option.textContent);
+    button.setAttribute("aria-pressed",String(option.value===binding.unit));
+    button.addEventListener("click",()=>{
+      select.value=option.value;
+      select.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    unitButtons.append(button);
+  }
+  select.classList.add("unit-select-source");
+  select.insertAdjacentElement("afterend",unitButtons);
+  if(descriptor.id==="pitch-ratio"){
+    // Alt temporarily disables BOTH note snap and the native 0.05 coarse step.
+    const updateFine=event=>{
+      slider.step=event.altKey?"any":"0.05";
+      if(!event.altKey)coarseSync();
+    };
+    window.addEventListener("keydown",updateFine,true);
+    window.addEventListener("keyup",updateFine,true);
+    window.addEventListener("blur",()=>{slider.step="0.05";coarseSync();});
+    slider.addEventListener("pointerdown",updateFine);
+  }
   const fromSlider=()=>{
     const old=binding.value;
     const normalized=(Number(slider.value)-Number(slider.min))/
@@ -139,7 +169,7 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
   // value field and unit selector. Touch hold is cancelled if drag begins.
   const doc=field.ownerDocument;
   const thumb=railRoot.querySelector?.("#"+descriptor.id+"-thumb");
-  const targets=[field,select,slider,thumb].filter(Boolean);
+  const targets=[field,select,slider,thumb,...unitButtons.querySelectorAll("button")].filter(Boolean);
   const menu=getSnapMenu(doc);
   const updateHints=()=>{
     for(const node of targets){
@@ -204,7 +234,7 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     get snapEnabled(){return snapEnabled;},
     setSnapEnabled,
     fromSlider,
-    refresh:()=>display(),
+    refresh:()=>{coarseSync();display();},
     setCanonical(value){
       binding.setCanonical(value,{origin:"constraint",notify:false});
       coarseSync();
