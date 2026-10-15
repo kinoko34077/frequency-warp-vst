@@ -38,6 +38,17 @@ std::uint64_t fw_native_generic_slot_mask(const FWNativeOpaque* handle);
 // this is NOT DAW automation authorization (R3C2 is required).
 bool fw_native_generic_value_in_contract(
     const FWNativeOpaque* handle,std::uint32_t host_slot,double canonical_value);
+// Read-only WASM-owned canonical numeric descriptor (not external HTML
+// metadata). ABI v1 additive; only call on live verified native worker,
+// non-RT. Caller still must match project FWS3 semantic identity and
+// generation before enabling DAW edits or audio parameter routing.
+struct FWNativeGenericCodec {
+    std::uint32_t hostSlot,codecRevision,scale,steps;
+    double min,max,defaultValue;
+};
+bool fw_native_copy_generic_codec(
+    const FWNativeOpaque* handle,std::uint32_t hostSlot,
+    FWNativeGenericCodec* out);
 // NON-RT necessary-only JSON descriptor preflight; positive result alone
 // NEVER authorizes new audio events or saved DAW generic automation.
 bool fw_native_preflight_generic_descriptor(
@@ -49,5 +60,8 @@ std::int32_t fw_native_process(
     FWNativeOpaque* handle, const float* input, float* output,
     std::uint32_t frames, const FWNativeEvent* events, std::uint32_t event_count);
 }
+static_assert(sizeof(FWNativeGenericCodec)==40 &&
+              alignof(FWNativeGenericCodec)==8,
+              "WASM-authored generic codec ABI shape changed");
 static_assert(sizeof(FWNativeEvent)==16,"v1 event ABI layout changed");
 static_assert(alignof(FWNativeEvent)==8,"v1 event ABI alignment changed");
