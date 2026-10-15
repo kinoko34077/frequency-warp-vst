@@ -268,9 +268,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // Information is hidden until requested, available by pointer and keyboard.
     const contextHint=await page.$(".shape-control .info-tip summary");
     assert.ok(contextHint);
-    await contextHint.click();
-    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
+    await contextHint.hover();
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true,
+      "mouse hover opens contextual formula help");
     assert.match(await page.$eval(".shape-control .info-body",el=>el.textContent),/反転/);
+    await page.mouse.move(2,2);
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false,
+      "pointer leave must dismiss it without another click");
+    await contextHint.focus();
+    await contextHint.press("Enter");
+    assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),true);
     await contextHint.press("Enter");
     assert.equal(await page.$eval(".shape-control .info-tip",el=>el.open),false);
     assert.equal(await page.$eval("#crusher-bits",el=>el.closest(".fx-item").textContent.includes("量子化")),true);
