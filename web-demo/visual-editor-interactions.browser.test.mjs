@@ -32,6 +32,13 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=collapse]').click());
     assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('.actions')).display),'flex');
 
+    await page.evaluate(()=>{
+      window.__fwDragEvents=[];
+      const head=document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('.head');
+      for(const type of ['pointerdown','pointermove','pointerup'])head.addEventListener(type,e=>window.__fwDragEvents.push({
+        type,button:e.button,pointerId:e.pointerId,clientX:e.clientX,clientY:e.clientY,target:e.target.tagName
+      }),true);
+    });
     const before=await page.$eval('#fw-layout-inspector',el=>({x:el.getBoundingClientRect().left,y:el.getBoundingClientRect().top}));
     const head=await page.evaluate(()=>{
       const r=document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('.head').getBoundingClientRect();
@@ -42,7 +49,7 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     await page.mouse.move(head.x-80,head.y-45,{steps:7});
     await page.mouse.up();
     const after=await page.$eval('#fw-layout-inspector',el=>({x:el.getBoundingClientRect().left,y:el.getBoundingClientRect().top}));
-    assert.ok(before.x-after.x>30 && before.y-after.y>15,'drag must move inspector '+JSON.stringify({before,after,head}));
+    assert.ok(before.x-after.x>30 && before.y-after.y>15,'drag must move inspector '+JSON.stringify({before,after,head,trace:await page.evaluate(()=>window.__fwDragEvents),errors}));
     assert.match(await page.evaluate(()=>localStorage.getItem('frequency-warp:inspector-position:v1')),/x/);
 
     // Windows-style mouse context menu / static copy and paste.
