@@ -7,6 +7,8 @@ import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz} from "./harmonics-panel.mjs";
+import {defineParameter} from "./parameter-binding.mjs";
+import {mountFrequencyUnitField} from "./frequency-unit-field.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -16,6 +18,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
+let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null;
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -57,9 +60,17 @@ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 const displayDigits=()=>Number($("#decimal-digits")?.value||3);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
-const scalar=(name,fallback)=>state.precise[name]??fallback();
+const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
+  name==="high"&&highUnitControl?highUnitControl.value:
+  name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
+  name==="a-min"&&aMinUnitControl?aMinUnitControl.value:(state.precise[name]??fallback());
 function showNumber(id,value){
   const field=$("#"+id);
+  if(id==="low-value"&&lowUnitControl){lowUnitControl.refresh();return;}
+  if(id==="high-value"&&highUnitControl){highUnitControl.refresh();return;}
+  if(id==="axis-pivot-value"&&pivotUnitControl){pivotUnitControl.refresh();return;}
+  if(id==="a-min-value"&&aMinUnitControl){aMinUnitControl.refresh();return;}
+  if(id==="sine-hz"&&sineUnitControl){sineUnitControl.refresh();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -84,6 +95,8 @@ function bounds(changed=""){
   low=Math.min(scalar("low",()=>hzFromScale($("#low").value)),cap/1.08);
   high=Math.min(scalar("high",()=>hzFromScale($("#high").value)),cap);
   if(low>=high)low=high/1.08;
+  if(lowUnitControl&&!Object.is(lowUnitControl.value,low))lowUnitControl.setCanonical(low);
+  if(highUnitControl&&!Object.is(highUnitControl.value,high))highUnitControl.setCanonical(high);
   state.effective={low,high};
   showNumber("low-value",low);
   showNumber("high-value",high);
@@ -96,16 +109,16 @@ function bounds(changed=""){
 const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
 function syncHarmonicToPivot(){
   const {F,m,r}=harmonicParameters(),H=r*F/m;
-  state.precise["axis-pivot"]=H;
-  $("#axis-pivot").value=String(scaleFromPivot(H));
+  if(pivotUnitControl)pivotUnitControl.setCanonical(H);
+  else {state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));}
   return H;
 }
 function syncPivotToHarmonic(){
   const P=scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
   const result=setFundamentalFromPivot(P);
   if(!result)return;
-  state.precise["axis-pivot"]=result.H;
-  $("#axis-pivot").value=String(scaleFromPivot(result.H));
+  if(pivotUnitControl)pivotUnitControl.setCanonical(result.H);
+  else {state.precise["axis-pivot"]=result.H;$("#axis-pivot").value=String(scaleFromPivot(result.H));}
 }
 function settings(){
   const {low,high}=bounds();
@@ -638,15 +651,84 @@ function updateParams(changed){
   });
   indicator("リアルタイム動作中 · パラメータ更新中…");
 }
-// Value fields are the readout themselves. Editing one immediately moves its slider.
+// #79 M1 first vertical slice: one physical-Hz control using the shared
+// canonical binding. The existing #low source remains the dual-thumb gesture
+// proxy, not a second physical/DSP authority.
+const lowNormalizedFromHz=hz=>hz<=20?
+  .2*Math.log(hz/MIN_POSITIVE_HZ)/Math.log(20/MIN_POSITIVE_HZ):
+  .2+.8*Math.log(hz/20)/Math.log(1000);
+lowUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"low",min:MIN_POSITIVE_HZ,max:20000,defaultValue:20,
+    units:["hz","note","percent"],
+    rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#low-value"),select:$("#low-unit"),snapToggle:$("#low-snap"),
+  slider:$("#low"),railRoot:$("#dual-range"),
+  getDigits:displayDigits,
+  initialValue:hzFromScale($("#low").value),
+  onValueChange:()=>{updateParams("low");updateEngineInfo();}
+});
+// The upper H frequency shares exactly the same descriptor/interaction
+// contract as L, retaining the existing dual-thumb event transport.
+highUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"high",min:MIN_POSITIVE_HZ,max:20000,defaultValue:16000,
+    units:["hz","note","percent"],
+    rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#high-value"),select:$("#high-unit"),snapToggle:$("#high-snap"),
+  slider:$("#high"),railRoot:$("#dual-range"),
+  getDigits:displayDigits,
+  initialValue:hzFromScale($("#high").value),
+  onValueChange:()=>{updateParams("high");updateEngineInfo();}
+});
+// Pivot P has an explicit 0-Hz rail position; positive frequencies begin at
+// 0.001 Hz and retain the original piecewise logarithmic gesture scale.
+// 0 Hz cannot be formatted as a musical note and falls back to Hz view.
+const pivotNormalizedFromHz=hz=>hz<=0?0:hz<=20?
+  (1+199*Math.log(Math.max(.001,hz)/.001)/Math.log(20000))/1000:
+  (200+800*Math.log(Math.min(20000,hz)/20)/Math.log(1000))/1000;
+const pivotHzFromNormalized=t=>t<=0?0:pivotFromScale(Math.max(1,t*1000));
+pivotUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"axis-pivot",min:0,max:20000,defaultValue:350,
+    units:["hz","note","percent"],
+    rail:{toPosition:pivotNormalizedFromHz,fromPosition:pivotHzFromNormalized},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#axis-pivot-value"),select:$("#pivot-unit"),snapToggle:$("#pivot-snap"),
+  slider:$("#axis-pivot"),railRoot:$("#axis-pivot"),
+  getDigits:displayDigits,initialValue:350,
+  onValueChange:()=>{
+    if(isHarmonicPivotLinked())syncPivotToHarmonic();
+    updateParams("axis-pivot");updateEngineInfo();
+  }
+});
+// Engine A extraction floor has the same nonzero Hz log rail as L/H.
+aMinUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"a-min",min:MIN_POSITIVE_HZ,max:20000,defaultValue:20,
+    units:["hz","note","percent"],
+    rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#a-min-value"),select:$("#a-min-unit"),snapToggle:$("#a-min-snap"),
+  slider:$("#a-min"),railRoot:$("#a-min"),
+  getDigits:displayDigits,initialValue:20,
+  onValueChange:()=>{updateParams("a-min");updateEngineInfo();}
+});
+// Other controls retain the legacy input binding until independently migrated.
 const inline={
-  "a-min-value":["a-min",v=>scaleFromHz(v),"a-min",MIN_POSITIVE_HZ,20000],
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
-  "low-value":["low",v=>scaleFromHz(v),"low",MIN_POSITIVE_HZ,20000],
-  "high-value":["high",v=>scaleFromHz(v),"high",MIN_POSITIVE_HZ,20000],
-  "axis-pivot-value":["axis-pivot",v=>scaleFromPivot(v),"axis-pivot",0,20000],
   "invert-value":["invert",v=>v/100,"invert",0,100],
   "zero-reflect-value":["zero-reflect",v=>v,"zero-reflect",0,100],
   "zero-decay-value":["zero-decay",v=>v,"zero-decay",0,100],
@@ -702,7 +784,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
 // Compact shared rails. Actual parameter updates still use the same
 // source ranges and existing native Rust AudioWorklet/WAV bindings.
 dualControls.bounds=mountDualThumb($("#dual-range"),["low","high"],[
-  v=>hzText(hzFromScale(v)),v=>hzText(hzFromScale(v))
+  v=>hzText(lowUnitControl?.value??hzFromScale(v)),v=>hzText(highUnitControl?.value??hzFromScale(v))
 ]);
 dualControls.reflection=mountDualThumb($("#reflection-dual"),
   ["zero-reflect","zero-decay"],[
@@ -719,6 +801,10 @@ $("#curve").addEventListener("keydown",event=>{
 });
 for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{
+    if(name==="low"){lowUnitControl.fromSlider();return;}
+    if(name==="high"){highUnitControl.fromSlider();return;}
+    if(name==="axis-pivot"){pivotUnitControl.fromSlider();return;}
+    if(name==="a-min"){aMinUnitControl.fromSlider();return;}
     delete state.precise[name];
     if(name==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams(name);updateEngineInfo();
@@ -732,6 +818,10 @@ $("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");upd
 $("#graph-log").addEventListener("input",drawCurve);
 $("#decimal-digits").addEventListener("change",()=>{
   labels();drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
+  lowUnitControl.refresh();
+  highUnitControl.refresh();
+  pivotUnitControl.refresh();
+  aMinUnitControl.refresh();
   updateSineLabel();
 });
 $("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
@@ -929,17 +1019,21 @@ controls.download.addEventListener("click",()=>{
 // It remains available even when a Rust/DSP module import fails.
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-pivot":"532","axis-slope":"1",
+    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0","axis-slope":"1",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"100","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
+  lowUnitControl.reset();
+  highUnitControl.reset();
+  pivotUnitControl.reset();
+  aMinUnitControl.reset();
   for(const [id,value] of Object.entries(defaults))$("#"+id).value=value;
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#harmonic-pivot-link").checked=false;
   $("#engine-auto").checked=false;
-  $("#a-min").value="200";$("#a-reverb").value="0";
-  $("#a-min-value").value="20";$("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
+  $("#a-reverb").value="0";
+  $("#a-reverb-value").value="0";$("#a-band-value").value="1";$("#a-quality-value").value="0";
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="880";
   $("#crusher-bits-value").value="8";
@@ -969,8 +1063,24 @@ for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
 }
 // WebAudio reference sine is a monitoring aid, not a competing DSP engine.
 const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
-const sinePitch=()=>state.sineExactPitch??Number($("#sine-pitch").value);
-const sineFrequency=()=>440*2**((sinePitch()-69)/12);
+const sineHzAtMidi=midi=>440*2**((midi-69)/12);
+const sineMidiAtHz=hz=>69+12*Math.log2(hz/440);
+sineUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"sine-hz",min:sineHzAtMidi(36),max:sineHzAtMidi(96),
+    defaultValue:440,units:["hz","note","percent"],
+    rail:{toPosition:hz=>(sineMidiAtHz(hz)-36)/60,
+          fromPosition:t=>sineHzAtMidi(36+60*t)},
+    digits:3,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+  }),
+  field:$("#sine-hz"),select:$("#sine-unit"),snapToggle:$("#sine-snap"),
+  slider:$("#sine-pitch"),railRoot:$("#sine-pitch"),
+  getDigits:displayDigits,initialValue:440,
+  onValueChange:()=>updateSineLabel()
+});
+const sinePitch=()=>sineMidiAtHz(sineUnitControl.value);
+const sineFrequency=()=>sineUnitControl.value;
 function updateSineLabel(){
   const value=sinePitch(),nearest=Math.round(value);
   const note=NOTE_NAMES[((nearest%12)+12)%12]+(Math.floor(nearest/12)-1);
@@ -985,28 +1095,16 @@ function stopSine(){
   if(!sine)return;
   try{sine.osc.stop();sine.osc.disconnect();sine.gain.disconnect();}catch{}
 }
-$("#sine-pitch").addEventListener("input",()=>{delete state.sineExactPitch;updateSineLabel();});
-$("#sine-hz").addEventListener("input",()=>{
-  const raw=Number($("#sine-hz").value);
-  if(!Number.isFinite(raw)||$("#sine-hz").value==="")return;
-  const hz=round3(clamp(raw,65,2100));
-  state.sineExactPitch=clamp(69+12*Math.log2(hz/440),36,96);
-  $("#sine-pitch").value=String(state.sineExactPitch);
-  updateSineLabel();
-});
-$("#sine-hz").addEventListener("focus",()=>{
-  $("#sine-hz").value=String(round3(sineFrequency()));$("#sine-hz").select();
-});
-$("#sine-hz").addEventListener("blur",()=>{
-  showNumber("sine-hz",sineFrequency());
-});
+// The reference oscillator, MIDI rail and cents field are views of exactly
+// one canonical Hz value. MIDI's .01 source step remains a coarse gesture.
+$("#sine-pitch").addEventListener("input",()=>sineUnitControl.fromSlider());
 $("#sine-cent").addEventListener("input",()=>{
   if($("#sine-cent").value==="")return;
   const cents=round3(clamp(Number($("#sine-cent").value),-50,50));
   if(!Number.isFinite(cents))return;
   const root=Math.round(sinePitch());
-  state.sineExactPitch=clamp(root+cents/100,36,96);
-  $("#sine-pitch").value=String(state.sineExactPitch);
+  const pitch=clamp(root+cents/100,36,96);
+  sineUnitControl.setCanonical(sineHzAtMidi(pitch));
   updateSineLabel();
 });
 $("#sine-cent").addEventListener("focus",()=>{$("#sine-cent").value=String(round3((sinePitch()-Math.round(sinePitch()))*100));});
