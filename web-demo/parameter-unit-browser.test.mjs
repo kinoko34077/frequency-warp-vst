@@ -242,6 +242,71 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#pivot-unit","hz");
 
+    // Carrier c: distinct exact 0Hz rail, typed positive sub-1Hz, and
+    // per-unit musical snap. Do not modify the linked fold output policy.
+    await page.click("#tab-map");
+    await page.$eval("#ring-enabled",el=>{
+      el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.deepEqual(await page.evaluate(()=>
+      Array.from(document.querySelectorAll("#carrier-unit option"),el=>el.value)),
+      ["hz","note","percent"]);
+    assert.equal(await page.$eval("#carrier-snap",el=>el.checked),false);
+    const beforeUnitCarrier=await page.$eval("#carrier-range",el=>el.value);
+    await page.select("#carrier-unit","note");
+    assert.equal(await page.$eval("#carrier-range",el=>el.value),beforeUnitCarrier,
+      "carrier view-only change must not move slider/DSP");
+    await page.$eval("#carrier",el=>{
+      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#carrier-unit","hz");
+    await page.focus("#carrier");
+    const exactCarrier=Number(await page.$eval("#carrier",el=>el.value));
+    assert.ok(Math.abs(exactCarrier-440*2**(25/1200))<1e-9);
+    await page.$eval("#carrier",el=>el.blur());
+    await page.select("#carrier-unit","percent");
+    const carrierPercent=Number(await page.$eval("#carrier",el=>el.value));
+    const expectedCarrierPercent=(1+999*Math.log(exactCarrier)/Math.log(20000))/10;
+    assert.ok(Math.abs(carrierPercent-expectedCarrierPercent)<.01);
+    // Sub-1Hz is continuous canonically, even if the physical thumb is 1-step coarse.
+    await page.$eval("#carrier",el=>{
+      el.value="0.05";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#carrier-unit","hz");
+    await page.focus("#carrier");
+    assert.ok(Math.abs(Number(await page.$eval("#carrier",el=>el.value))-.5)<1e-8,
+      "0.05% carrier rail must map to 0.5Hz");
+    await page.$eval("#carrier",el=>el.blur());
+    await page.select("#carrier-unit","note");
+    await page.$eval("#carrier-range",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
+    assert.equal(await page.$eval("#carrier-unit",el=>el.value),"hz",
+      "0Hz carrier cannot display a fabricated musical note");
+
+    await page.$eval("#carrier-snap",el=>{el.checked=true;});
+    const carrierA4Step=Math.round(1+999*Math.log(440)/Math.log(20000));
+    await page.$eval("#carrier-range",(el,step)=>{
+      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },carrierA4Step);
+    await page.focus("#carrier");
+    assert.ok(Math.abs(Number(await page.$eval("#carrier",el=>el.value))-440)<1e-8,
+      "carrier slider note snap must land on A4");
+    await page.$eval("#carrier",el=>el.blur());
+
+    await page.select("#mode","fold-h");
+    await page.$eval("#carrier-link",el=>{
+      el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#carrier-unit",el=>el.disabled),true);
+    assert.equal(await page.$eval("#carrier-snap",el=>el.disabled),true);
+    assert.match(await page.$eval("#carrier-linked-value",el=>el.textContent),/連動/);
+    await page.$eval("#carrier-link",el=>{
+      el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#carrier-unit",el=>el.disabled),false);
+
     await page.click("#settings-open");
     await page.click("#settings-reset");
     assert.equal(await page.$eval("#fundamental-unit",el=>el.value),"hz");
