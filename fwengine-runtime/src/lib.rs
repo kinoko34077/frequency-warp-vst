@@ -5,6 +5,10 @@ use wasmi::{Config, Engine, Instance, Linker, Memory, Module, Store, StoreLimits
 
 const FUEL_PREP: u64=15_000_000;
 const FUEL_BLOCK: u64=10_000_000;
+// Engine A expands its bounded peak budget at higher quality settings.
+// Keep a finite, verified wider budget for modules declaring ID28; legacy
+// Stream and demo engines retain their original 10M fuel ceiling.
+const FUEL_A_BLOCK: u64=40_000_000;
 // Runtime fallback for old .fwengine packages that never declared support.
 const LEGACY_STREAM_MASK:u64=(1u64<<2)|(1u64<<3)|(1u64<<4)|(1u64<<5);
 const KNOWN_STREAM_MASK:u64=(1u64<<2)|(1u64<<3)|(1u64<<4)|(1u64<<5)|
@@ -20,6 +24,7 @@ pub struct Runtime {
     store:Store<StoreLimits>,memory:Memory,run:ProcessFn,handle:i32,
     channels:usize,max_frames:usize,input:usize,output:usize,event:usize,
     capacity:usize,faulted:bool,sample_rate:f64,stream_mask:u64,
+    last_fuel_used:u64,
 }
 fn section(start:usize,size:usize,limit:usize,align:usize)->Result<(usize,usize)>{
     ensure!(start>0&&start%align==0,"invalid ABI offset");
@@ -94,10 +99,12 @@ impl Runtime{
         }else{0};
         Ok(Self{manifest:p.manifest,store,memory,run,handle,channels,max_frames,
             input,output,event,capacity:capacity as usize,faulted:false,
-            sample_rate:rate,stream_mask})
+            sample_rate:rate,stream_mask,last_fuel_used:0})
     }
     pub fn faulted(&self)->bool{self.faulted}
     pub fn stream_control_mask(&self)->u64{self.stream_mask}
+    // NonRT diagnostics for bounded CPU/fuel investigation and regression.
+    pub fn last_process_fuel(&self)->u64{self.last_fuel_used}
     /// Test/offline convenience function. Allocates a Vec; not for audio callbacks.
     pub fn process(&mut self,pcm:&[f32],frames:usize,events:&[ParamEvent])->Result<Vec<f32>>{
         let mut output=vec![0.0;pcm.len()];
@@ -159,13 +166,17 @@ impl Runtime{
                 mem[off+8..off+16].copy_from_slice(&e.value.to_le_bytes());
             }
         }
-        self.store.set_fuel(FUEL_BLOCK)?;
+        let budget=if (self.stream_mask&(1u64<<28))!=0 {
+            FUEL_A_BLOCK
+        } else {FUEL_BLOCK};
+        self.store.set_fuel(budget)?;
         match self.run.call(&mut self.store,(self.handle,self.input as i32,
                 self.output as i32,frames as i32,self.event as i32,events.len() as i32)){
             Ok(0)=>{},
             Ok(status)=>{self.faulted=true;bail!("WASM failure status {status}")},
             Err(err)=>{self.faulted=true;bail!("WASM trapped or fuel exhausted: {err}")},
         }
+        self.last_fuel_used=budget.saturating_sub(self.store.get_fuel()?);
         let limit=self.memory.data_size(&self.store);
         if limit>self.manifest.max_memory_bytes as usize{
             self.faulted=true;bail!("WASM memory limit violated");
