@@ -54,6 +54,7 @@ fn defaults(rate:f64)->Settings {
 #[no_mangle]pub extern "C" fn fw_supported_param_mask()->i64 {
     let mut mask=0u64;
     for id in [2,3,4,5,6,7,8,9,10,11,13,16,17,18,27,28,29,30] {
+        if cfg!(feature="legacy-fourteen-mask") && id>=27 {continue;}
         mask|=1u64<<id;
     }
     mask as i64
