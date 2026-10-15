@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {validateStreamSettings} from "./stream-parameter-contract.mjs";
+import {validateStreamSettings,prepareStreamSettings} from "./stream-parameter-contract.mjs";
 const base=()=>({low:20,high:16000,sampleRate:48000,axisPivot:350,
  aMinHz:20,pitchRatio:1,carrierHz:350,axisShift:0,axisSlope:1,
  axisReference:350,shiftHz:-262.5,rationalEnabled:false,
@@ -76,4 +76,43 @@ test("mode, engine, quality and crusher controls keep their valid Rust variants"
     assert.equal(validateStreamSettings({...base(),crusherBits}).ok,true);
   for(const engine of [0,1,2,3])
     assert.equal(validateStreamSettings({...base(),engine}).ok,true);
+});
+
+test("0.001 Hz theoretical reference is retained while DSP plays from 1 Hz",()=>{
+ const theoretical={...base(),low:0.001,axisPivot:0.001,
+    aMinHz:0.001,axisReference:0.001,shiftHz:0};
+ const previous={...theoretical};
+ const resolved=prepareStreamSettings(theoretical);
+ assert.equal(resolved.ok,true);
+ assert.equal(resolved.settings.axisReference,1);
+ assert.equal(resolved.settings.low,0.001);
+ assert.equal(resolved.settings.aMinHz,0.001);
+ assert.equal(resolved.settings.axisPivot,0.001);
+ assert.deepEqual(theoretical,previous,"theoretical inputs and graph must not be overwritten");
+ assert.match(resolved.warnings.join(" "),/1 Hz/);
+ assert.match(resolved.warnings.join(" "),/0.001/);
+ assert.equal(validateStreamSettings(resolved.settings).ok,true);
+});
+
+test("only sub-1Hz axis reference is adapted and all other failures stay explicit",()=>{
+ for(const hz of [0,0.001,0.5,0.999999]) {
+   const result=prepareStreamSettings({...base(),axisReference:hz});
+   assert.equal(result.ok,true);
+   assert.equal(result.settings.axisReference,1);
+   assert.equal(result.warnings.length,1);
+ }
+ for(const hz of [1,350,20000]) {
+   const result=prepareStreamSettings({...base(),axisReference:hz,shiftHz:0});
+   assert.equal(result.ok,true);
+   assert.equal(result.settings.axisReference,hz);
+   assert.deepEqual(result.warnings,[]);
+ }
+ for(const hz of [-0.001,NaN,20001]) {
+   assert.equal(prepareStreamSettings({...base(),axisReference:hz}).ok,false);
+ }
+ const bad={...base(),axisReference:0.001,high:25000};
+ const resolved=prepareStreamSettings(bad);
+ assert.equal(resolved.ok,false);
+ assert.equal(resolved.field,"high");
+ assert.equal(bad.axisReference,0.001);
 });

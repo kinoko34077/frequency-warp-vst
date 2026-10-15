@@ -22,6 +22,53 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}.actions button{flex:1;min-width:83px;padding:13px 9px}.primary{background:#5de0bd;border-color:#5de0bd;color:#06221d;font-weight:750}.primary:hover:not(:disabled){background:#84edcf;color:#06221d}.actions .primary{flex:2;min-width:120px}
 .rt-indicator{display:inline-flex;border:1px solid #315b55;border-radius:30px;margin-top:15px;background:#11362f;padding:7px 11px;color:#8ae2c7;font-size:11px}
 .status{min-height:20px;color:#a4bbbf;font-size:12px;margin-top:9px;line-height:1.5}.status[data-kind=error]{color:#f6a5a2}
+.status[data-kind=warning]{color:#ffd39a}
+/* Status never participates in the player grid. Its contents may update on
+   ACK/telemetry or wrap on a small phone without moving transport/sliders. */
+.runtime-hud{
+  position:fixed;
+  inset-inline-end:clamp(10px,2vw,24px);
+  bottom:calc(10px + env(safe-area-inset-bottom,0px));
+  z-index:85;
+  pointer-events:none;
+  box-sizing:border-box;
+  width:min(370px,calc(100vw - 20px));
+  max-height:min(36vh,220px);
+  display:grid;
+  justify-items:start;
+  gap:5px;
+  overflow:hidden;
+  padding:9px 11px;
+  border:1px solid #37605bc9;
+  border-radius:12px;
+  background:#0a2129e8;
+  box-shadow:0 5px 20px #0008;
+  color:#d9edec;
+  backdrop-filter:blur(7px);
+}
+.runtime-hud .rt-indicator{
+  display:block;
+  margin:0;
+  padding:2px 6px;
+  font-size:10px;
+  max-width:100%;
+  box-sizing:border-box;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;
+}
+.runtime-hud .rt-indicator:empty{display:none}
+.runtime-hud .status{
+  margin:0;
+  min-height:0;
+  max-width:100%;
+  font-size:11px;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+.runtime-hud .status:empty{display:none}
+@media(max-width:600px){
+  .runtime-hud{width:min(270px,calc(100vw - 20px));padding:7px 9px;gap:3px}
+}
 .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:21px 18px}.control-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:9px}.control-heading label{font-size:13px;font-weight:650}
 .control-heading output{font:600 12px ui-monospace,monospace;color:#81e9ca;white-space:nowrap}
 .control input[type=range],.math-input input[type=range]{width:100%;accent-color:#55d7b6;cursor:pointer;touch-action:pan-y}

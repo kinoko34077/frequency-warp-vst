@@ -54,3 +54,25 @@ export function validateStreamSettings(p){
       "基準周波数 R が1Hz未満です。グラフ表示は維持できますが、現行DSPには適用されません（対応1〜20,000Hz）。");
   return {ok:true,field:null,message:""};
 }
+
+
+/**
+ * Build the EFFECTIVE, Rust-compatible audio snapshot without mutating the
+ * user's theoretical controls or graph. Sub-1 Hz reference frequencies are
+ * displayable but Rust's transform setter currently accepts >=1 Hz.
+ * Treat this one known capability gap as a visible warning, not a startup
+ * failure; all other invalid numeric/semantic fields remain fail-closed.
+ */
+export function prepareStreamSettings(theoretical){
+  if(!theoretical || typeof theoretical!=="object")
+    return {settings:theoretical,warnings:[],...validateStreamSettings(theoretical)};
+  const settings={...theoretical};
+  const warnings=[];
+  if(finite(settings.axisReference) &&
+     settings.axisReference>=0 && settings.axisReference<1){
+    settings.axisReference=1;
+    warnings.push("基準周波数 R は現行DSPでは1 Hzからです。指定した"+
+      theoretical.axisReference+" Hzは表示・入力に保持し、音声処理には1 Hzを適用します。");
+  }
+  return {settings,warnings,...validateStreamSettings(settings)};
+}
