@@ -1,7 +1,6 @@
 import {EditError,validateDocument,assertSafeId} from './core.mjs';
 import {resolvePageProfile} from './profiles.mjs';
 const fail=code=>{throw new EditError(code);};
-const escapeRegExp=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const attrSelector=(key,value)=>'['+key+'="'+value+'"]';
 function validated(document,profile){
   if(!profile||profile.ownership!=='static-dom'||profile.adapter!=='dom-style')fail('UNSUPPORTED_EXPORT');
@@ -50,6 +49,28 @@ export function createSourceProposal(document,profile,{path='visual-editor-overr
     caveats:['Source ownership and actual revision must be verified by repository review.','This artifact contains styling only; structural model edits require an owner-authored layout manifest.']
   };
 }
+/** Count real quoted id= attributes in static start tags, not data-id or text inside attributes.
+ * Ignore HTML comments and script/style raw-text contents. Fail closed on ambiguous markup.
+ */
+function sourceIds(source){
+  const clean=source.replace(/<!--[\s\S]*?-->/g,'')
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,'');
+  const count=new Map();
+  for(const tag of clean.match(/<[a-z][^<>]*>/gi)||[]){
+    const lead=tag.match(/^<[a-z][^\s/>]*/i);
+    if(!lead)continue;
+    const attributes=tag.slice(lead[0].length,-1);
+    const attrPattern=/([^\s=/>]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
+    for(const attribute of attributes.matchAll(attrPattern)){
+      if(attribute[1].toLowerCase()!=='id')continue;
+      const literal=attribute[2];
+      if(!literal||!/^["']/.test(literal))fail('SOURCE_IDENTITY_CONFLICT');
+      const id=literal.slice(1,-1);
+      count.set(id,(count.get(id)||0)+1);
+    }
+  }
+  return count;
+}
 /** Safe static HTML snapshot only if caller supplies matching trusted original and source ID map. */
 export function exportStaticHtml(document,profile,{source,expectedSource,expectedSourceRevision}={}){
   const css=exportCss(document,profile);
@@ -57,11 +78,10 @@ export function exportStaticHtml(document,profile,{source,expectedSource,expecte
   if(expectedSourceRevision!==profile.target.sourceRevision)fail('SOURCE_REVISION_CONFLICT');
   if(!/<html(?:\s|>)/i.test(source)||!(source.match(/<head(?:\s|>)/gi)||[]).length|| (source.match(/<\/head\s*>/gi)||[]).length!==1)fail('INVALID_STATIC_HTML');
   if(/<style\s+data-ve-export\s*=/.test(source))fail('EXPORT_ALREADY_PRESENT');
-  const doc=validated(document,profile);
+  const doc=validated(document,profile),idCounts=sourceIds(source);
   for(const id of Object.keys(doc.nodes)){
     const domId=profile.sourceNodeMap[id];
-    const matches=source.match(new RegExp('<[a-z][^<>]*\\bid=(["\\\'])'+escapeRegExp(domId)+'\\1[^<>]*>', 'gi'))||[];
-    if(matches.length!==1)fail('SOURCE_IDENTITY_CONFLICT');
+    if(idCounts.get(domId)!==1)fail('SOURCE_IDENTITY_CONFLICT');
   }
   return source.replace(/<\/head\s*>/i,'<style data-ve-export="v1">\n'+css+'</style>\n</head>');
 }
