@@ -5,7 +5,7 @@
 import {createParameterBinding} from "./parameter-binding.mjs";
 
 export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slider,railRoot,
-  initialValue=descriptor.defaultValue,onValueChange=()=>{}}) {
+  initialValue=descriptor.defaultValue,getDigits=()=>descriptor.digits,onValueChange=()=>{}}) {
   if (![field,select,snapToggle,slider,railRoot].every(Boolean) ||
       typeof onValueChange !== "function")
     throw new TypeError("frequency unit field controls are required");
@@ -15,7 +15,7 @@ export function mountFrequencyUnitField({descriptor,field,select,snapToggle,slid
     (Number(slider.max)-Number(slider.min))+Number(slider.min)));};
   const display=(force=false)=>{
     if(force || field.ownerDocument.activeElement!==field)
-      field.value=String(binding.display());
+      field.value=String(binding.display(getDigits()));
   };
   let dirty=false;
   const commitTyped=()=>{
