@@ -193,6 +193,27 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.ok(Math.abs(Number(await page.$eval("#high-value",el=>el.value))-880)<1e-8);
     await page.$eval("#high-value",el=>el.blur());
     assert.equal(await page.$eval("#high-thumb",el=>el.getAttribute("aria-valuetext")),"880 Hz");
+    // A touch long press opens the same toggle menu (without any button).
+    await page.$eval("#high-value",el=>{
+      el.dispatchEvent(new PointerEvent("pointerdown",{
+        bubbles:true,pointerId:718,pointerType:"touch",isPrimary:true,button:0,
+        clientX:48,clientY:90
+      }));
+    });
+    await sleep(610);
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    await page.$eval("#high-value",el=>{
+      el.dispatchEvent(new PointerEvent("pointerup",{
+        bubbles:true,pointerId:718,pointerType:"touch",isPrimary:true,button:0
+      }));
+    });
+    await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+    assert.equal(await page.$eval("#high",el=>el.dataset.fwSnap),"off");
+    await page.$eval("#high-value",el=>el.dispatchEvent(new MouseEvent("contextmenu",{
+      bubbles:true,cancelable:true,clientX:60,clientY:115
+    })));
+    await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+    assert.equal(await page.$eval("#high",el=>el.dataset.fwSnap),"on");
 
     // P is a distinct physical frequency; zero is a special valid state
     // with no musical-note representation, and note selection must recover.
@@ -571,6 +592,21 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#low-value",el=>Number(el.value)),20);
     assert.equal(await page.$eval("#low",el=>el.value),"200");
+    // Opt-in layout editor coexists: it must NOT hijack snap menus on
+    // a recognized parameter, but retains its context menu elsewhere.
+    await page.goto("http://127.0.0.1:8774/index.html?layout_editor=1",{
+      waitUntil:"domcontentloaded"
+    });
+    await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{
+      timeout:18000
+    });
+    await page.waitForSelector("#fw-layout-inspector");
+    await page.$eval("#low-thumb",el=>el.dispatchEvent(new MouseEvent("contextmenu",{
+      bubbles:true,cancelable:true,clientX:80,clientY:135
+    })));
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    assert.equal(await page.$eval("#fw-layout-inspector",el=>
+      el.shadowRoot.querySelector("#fw-context-menu").hidden),true);
     assert.deepEqual(errors,[],"browser JS errors: "+errors.join("; "));
   }finally {
     await browser?.close();
