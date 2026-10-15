@@ -1,6 +1,22 @@
-# Cross-site Visual Editor — M1–M4 pilot runtime
+# Cross-site Visual Editor — v0.5.1 current source and historical M1–M5 pilot
 
-**Status:** implementation pilot on branch `feat/web-generic-visual-editor-m1-m4-20261015`. Owning [#161](https://github.com/kinoko34077/frequency-warp-vst/issues/161), cross-repo [devflow #560](https://github.com/kinoko34077/devflow/issues/560), design candidate [#154](https://github.com/kinoko34077/frequency-warp-vst/issues/154). **Draft only; not a public feature, supported library release, or completed M5.**
+## Current accepted state (2026-10-16)
+
+**M1–M5 source and three-site GitHub Pages release: DONE.** This directory is the canonical source for the **private** offline ESM package `@kinotch/visual-editor-platform@0.5.1`, accepted at Frequency Warp commit `a34c23292cb585c35637e53574dc5fbd7251e507` ([#187](https://github.com/kinoko34077/frequency-warp-vst/issues/187), PRs #188/#189). Source and its `package.json` are committed; there is **no npm registry publication**, browser-side GitHub write, CDN auto-fetch or implicit external synchronization.
+
+- **Frequency Warp:** editor source included in the published Pages site ([Pages #38794251276](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/38794251276) SUCCESS). The whole-repository `main` has moved beyond the accepted editor source commit due to separately owned Web/native VST3 work; this does not change the source provenance.
+- **LINE:** independent static-DOM integration, [#56](https://github.com/kinoko34077/line-style-viewer/issues/56) DONE, [Pages #38720026277](https://github.com/kinoko34077/line-style-viewer/actions/runs/38720026277) SUCCESS.
+- **Gomoku-5D:** opt-in isolated React layout-card model pilot, [#17](https://github.com/kinoko34077/Gomoku-5D/issues/17) DONE, [Pages #38721947113](https://github.com/kinoko34077/Gomoku-5D/actions/runs/38721947113) SUCCESS. The earlier Pages enablement problem and favicon 404 are resolved, not current blockers.
+
+Both consumer repositories pin the same `a34c232...` source commit and validate the same eight shared package Git blob SHAs offline. In particular, `export.mjs` is `6cef513a5fee723c753c933ea8478018d54dfcd2` across all three repositories. App-specific route mappings and ownership declarations are configuration, not divergent shared engine copies.
+
+**Capability boundaries:** the shipped editor is explicit opt-in, local-first and capability-gated. Static DOM safe styling and source-reviewed CSS/HTML proposals, React/scene model structural operations and layout-only JSON outputs have different owners and export permissions. Arbitrary production React/Canvas editing, JSX reverse-mapping, physical iPhone Safari behavior, extended memory/saturation testing, and native VST3/DSP parameters have **not** been accepted by this M5 release. Bounded three-site Chrome metrics and M5 history: [devflow #560](https://github.com/kinoko34077/devflow/issues/560).
+
+---
+
+## Historical M1–M4 pilot chronology (not the current release state)
+
+**At the pilot checkpoint only:** branch `feat/web-generic-visual-editor-m1-m4-20261015`, local owner [#161](https://github.com/kinoko34077/frequency-warp-vst/issues/161), cross-repo [devflow #560](https://github.com/kinoko34077/devflow/issues/560), initial design [#154](https://github.com/kinoko34077/frequency-warp-vst/issues/154). The original work was Draft/unreleased and M5 was then incomplete; those gates were later superseded by reviewed merges and public Pages verification. Technical examples below are retained for provenance.
 
 ## M0 decisions adopted for this pilot
 
@@ -64,24 +80,22 @@ The callback is app-owned and must reject when its render/state projection canno
 - The pure style session and structural model session have **separate histories** in the pilot. A fully unified cross-domain transaction graph is a future design decision, not silently claimed.
 - Service Worker caching, full framework-level source reverse mapping, HTML/JSX export, hosted synchronization, cross-origin editing and library distribution are excluded from this iteration.
 
-## Required gate before any public rollout
+## Historical pre-release gate (completed/superseded)
 
-Keep [PR #163](https://github.com/kinoko34077/frequency-warp-vst/pull/163) and [LINE PR #53](https://github.com/kinoko34077/line-style-viewer/pull/53) as Draft until exact-head CI, separate review and applicable release authorization. Published Pages remain on existing accepted main. Never infer that CI success in a draft branch means live production verification.
+At the M1–M4 checkpoint, [PR #163](https://github.com/kinoko34077/frequency-warp-vst/pull/163) and [LINE PR #53](https://github.com/kinoko34077/line-style-viewer/pull/53) were held as Draft pending exact-head CI, independent review and authorization. The M4-only instruction to STOP before M5 no longer represents an unfinished gate: M5 was subsequently authorized, implemented and released on verified main/Pages. Draft CI alone was not used as proof of public release.
 
-**Global phase rule:** after M4 pilot evidence and durable state reconciliation, **STOP** rather than starting M5 implicitly.
+## Historical M5 draft: reusable package and per-page strategy
 
-## M5 draft: reusable package and per-page strategy
-
-The canonical reusable ESM package lives in this folder with private `package.json` v0.5.0 and explicit `index.mjs` exports. This remains source-only; no npm publish, deployment or background fetch. Consumer copies on non-releasing branches are pinned/reviewed and must be synchronized explicitly; runtime CDN/auto-sync prohibited. Future dedicated package repository may be considered separately but is not needed to validate the source contract.
+At the draft checkpoint this folder contained a private `package.json` v0.5.0 and explicit `index.mjs` exports, with non-releasing consumer copies. The current accepted package is **v0.5.1**, distributed by reviewed pinned source copies (not npm/CDN). The versioned, capability-based design described below remains applicable; a separate package repository is not part of the accepted M5 scope.
 
 `resolvePageProfile({target,ownership,sourceNodeMap,breakpoints,requiredOperations})` deterministically chooses static DOM / React-owned model / scene-owned model logic. Ownership and capabilities are provided by each page, not guessed from hosting, CSS or incidental DOM. Common algorithms stay shared; denied operations fail closed. Browser editor and React game model have distinct history owners.
 
 `exportCss()` creates a validated stylesheet mapped to app-declared source IDs; `createSourceProposal()` emits a **review-only** CSS file/diff proposal, never an automatic repository write; `exportStaticHtml()` accepts only exact trusted static source and unique literal source IDs (no React/JSX reverse-mapping). Unsupported structure, dynamic source, stale revision and capability mismatches must be represented as explicit errors.
 
-M5 tracking: [#175](https://github.com/kinoko34077/frequency-warp-vst/issues/175) / [devflow #560](https://github.com/kinoko34077/devflow/issues/560). Existing M1–M4 claims remain pilot-only. Exact-head cross-repo CI and separate release approval are required before adopting publicly.
+M5 owner [#175](https://github.com/kinoko34077/frequency-warp-vst/issues/175) is CLOSED/DONE; the historical pilot-only state was superseded by verified release. Cross-repo acceptance is recorded in [devflow #560](https://github.com/kinoko34077/devflow/issues/560).
 
 ## Patch source consistency (2026-10-15)
 
 Private package v0.5.1 fixes static HTML export identity validation: `data-id`, attribute text, comments and script/style markup cannot stand in for a literal quoted HTML `id`. The accepted code change is FW [#187](https://github.com/kinoko34077/frequency-warp-vst/issues/187) / PR #188. Consumers LINE and Gomoku copy byte-identical shared source from a pinned accepted canonical commit and validate every blob hash offline. This is a reviewed source-only patch, not an npm publication or cross-origin editor.
 
-Previous M1–M4 and M5 non-releasing draft descriptions in this document are **historical pilot checkpoints**, not live product status: the opt-in editor has been released to Frequency Warp and LINE GitHub Pages, while Gomoku source is merged and its initial Pages creation remains blocked by repository permissions. Current cross-repository state belongs to [devflow #560](https://github.com/kinoko34077/devflow/issues/560).
+Previous M1–M4 and M5 non-releasing Draft descriptions above are **historical pilot checkpoints**, not live release status. All three Pages sites, including Gomoku, have verified successful publication; the obsolete Pages permission blocker and subsequent favicon 404 are resolved. The accepted shared source/pin remains v0.5.1; current cross-repository tracking and performance evidence belong to [devflow #560](https://github.com/kinoko34077/devflow/issues/560).
