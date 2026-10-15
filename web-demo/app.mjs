@@ -464,7 +464,8 @@ function makeBuffer(){
 }
 function tuneWet(){
   const p=state.player;
-  if(!p)return;
+  // A direct original-audio transport must never derive its level from DSP.
+  if(!p||p.directDry)return;
   const now=state.ctx.currentTime,wet=p.mode==="wet"?settings().wet:0;
   p.wet.gain.setTargetAtTime(wet,now,.012);
   p.dry.gain.setTargetAtTime(1-wet,now,.012);
@@ -502,9 +503,9 @@ function playerMessage(node,p){
 }
 function startSource(p,offset){
   if(p.source){try{p.source.stop();}catch{}p.source.disconnect();}
-  p.worklet.port.postMessage({type:"reset"});
+  if(p.worklet)p.worklet.port.postMessage({type:"reset"});
   const src=state.ctx.createBufferSource();
-  src.buffer=p.buffer;src.loop=true;src.connect(p.worklet);
+  src.buffer=p.buffer;src.loop=true;src.connect(p.worklet||p.dry);
   const when=state.ctx.currentTime+.025;
   src.start(when,clamp(offset,0,Math.max(0,duration()-.001)));
   p.source=src;p.offset=offset;p.at=when;state.seek=offset;
@@ -577,19 +578,32 @@ async function stop(){
   state.seek=playPosition();
   state.player=null;
   try{p.source?.stop();}catch{}
-  try{p.source?.disconnect();p.worklet.disconnect();p.wet.disconnect();
+  try{p.source?.disconnect();p.worklet?.disconnect();p.wet?.disconnect();
     p.dry.disconnect();p.master.disconnect();p.directRoute.disconnect();
     p.bridgeRoute?.disconnect();}catch{}
-  try{p.worklet.port.postMessage({type:"dispose"});}catch{}
+  try{p.worklet?.port.postMessage({type:"dispose"});}catch{}
   try{const el=$("#background-output");el.pause();el.srcObject=null;}catch{}
   mediaStatus(false);
-  p.worklet.port.onmessage=null;
+  if(p.worklet)p.worklet.port.onmessage=null;
   controls.stop.disabled=true;
+  $("#rt-telemetry").textContent="";
   indicator("停止中 · Rust / WASM AudioWorklet");
   refreshStatusSeek();
 }
 async function play(mode="wet",offset=null){
   if(!state.dry)return;
+  if(state.player?.directDry&&mode==="wet"){
+    // A rejected wet request must not destroy a currently audible original.
+    const check=validateStreamSettings(settings());
+    if(!check.ok){
+      indicator("原音再生中 · 変換設定未反映 · "+check.field);
+      message("原音再生を継続中。変換設定は未反映: "+check.message,"error");
+      return;
+    }
+    const position=offset===null?playPosition():offset;
+    await stop();
+    return play("wet",position);
+  }
   if(state.player){
     if(offset!==null)seek(offset);
     state.player.mode=mode;
@@ -598,6 +612,38 @@ async function play(mode="wet",offset=null){
     return;
   }
   controls.dry.disabled=true;controls.wet.disabled=true;
+  if(mode==="dry"){
+    indicator("原音を起動中…");
+    try{
+      // Browser native buffer playback; even a broken/unavailable wet WASM
+      // engine or an invalid theoretical F cannot block original audition.
+      const ctx=await context();
+      const dry=ctx.createGain(),master=ctx.createGain(),directRoute=ctx.createGain();
+      dry.gain.value=1;master.gain.value=1;directRoute.gain.value=1;
+      dry.connect(master);master.connect(directRoute);directRoute.connect(ctx.destination);
+      const player={
+        directDry:true,worklet:null,dry,wet:null,master,directRoute,
+        bridgeRoute:null,outputRoute:"direct",buffer:makeBuffer(),
+        source:null,mode:"dry",at:ctx.currentTime,offset:0
+      };
+      state.player=player;
+      startSource(player,offset===null?state.seek:offset);
+      mediaStatus(true);
+      void mediaBridge(player);
+      controls.stop.disabled=false;
+      $("#rt-telemetry").textContent="";
+      indicator("原音再生中 · 変換DSPから独立");
+      message("原音再生中。変換設定にかかわらず音源を再生しています。");
+    }catch(error){
+      await stop();
+      message("原音再生準備失敗: "+error.message,"error");
+      indicator("原音起動失敗");
+    }finally{
+      controls.dry.disabled=!state.dry;
+      controls.wet.disabled=!state.dry;
+    }
+    return;
+  }
   indicator("共通Rust/WASM DSPの起動中…");
   try{
     const {ctx,module}=await prepareCore();
@@ -670,6 +716,17 @@ function updateParams(changed){
   if(!p)return;
   const current=settings();
   const preflight=validateStreamSettings(current);
+  if(p.directDry){
+    // Preview keeps playing; the user can fix the wet settings in place.
+    if(!preflight.ok){
+      indicator("原音再生中 · 変換設定未反映 · "+preflight.field);
+      message("原音再生中。変換設定は未反映: "+preflight.message,"error");
+    }else{
+      indicator("原音再生中 · 変換再生に切替可能");
+      message("原音再生中。変換設定を反映するには「変換して再生」を選択してください。");
+    }
+    return;
+  }
   if(!preflight.ok){
     if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
     p.feedback.reject(preflight.message);
