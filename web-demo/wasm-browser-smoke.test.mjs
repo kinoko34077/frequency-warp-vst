@@ -473,6 +473,79 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const metadata=await page.$eval("#file-meta",n=>n.textContent);
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
+    // A16: original audio is not a zero-wet DSP mode. Force wet settings
+    // outside Rust numeric gates before starting from the STOPPED state.
+    await page.$eval("#fundamental",el=>{
+      el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),100000);
+    // Reject any attempt to construct an AudioWorklet for the original path.
+    await page.evaluate(()=>{
+      window.__normalAudioWorkletNode=window.AudioWorkletNode;
+      window.AudioWorkletNode=class {
+        constructor(){throw Error("A16: original playback must bypass AudioWorklet");}
+      };
+      window.__dryStartEvidence={start:false,connected:false,pcmRms:0};
+      const orig=AudioContext.prototype.createBufferSource;
+      window.__normalCreateBufferSource=orig;
+      AudioContext.prototype.createBufferSource=function(){
+        const src=orig.call(this);
+        const connect=src.connect.bind(src),start=src.start.bind(src);
+        src.connect=function(target,...rest){
+          if(target instanceof GainNode)window.__dryStartEvidence.connected=true;
+          return connect(target,...rest);
+        };
+        src.start=function(...args){
+          window.__dryStartEvidence.start=true;
+          if(src.buffer){
+            const pcm=src.buffer.getChannelData(0);
+            let total=0,n=0;
+            for(let i=0;i<pcm.length;i+=101){total+=pcm[i]*pcm[i];n++;}
+            window.__dryStartEvidence.pcmRms=Math.sqrt(total/n);
+          }
+          return start(...args);
+        };
+        return src;
+      };
+    });
+    await page.click("#play-dry");
+    await page.waitForFunction(()=>
+      !document.querySelector("#stop").disabled &&
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中"),
+      {timeout:10000});
+    const originalEvidence=await page.evaluate(()=>window.__dryStartEvidence);
+    assert.ok(originalEvidence.start&&originalEvidence.connected&&originalEvidence.pcmRms>.1,
+      "nonzero decoded original PCM must reach direct WebAudio GainNode "+
+      JSON.stringify(originalEvidence));
+    await page.evaluate(()=>{
+      window.AudioWorkletNode=window.__normalAudioWorkletNode;
+      AudioContext.prototype.createBufferSource=window.__normalCreateBufferSource;
+      delete window.__normalAudioWorkletNode;
+      delete window.__normalCreateBufferSource;
+    });
+    // Invalid wet cannot interrupt independent dry transport.
+    await page.click("#play-wet");
+    assert.match(await page.$eval("#status",el=>el.textContent),/変換再生は未反映.*20,000Hz/);
+    assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/原音再生中/);
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false);
+    await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
+    const waveBounds=await (await page.$("#wave")).boundingBox();
+    await page.mouse.click(waveBounds.x+waveBounds.width*.5,waveBounds.y+waveBounds.height*.5);
+    const drySeek=await page.$eval("#elapsed",el=>el.textContent);
+    assert.match(drySeek,/0:06\./,"dry-only waveform seek must still update playhead");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false);
+    // Valid wet resumes at the existing playhead and starts a real worklet.
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>
+      !document.querySelector("#stop").disabled &&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),
+      {timeout:25000});
+    await page.click("#stop");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true);
+    // A stopped wet restart still exercises the unchanged Rust/WASM path.
     await page.click("#play-wet");
     try{
       await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
