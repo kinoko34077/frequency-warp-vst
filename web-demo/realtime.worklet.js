@@ -23,6 +23,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     this.overBudget = 0;
     this.inputEnergy = 0;
     this.wetEnergy = 0;
+    this.recentInputEnergy = 0;
+    this.recentWetEnergy = 0;
+    this.recentSamples = 0;
     this.port.onmessage = ({data}) => this.command(data);
   }
   initialize(data) {
@@ -84,6 +87,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       this.delay=Array.from({length:channels},()=>new Float32Array(this.latency+256));
       this.position=0;this.blocks=0;this.renderCost=0;this.overBudget=0;
       this.inputEnergy=0;this.wetEnergy=0;
+      this.recentInputEnergy=0;this.recentWetEnergy=0;this.recentSamples=0;
       this.port.postMessage({type:"ready",latencyFrames:this.latency,sampleRate});
     } catch(err) {
       this.port.postMessage({type:"error",message:String(err.message||err)});
@@ -108,6 +112,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       e.warp_stream_reset(this.stream);
       for (const buffer of this.delay)buffer.fill(0);
       this.position=0;
+      // Seek/reset starts a new recent-signal diagnostic interval.
+      this.recentInputEnergy=0;this.recentWetEnergy=0;this.recentSamples=0;
     } else if (data.type==="params") {
       const p=data.settings;
       // Different FFT sizes require a state/latency rebuild.
@@ -168,24 +174,34 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         outputDry[i]=this.latency===0?inp[c*frames+i]:ring[read];
         ring[slot]=inp[c*frames+i];
         outputWet[i]=out[c*frames+i];
-        this.inputEnergy+=inp[c*frames+i]*inp[c*frames+i];
-        this.wetEnergy+=outputWet[i]*outputWet[i];
+        const inSquare=inp[c*frames+i]*inp[c*frames+i];
+        const outSquare=outputWet[i]*outputWet[i];
+        this.inputEnergy+=inSquare;this.wetEnergy+=outSquare;
+        this.recentInputEnergy+=inSquare;this.recentWetEnergy+=outSquare;
       }
     }
     this.position+=frames;
+    this.recentSamples+=frames*this.channels;
     if(t0){
       const ms=(globalThis.performance?.now?.()||t0)-t0;
       this.renderCost+=ms;
       if(ms>1000*frames/sampleRate)this.overBudget++;
     }
     if(++this.blocks%160===0){
+      const n=this.recentSamples;
       this.port.postMessage({
         type:"stats",blocks:this.blocks,latencyFrames:this.latency,
         averageBlockMs:this.renderCost/this.blocks,
         overBudgetBlocks:this.overBudget,
-        inputRms:Math.sqrt(this.inputEnergy/(this.blocks*frames*this.channels)),
-        outputRms:Math.sqrt(this.wetEnergy/(this.blocks*frames*this.channels))
+        windowSeconds:n/(this.channels*sampleRate),
+        inputRms:n?Math.sqrt(this.recentInputEnergy/n):0,
+        outputRms:n?Math.sqrt(this.recentWetEnergy/n):0,
+        sessionInputRms:Math.sqrt(this.inputEnergy/(this.blocks*frames*this.channels)),
+        sessionOutputRms:Math.sqrt(this.wetEnergy/(this.blocks*frames*this.channels))
       });
+      // Unlike lifetime CPU counters, these meters describe only the most
+      // recent bounded sample window and do not stay loud after silence.
+      this.recentInputEnergy=0;this.recentWetEnergy=0;this.recentSamples=0;
     }
     return true;
   }
