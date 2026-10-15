@@ -42,7 +42,7 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     await page.mouse.move(head.x-80,head.y-45,{steps:7});
     await page.mouse.up();
     const after=await page.$eval('#fw-layout-inspector',el=>({x:el.getBoundingClientRect().left,y:el.getBoundingClientRect().top}));
-    assert.ok(before.x-after.x>30 && before.y-after.y>15,'drag must move inspector');
+    assert.ok(before.x-after.x>30 && before.y-after.y>15,'drag must move inspector '+JSON.stringify({before,after,head}));
     assert.match(await page.evaluate(()=>localStorage.getItem('frequency-warp:inspector-position:v1')),/x/);
 
     // Windows-style mouse context menu / static copy and paste.
