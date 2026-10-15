@@ -5,6 +5,8 @@
 #include "native_engine_abi.h"
 #include "native_worker_service.h"
 #include "stream_host_events.h"
+#include "engine_project_state.h"
+#include <climits>
 #include "win32_engine_editor.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include <cstring>
@@ -32,29 +34,66 @@ using namespace Steinberg::Vst;
 // These two class IDs are fixed at first native creation. Never generate at runtime.
 static const FUID kProcessorCID(0xD51B3C20,0x5C574E31,0xB40D7B64,0xA2E8F719);
 static const FUID kControllerCID(0xF8C2D41E,0x84B9475B,0xB5DC4E2F,0xB948A0D3);
-static constexpr int32 kMagic=0x46575332, kSchema=1; // FWS2 state v1
 using Values=std::array<double,kParamCount>;
-static Values defaults() {
-    return defaultHostValues();
-}
-static bool readState(IBStream* stream,Values& result) {
-    if(!stream)return false;
-    IBStreamer s(stream,kLittleEndian);
-    int32 magic=0,version=0,count=0;
-    if(!s.readInt32(magic)||!s.readInt32(version)||!s.readInt32(count)||
-        magic!=kMagic||version!=kSchema||count!=static_cast<int32>(kParamCount))return false;
-    Values values{};
-    for(double& value:values)if(!s.readDouble(value)||!std::isfinite(value)||
-        value<0.||value>1.)return false;
-    result=values;return true; // atomic state validation before commit
-}
-static bool writeState(IBStream* stream,const Values& values) {
-    if(!stream)return false;
-    IBStreamer s(stream,kLittleEndian);
-    if(!s.writeInt32(kMagic)||!s.writeInt32(kSchema)||
-        !s.writeInt32(static_cast<int32>(kParamCount)))return false;
-    for(double value:values)if(!s.writeDouble(value))return false;
+static Values defaults() {return defaultHostValues();}
+// These host IBStream operations run on non-audio lifecycle/getState threads.
+// Streams may return partial read/write counts; no seek or filesystem needed.
+// Reject an unbounded claimed archive before allocating anything beyond 1KiB.
+static bool readExact(IBStream* stream,void* dest,size_t count) {
+    auto* ptr=static_cast<uint8_t*>(dest);
+    while(count){
+        const auto chunk=static_cast<int32>(std::min<size_t>(count,65536));
+        int32 received=0;
+        if(stream->read(ptr,chunk,&received)!=kResultOk||
+           received<=0||received>chunk)return false;
+        ptr+=received;count-=static_cast<size_t>(received);
+    }
     return true;
+}
+static bool writeExact(IBStream* stream,const void* data,size_t count) {
+    const auto* ptr=static_cast<const uint8_t*>(data);
+    while(count) {
+        const auto chunk=static_cast<int32>(std::min<size_t>(count,65536));
+        int32 written=0;
+        if(stream->write(const_cast<uint8_t*>(ptr),chunk,&written)!=kResultOk||
+           written<=0||written>chunk)return false;
+        ptr+=written;count-=static_cast<size_t>(written);
+    }
+    return true;
+}
+static bool readStateImage(IBStream* stream,EngineProjectState& result) {
+    if(!stream)return false;
+    try {
+        std::vector<uint8_t> image(EngineProjectState::kLegacySize);
+        if(!readExact(stream,image.data(),image.size()))return false;
+        const auto schema=state_detail::get32(image.data(),4);
+        if(schema!=EngineProjectState::kV1&&schema!=EngineProjectState::kV2)
+            return false;
+        if(schema==EngineProjectState::kV2){
+            uint8_t four[4]{};
+            if(!readExact(stream,four,4))return false;
+            const auto length=state_detail::get32(four,0);
+            if(length>EngineProjectState::kMaxPackage)return false;
+            image.insert(image.end(),four,four+4);
+            const auto tail=image.size();
+            image.resize(EngineProjectState::kMinV2Size+length);
+            if(!readExact(stream,image.data()+tail,4+length))return false;
+        }
+        return decodeEngineProjectState(image.data(),image.size(),result);
+    }catch(...){return false;}
+}
+static bool readState(IBStream* stream,Values& values){
+    EngineProjectState decoded{};
+    if(!readStateImage(stream,decoded))return false;
+    values=decoded.values;
+    return true;
+}
+static bool writeStateImage(IBStream* stream,const EngineProjectState& image){
+    if(!stream)return false;
+    try {
+        const auto encoded=encodeEngineProjectState(image);
+        return writeExact(stream,encoded.data(),encoded.size());
+    }catch(...){return false;}
 }
 class Processor final:public AudioEffect {
 public:
@@ -88,9 +127,10 @@ public:
         return result;
     }
     tresult PLUGIN_API setActive(TBool active) override {
-        // Host lifecycle is non-audio; setActive(false) requires quiescent
-        // callbacks. Joining or spawning a Rust worker in process is forbidden.
+        // Lifecycle is non-RT. Keep the last worker-verified exact archive
+        // across host suspend/reactivation; pending project restore overrides it.
         if(!active) {
+            workerActive_=false;
             worker_.stop();
             delay_.reset();
             return AudioEffect::setActive(active);
@@ -102,6 +142,24 @@ public:
             AudioEffect::setActive(false);
             return kResultFalse;
         }
+        try {
+            auto package=deferredRestorePending_
+                ? deferredRestorePackage_ : worker_.verifiedPackageSnapshot();
+            if(!package.empty() &&
+               !worker_.postPackage(std::move(package),hostSampleRate_,
+                      hostChannels_,AsyncPcmMailbox::kMaxFrames,0)) {
+                worker_.stop();
+                AudioEffect::setActive(false);
+                return kResultFalse;
+            }
+        }catch(...) {
+            worker_.stop();
+            AudioEffect::setActive(false);
+            return kResultFalse;
+        }
+        deferredRestorePackage_.clear();
+        deferredRestorePending_=false;
+        workerActive_=true;
         return kResultOk;
     }
     // Controller-to-Processor single-file package transport. The actual
@@ -156,11 +214,36 @@ public:
     }
     uint32 PLUGIN_API getLatencySamples() override {return kLatency;}
     tresult PLUGIN_API getState(IBStream* stream) override {
-        return writeState(stream,values_)?kResultOk:kResultFalse;
+        // Persist exactly the last worker-confirmed bytes. A queued/rejected
+        // replacement is never elevated to a verified project engine.
+        EngineProjectState image{};
+        image.values=values_;
+        try {image.package=worker_.verifiedPackageSnapshot();}
+        catch(...) {return kResultFalse;}
+        return writeStateImage(stream,image)?kResultOk:kResultFalse;
     }
     tresult PLUGIN_API setState(IBStream* stream) override {
-        Values temp{};if(!readState(stream,temp))return kResultFalse;
-        values_=temp;return kResultOk;
+        EngineProjectState image{};
+        if(!readStateImage(stream,image))return kResultFalse;
+        // Decode is atomic. Do not modify host params if the non-RT worker
+        // cannot accept the restore/unload command at this moment.
+        if(workerActive_) {
+            const bool queued=image.package.empty()
+                ? worker_.postClear(0)
+                : worker_.postPackage(std::move(image.package),hostSampleRate_,
+                      hostChannels_,AsyncPcmMailbox::kMaxFrames,0);
+            if(!queued)return kResultFalse;
+        }else{
+            // While inactive only stage bytes; the same verification worker
+            // will prepare them on activation. Empty image must clear the
+            // previous project's already-verified engine.
+            if(image.package.empty()&&!worker_.clearVerifiedWhenStopped())
+                return kResultFalse;
+            deferredRestorePackage_=std::move(image.package);
+            deferredRestorePending_=true;
+        }
+        values_=image.values;
+        return kResultOk;
     }
     struct Queue {
         IParamValueQueue* queue=nullptr;
@@ -221,9 +304,9 @@ public:
                     return kResultFalse;
             }
         }
-        // Chunking is adaptive: each packet begins with four verified physical
+        // Chunking is adaptive: each packet begins with eleven verified physical
         // parameter snapshots (so a newly loaded engine receives host state).
-        // Up to 124 more distinct per-sample changes fit the fixed 128-event
+        // Up to 117 more distinct per-sample changes fit the fixed 128-event
         // ABI. If over capacity, split BEFORE consuming any host point.
         // No host automation changes are silently discarded.
         const bool hasWorker=worker_.mailbox().rtHasPreparedWorker();
@@ -280,7 +363,7 @@ public:
                 }
                 frames++;
             }
-            if(frames==0)return kResultFalse; // impossible: initial 11 always fit
+            if(frames==0)return kResultFalse; // impossible: eleven always fit
             uint64_t jobStart=0;
             if(hasWorker){
                 jobStart=worker_.mailbox().rtNextTime();
@@ -323,6 +406,8 @@ private:
     Values values_=defaults();
     Delay delay_;
     NativeWorkerService worker_{}; // per-instance worker, never process()
+    std::vector<uint8_t> deferredRestorePackage_{}; // non-RT only
+    bool deferredRestorePending_=false,workerActive_=false;
     double hostSampleRate_=48000.;
     uint32 hostChannels_=2;
 };
