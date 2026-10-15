@@ -1,4 +1,6 @@
 import {deriveHarmonics} from "./harmonics.mjs";
+import {defineParameter} from "./parameter-binding.mjs";
+import {mountFrequencyUnitField} from "./frequency-unit-field.mjs";
 
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
@@ -8,8 +10,10 @@ const fmt=value=>Number.isFinite(value)?Number(value.toFixed(precision())).toStr
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const preciseFields=new Map();
+let fundamentalUnitControl=null;
 const round3=v=>Math.round((v+Number.EPSILON)*1000)/1000;
-const read=id=>preciseFields.has(id)?preciseFields.get(id):Number($("#"+id).value);
+const read=id=>id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl.value:
+  preciseFields.has(id)?preciseFields.get(id):Number($("#"+id).value);
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const carrierHzFromSlider=step=>step<=0?0:Math.exp(Math.log(20000)*(step-1)/999);
 const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log(20000);
@@ -43,9 +47,8 @@ export function setFundamentalFromPivot(pivot){
   const {m,r}=harmonicParameters();
   if(!Number.isFinite(pivot))return null;
   const F=clamp(round3(pivot*m/r),20,2000);
-  preciseFields.set("fundamental",F);
-  $("#fundamental").value=String(F);
-  syncPair("fundamental");
+  if(fundamentalUnitControl)fundamentalUnitControl.setCanonical(F);
+  else {preciseFields.set("fundamental",F);$("#fundamental").value=String(F);syncPair("fundamental");}
   return {F,H:r*F/m,clamped:Math.abs(r*F/m-pivot)>.001};
 }
 export function resolvedCarrierHz(foldPoint){
@@ -57,6 +60,7 @@ export function resolvedCarrierHz(foldPoint){
   return p.manualCarrier;
 }
 export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
+  fundamentalUnitControl?.refresh();
   const {F,m,n,q,r,manualCarrier,linked}=harmonicParameters();
   const count=Number($("#harmonic-count").value)||5;
   const z=deriveHarmonics(F,m,n,q,r,count);
@@ -130,7 +134,23 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
 }
 export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSettings){
   const respond=id=>{onChange(id);}; // single owner render/parameters; avoids double refresh and feedback loops
+  // F is now the one exact canonical number; the old independent
+  // preciseFields and number/range listeners must not also own it.
+  fundamentalUnitControl=mountFrequencyUnitField({
+    descriptor:defineParameter({
+      id:"fundamental",min:20,max:2000,defaultValue:350,
+      units:["hz","note","percent"],
+      rail:{toPosition:value=>(value-20)/1980,fromPosition:t=>20+1980*t},
+      digits:3,
+      snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+    }),
+    field:$("#fundamental"),select:$("#fundamental-unit"),snapToggle:$("#fundamental-snap"),
+    slider:$("#fundamental-range"),railRoot:$("#fundamental-range"),
+    getDigits:precision,initialValue:350,
+    onValueChange:()=>respond("fundamental")
+  });
   for(const id of IDS){
+    if(id==="fundamental")continue;
     const number=$("#"+id),range=$("#"+id+"-range");
     // Preserve direct typing for exact values while making typical changes
     // a one-finger drag; invalid numbers are clamped on change.
