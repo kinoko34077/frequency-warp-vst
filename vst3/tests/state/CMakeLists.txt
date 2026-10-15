@@ -30,3 +30,7 @@ add_test(NAME fw_generic_authorization_plan_test COMMAND fw_generic_authorizatio
 add_executable(fw_generic_numeric_codec_test generic_numeric_codec_test.cpp)
 target_compile_features(fw_generic_numeric_codec_test PRIVATE cxx_std_17)
 add_test(NAME fw_generic_numeric_codec_test COMMAND fw_generic_numeric_codec_test)
+
+add_executable(fw_generic_host_packet_test generic_host_packet_test.cpp)
+target_compile_features(fw_generic_host_packet_test PRIVATE cxx_std_17)
+add_test(NAME fw_generic_host_packet_test COMMAND fw_generic_host_packet_test)
