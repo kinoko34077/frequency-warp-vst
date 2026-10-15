@@ -73,3 +73,20 @@ test('M5 React/scene export contains only layout metadata and rejects broken gra
  assert.throws(()=>exportModelLayout(broken,selected),{code:'PARENT_MISMATCH'});
  assert.throws(()=>exportModelLayout(model,profile),{code:'UNSUPPORTED_EXPORT'});
 });
+
+test('static HTML ID mapping rejects data-id, quoted attribute text and inert script/comment matches',()=>{
+  const check=source=>exportStaticHtml(document,profile,{source,expectedSource:source,expectedSourceRevision:'layout-r1'});
+  const frame=(head,content)=>'<html><head>'+head+'</head><body>'+content+'<footer id="footerNote"></footer></body></html>';
+  const fakeDataId=frame('','<h1 data-id="headerTitle">Fake</h1>');
+  assert.throws(()=>check(fakeDataId),{code:'SOURCE_IDENTITY_CONFLICT'});
+  const quotedLabel=frame('','<h1 aria-label=\'description id="headerTitle"\'>Fake</h1>');
+  assert.throws(()=>check(quotedLabel),{code:'SOURCE_IDENTITY_CONFLICT'});
+  const script=frame('<script>const fake = \'<h1 id="headerTitle">not a node</h1>\';</script>','<h1>no id</h1>');
+  assert.throws(()=>check(script),{code:'SOURCE_IDENTITY_CONFLICT'});
+  const comment=frame('<!-- <h1 id="headerTitle"></h1> -->','<h1>no id</h1>');
+  assert.throws(()=>check(comment),{code:'SOURCE_IDENTITY_CONFLICT'});
+  const valid=frame('','<h1 aria-label=\'description id="headerTitle"\' id = "headerTitle">Real</h1>');
+  assert.match(check(valid),/data-ve-export="v1"/);
+  const duplicateInOneTag=frame('','<h1 id="headerTitle" id=\'headerTitle\'>Dup</h1>');
+  assert.throws(()=>check(duplicateInOneTag),{code:'SOURCE_IDENTITY_CONFLICT'});
+});
