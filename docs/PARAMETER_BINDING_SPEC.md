@@ -155,3 +155,15 @@ The reference sine is a **monitoring oscillator, not a Frequency Warp DSP/VST3 p
 - This is strictly Web-only, with no VST3 ParamID or .fwengine ABI change. Exact-head Chrome at 390px must verify A4+25c, MIDI rail%, cents editor, .01 gesture step, invalid text rollback, snap 440Hz and no failures in the pre-existing Rust/WASM/graph tests.
 
 M1 still requires consolidated integration review, safety/compatibility audit, and actual public Web unit menus deployment before claiming the full user-visible migration DONE. M2/M3 for ratio/slope/coordinate/percentage/count inputs remain separate.
+
+## 14. M2 ratio r: dimensionless interval views (staged child PR)
+
+The positive pitch ratio `pitch-ratio` (r) is the first M2 non-Hz migration. Its single full-precision canonical value remains a **dimensionless multiplier** `0.25 ≤ r ≤ 4`, default `1`. It now uses the shared `mountParameterUnitField` adapter (with the legacy frequency export kept as a compatibility alias) instead of its own `preciseFields["pitch-ratio"]` numeric/range listener.
+
+- Compatible units are `ratio` (× multiplier), `semitones` (12 log₂ r), `cents` (1200 log₂ r), and `percent` (100 × (r−0.25)/3.75). These are **interval representations**, not absolute musical note names or frequencies.
+- The physical r slider remains its original linear 0.25..4 range, step 0.05. A unit switch is display-only; a typed interval/ratio commits exact Float64, while the slider is an approximate gesture proxy. Snapping is an opt-in, 6px distance to the nearest integer-semitone ratio, not a percentage-of-Hz.
+- `harmonicParameters()` and both link directions `H=rF/m` and `F=mP/r` read the same canonical r. Invalid inputs preserve the last accepted ratio and never silently turn r into 0.
+- The effect settings reset explicitly resets r to 1, ratio notation, snap OFF. All other harmonic controls retain their existing adapters.
+- Staged Chrome at 390px verifies +7 semitones ↔ 2^(7/12), 700 cents, real r-rail percent, linked P update, opt-in snap and reset. Rust/WASM/graph/audio parity remains mandatory, and this does not modify VST3 ParamIDs/engine ABI.
+
+Other M2 control families (signed slope, fractional percentages, counts and coordinate u) remain future independently bounded migrations. There is no public Pages deployment through this Draft branch.
