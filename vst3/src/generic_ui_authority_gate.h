@@ -10,10 +10,12 @@ inline std::uint64_t verifiedGenericUiMask(
     const EngineProjectState& project,
     const VerifiedProjectEngine& worker,
     std::uint64_t liveTicket) noexcept {
-    if(liveTicket==0||project.bindingLedger.empty()||
-       !matchSavedBindingToVerifiedEngine(project,worker))return 0;
-    SlotBindingLedger ledger{};
+    if(liveTicket==0||project.bindingLedger.empty())return 0;
     try {
+        // Saved FWS3 decode and identity matching may allocate; malformed
+        // or oversized project bytes MUST fail closed, never terminate DAW.
+        if(!matchSavedBindingToVerifiedEngine(project,worker))return 0;
+        SlotBindingLedger ledger{};
         if(!decodeBindingLedger(project.bindingLedger.data(),
                                 project.bindingLedger.size(),ledger)||
            ledger.bindings.empty()||!validBindingLedger(ledger))
