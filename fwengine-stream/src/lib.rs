@@ -28,15 +28,18 @@ static mut SETTINGS:Option<Settings>=None;
 struct ExtraControls {
     shift:f64,pivot:f64,slope:f64,gain:f64,decay:f64,
     ring:bool,rational:bool,
+    crusher_enabled:bool,crusher_bits:u32,crusher_rate_hz:f64,
 }
 impl Default for ExtraControls {
     fn default()->Self {
         Self{shift:0.,pivot:350.,slope:1.,gain:1.,decay:0.,
-             ring:false,rational:false}
+             ring:false,rational:false,
+             crusher_enabled:false,crusher_bits:8,crusher_rate_hz:12000.}
     }
 }
 static mut EXTRA:Option<ExtraControls>=None;
 static mut CHANNELS:usize=0;
+static mut SAMPLE_RATE:f64=0.;
 
 fn defaults(rate:f64)->Settings {
     Settings{low:20.,high:16000_f64.min(rate*0.45),curvature:1.,
@@ -58,6 +61,7 @@ pub extern "C" fn fw_create(rate:f64,channels:i32,max_block:i32)->i32{
         Ok(engine)=>unsafe{
             STREAM=Some(engine);SETTINGS=Some(settings);EXTRA=Some(ExtraControls::default());
             CHANNELS=channels as usize;
+            SAMPLE_RATE=rate;
             HANDLE
         },
         Err(_)=>0
@@ -74,16 +78,18 @@ pub extern "C" fn fw_create(rate:f64,channels:i32,max_block:i32)->i32{
     }}
 }
 #[no_mangle]pub extern "C" fn fw_destroy(handle:i32){
-    if handle==HANDLE{unsafe{STREAM=None;SETTINGS=None;EXTRA=None;CHANNELS=0;}}
+    if handle==HANDLE{unsafe{STREAM=None;SETTINGS=None;EXTRA=None;CHANNELS=0;SAMPLE_RATE=0.;}}
 }
-fn valid_event(event:Event)->bool{
+fn valid_event(event:Event,sample_rate:f64)->bool{
     event.value.is_finite()&&match event.id{
         2|3=>event.value>=0.001&&event.value<=20000.,
         4|5|9|13=>event.value>=0.&&event.value<=1.,
         6=>event.value>=-2.&&event.value<=2.,
         7=>event.value>=0.&&event.value<=20000.,
         8=>event.value>=-4.&&event.value<=4.,
-        10|18=>event.value==0.||event.value==1.,
+        10|11|18=>event.value==0.||event.value==1.,
+        16=>(2.0..=16.0).contains(&event.value)&&event.value.fract()==0.,
+        17=>event.value>=0.&&event.value<=sample_rate,
         _=>false,
     }
 }
@@ -96,18 +102,28 @@ fn modify_extra(extra:&mut ExtraControls,event:Event)->bool {
         10=>extra.ring=event.value!=0.,
         13=>extra.decay=event.value,
         18=>extra.rational=event.value!=0.,
+        11=>extra.crusher_enabled=event.value!=0.,
+        16=>extra.crusher_bits=event.value as u32,
+        17=>extra.crusher_rate_hz=event.value,
         _=>return false,
     }
     true
 }
 // Error-free for prevalidated physical values. Keep the same public Stream
 // setters that the Web AudioWorklet invokes; do not clone any spectral math.
-fn apply_extra(engine:&mut Stream,extra:ExtraControls)->Result<(),&'static str>{
+fn apply_extra(engine:&mut Stream,extra:ExtraControls,rate:f64)->Result<(),&'static str>{
     engine.set_transform(extra.shift,350.,extra.ring as u32,
                          extra.rational as u32)?;
     engine.set_geometry(extra.pivot,extra.slope)?;
     engine.set_zero_reflect_gain(extra.gain)?;
     engine.set_zero_reflect_decay(extra.decay)?;
+    // Same sample-clock contract as Web crusher-visual::holdFromFrequency.
+    // Physical clock=0 freezes first output sample; normal clocks are
+    // rounded to an integer number of input frames, never fractional.
+    let hold=if extra.crusher_rate_hz==0. {0}
+        else {(rate/extra.crusher_rate_hz).round().clamp(1.,1_000_000_000.) as u32};
+    let bits=if extra.crusher_enabled {extra.crusher_bits}else{0};
+    engine.set_crusher(bits,hold)?;
     Ok(())
 }
 fn modify(settings:&mut Settings,event:Event) {
@@ -135,7 +151,7 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
         let mut last=0;
         for i in 0..e {
             let event=EVENTS[i];
-            if !valid_event(event)||event.offset as usize >= f.max(1)||
+            if !valid_event(event,SAMPLE_RATE)||event.offset as usize >= f.max(1)||
                (i>0&&event.offset<last){return -2;}
             last=event.offset;
         }
@@ -152,7 +168,7 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
                     extraChanged|=modify_extra(&mut following,EVENTS[i]);
                 }
                 if extraChanged {
-                    if apply_extra(engine,following).is_err(){return -3;}
+                    if apply_extra(engine,following,SAMPLE_RATE).is_err(){return -3;}
                     *extra=following;
                 }
                 // Physical host parameters can individually be in-range but
@@ -180,7 +196,7 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
                     ei+=1;
                 }
                 if extraChanged {
-                    if apply_extra(engine,following).is_err(){return -3;}
+                    if apply_extra(engine,following,SAMPLE_RATE).is_err(){return -3;}
                     *extra=following;
                 }
                 // Physical host parameters can individually be in-range but
