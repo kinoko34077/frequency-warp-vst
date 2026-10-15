@@ -109,7 +109,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
   }
   // Apply one complete numeric snapshot in the same Rust-setter order used
   // by the initial stream. Only call this on a params message, never in the
-  // 128-frame rendering loop. No normal-success-path allocation is needed.
+  // 128-frame rendering loop. Snapshot copies happen on parameter messages, never in the render loop.
   applySettings(p) {
     const e=this.exports,stream=this.stream;
     const mode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;
