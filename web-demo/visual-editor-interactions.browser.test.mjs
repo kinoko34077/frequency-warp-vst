@@ -73,7 +73,9 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     assert.equal(await page.$$eval('.header > .brand',items=>items.length),2,'paste must duplicate a static node');
     assert.equal(await page.$eval('.header > .brand[data-fw-inspector-copy]',el=>el.hasAttribute('data-fw-inspector-copy')),true);
     // Interactive controls must not be cloned: no duplicate IDs allowed.
-    await page.click('#settings-open',{button:'right'});
+    await page.evaluate(()=>document.querySelector('.control-grid > .control').dispatchEvent(new MouseEvent('contextmenu',{
+      bubbles:true,cancelable:true,clientX:150,clientY:250
+    })));
     assert.equal(await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-context=copy]').disabled),true);
 
     // Live widget cut/paste uses CSS order without detaching the existing controls.
