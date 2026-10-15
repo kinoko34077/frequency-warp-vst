@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 
 [features]
 legacy-no-mask = [] # Regression fixture: pre-capability Stream archives
+legacy-fourteen-mask = [] # Regression fixture: previous 14-ID Stream archives
 
 [dependencies]
 frequency-warp-core = { path = "../core" }

@@ -122,3 +122,21 @@ The current **14 physically connected Stream IDs** are 2,3,4,5,6,7,8,9,10,11,13,
 **Exchangeable legacy engine safeguard:** the optional WASM export `fw_supported_param_mask() -> i64` advertises a bitset indexed by immutable ParamIDs. The off-RT Rust runtime validates this capability mask and exposes it through native `fw_native_stream_control_mask`. The worker intersects the module-supported mask with the host's current 14 IDs before forwarding; an older `.fwengine` without that export gets only the original safe IDs2–5, while demo Identity/Gain retains ID64. This permits a fixed rebuilt-once VST3 shell to load older or newer modules without incorrectly sending unsupported automation. **Old engines may not audibly react to newly added parameters**; absence of support is not silently treated as an implementation of those DSP functions.
 
 Cross-platform checks: shared Rust native/WASM real audio parity, sample24 crusher event and non-placebo difference, zero-Hz freeze, malformed events, host 14-ID normalized conversion/128-event cap, legacy-module four-ID fallback through a real off-RT native worker, official Windows SDK Validator. This is *source/CI* acceptance only; actual FL Studio and second DAW automation/project reopen/CPU/long-playback remain S5.
+
+
+## S4b4-B — Engine A settings over the same physical Stream bridge
+
+The immutable DAW ParamID list now contains **18 actually connected Stream inputs**:
+`2,3,4,5,6,7,8,9,10,11,13,16,17,18,27,28,29,30`.
+The four new IDs invoke the exact shared Rust `Stream` implementations:
+
+| ParamID | Physical transport and Rust setter |
+|---|---|
+| 27 Engine A Floor | .001..20000 Hz; `Stream::set_a_options(minHz,reverb)` |
+| 28 Engine A Quality | normalized physical fraction 0..1; rounded ×100 to integer `Stream::set_a_quality(percent)` |
+| 29 Engine A Bands | integer 1..8; `Stream::set_a_peak_band(bins)` |
+| 30 Engine A Reverb | fraction 0..1; `Stream::set_a_options(minHz,reverb)` |
+
+This exposes the existing Engine A controls; it does **not** repair the independently tracked Engine A quality/identity issue #48. Conversion and event buffering remain host-owned 128-slot non-RT packets with sample offsets; values in DAW project state keep the same IDs, domain and normalized format. The runtime's optional module capability mask is a **module-to-host intersection**: the 18-ID module accepts all 18, a prior 14-ID `.fwengine` continues receiving only its 14, and pre-capability modules continue receiving safe IDs2–5. Host UI enumeration is independent from module support, and unsupported module parameters do not silently gain a new meaning.
+
+The Stage A native/WASM reference proves Engine A 100% quality audio with a bounded 40-million-fuel Wasmi block limit for modules advertising ID28; on the test signal, 100%-quality consumed 12,094,647 fuel per 128 samples. This is **not** a proof of DAW real-time CPU sufficiency, which remains S5 along with FL Studio and second-host actual project restoration.
