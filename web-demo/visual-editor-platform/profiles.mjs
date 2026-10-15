@@ -27,7 +27,7 @@ function validateBreakpoints(value){
   return result;
 }
 /** Deterministic, capability-denying strategy selection. Hosting and URL are not render ownership. */
-export function resolvePageProfile({target,ownership,sourceNodeMap={},breakpoints={mobile:'(max-width: 800px)'},requiredOperations=[]}){
+export function resolvePageProfile({target,ownership,sourceNodeMap={},breakpoints=ownership==='static-dom'?{mobile:'(max-width: 800px)'}:{},requiredOperations=[]}){
   const safeTarget=validateTarget(target);
   if(!own(ENGINE_PROFILES,ownership))fail('UNSUPPORTED_OWNERSHIP');
   const engine=ENGINE_PROFILES[ownership];
