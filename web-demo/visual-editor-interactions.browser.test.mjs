@@ -21,6 +21,7 @@ test('Inspector minimize, drag, cut/copy/paste context and Settings debug mode',
     await page.waitForFunction(()=>document.querySelector('#fw-layout-inspector')?.shadowRoot?.querySelector('#fw-context-menu'));
     assert.equal(await page.$eval('#debug-mode',el=>el.checked),true);
     await page.click('#settings-done');
+    assert.equal(await page.$eval('#settings-dialog',el=>el.open),false,'Settings must close while picker is enabled');
 
     // Regression: original .collapsed .panel shadow selector did not apply.
     await page.evaluate(()=>document.querySelector('#fw-layout-inspector').shadowRoot.querySelector('[data-action=collapse]').click());
