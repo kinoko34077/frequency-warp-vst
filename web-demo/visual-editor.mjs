@@ -161,6 +161,8 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'||localStorage.
   window.addEventListener('fw:debug-change',event=>{
     const enabled=Boolean(event.detail?.enabled);
     host.hidden=!enabled;
+    // Keep saved edits, but return to the unmodified page while debug is OFF.
+    style.textContent=enabled?cssForChanges(changes):'';
     if(!enabled){
       pick(false);
       interactions.hideMenu();
