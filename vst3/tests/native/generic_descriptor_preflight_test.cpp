@@ -26,7 +26,7 @@ static std::string hashHex(const std::array<std::uint8_t,32>& bytes){
 static std::string doc(const std::string& hash,const std::string& unit="ratio"){
     // Same v1 outer schema as the unchanged website-side validator.
     return std::string(R"({"schema":"frequency-warp-ui-descriptors-v1","engine":{"id":"org.kinotch.gainhalf","version":"0.1.0","sha256":")")+
-        hash+R"("},"bindings":[{"host_slot":64,"semantic_id":"gain","label":"Gain","dimension":"ratio","canonical_unit":"ratio","min":0.25,"max":4,"default":1,"scale":"log","widget":"knob","display_units":[")"+
+        hash+R"("},"bindings":[{"host_slot":64,"semantic_id":"gain","label":"Gain","dimension":"ratio","canonical_unit":"ratio","min":0.25,"max":4,"default":1,"scale":"log","widget":"knob","display_units":[)"+
         "\""+unit+"\""+R"(],"codec_revision":1,"snap":{"values":[0.5,1,2],"radius_normalized":0.03}}]})";
 }
 static bool check(const FWNativeOpaque* h,const std::string& json,
