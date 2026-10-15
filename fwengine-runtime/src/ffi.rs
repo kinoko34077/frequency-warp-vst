@@ -164,6 +164,26 @@ pub unsafe extern "C" fn fw_native_copy_generic_semantic_id(
     ptr::write(out.add(id.len()),0);
     id.len() as u32
 }
+/// R3C2D2: validate an ENTIRE candidate UI descriptor against verified
+/// package identity, declared mask, and all WASM-authored canonical contracts.
+/// Non-RT worker only. A mask is read-only evidence, not binding permission.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_attest_generic_descriptor_mask(
+    handle:*const Opaque,json:*const u8,json_len:usize
+)->u64 {
+    if handle.is_null()||json.is_null()||json_len==0||json_len>65536{
+        return 0;
+    }
+    catch_unwind(AssertUnwindSafe(||{
+        let native=&*handle;
+        let rt=&native.runtime;
+        let data=slice::from_raw_parts(json,json_len);
+        crate::descriptor::attested_mask(
+            data,&rt.manifest.engine_id,&native.package_hash,
+            rt.generic_slot_mask(),|slot|rt.generic_contract(slot)
+        ).unwrap_or(0)
+    })).unwrap_or(0)
+}
 /// R3B2 necessary-only NON-RT descriptor preflight, NOT DAW edit authority.
 /// Validate exact native worker-prepared engine/hash, declared capability mask,
 /// JSON schema/units/ranges and caller-requested semantic ID+codec.
