@@ -121,3 +121,13 @@ Pivot `axis-pivot` is an independent canonical frequency binding (default 350 Hz
 - 390px Chrome regression verifies note parse, nonlinear percent, 0Hz fallback, forward/reverse H link and reset; existing Rust/WASM streaming/graph/WAV test stays the audio oracle.
 
 This is a staged child PR, not yet published to GitHub Pages.
+
+## 10. M1 fundamental F unit binding — Web harmonic panel (staged #79)
+
+The math-tab fundamental F (20..2000Hz, default 350Hz) has one canonical high-precision binding shared between direct text edit, the native continuous linear F slider, the 390px UI and the harmonic mapping code. Compatible views are Hz / note+cents / actual F rail%, with optional OFF-by-default 6px physical-slider semitone snap. F's rail is **linear** `(F-20)/1980`, which is intentionally distinct from L/H's piecewise logarithmic rail and P's special-zero mapping. Unit selection never calls the DSP update owner.
+
+The former `preciseFields["fundamental"]` scalar and its duplicate input/range handlers are bypassed once `attachHarmonicPanel` creates this binding. Other harmonic fields (m/n/q/r/carrier) are unchanged and retain their accepted adapters pending individually scoped migration. `harmonicParameters()` always returns the same canonical F number regardless of its active display notation.
+
+The existing opt-in H=rF/m ↔ P link retains single callback ownership. When P changes, `setFundamentalFromPivot` computes `F=P*m/r` in full Float64 precision (then applies the established F min/max constraint) instead of quantizing fractional cents to three decimals. When F changes, the app owner updates P through the existing controlled link logic. F unit-only switching leaves P unchanged; unlink keeps P independent. Reset returns F=350Hz, Hz notation, snap disabled, and link OFF; display-digit preferences reformat only.
+
+Staged 390px Chrome coverage tests genuine F note+cents and rail%, 20..2000 constraints, invalid input retention, 440Hz snap, linked F→P and P→F fractional-cent precision, and reset, in addition to the existing Rust/WASM/AudioWorklet/WAV regressions. Native VST3 ParamIDs/physical semantics are unchanged. Other M1 frequency controls still remain open.
