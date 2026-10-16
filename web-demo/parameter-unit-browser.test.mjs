@@ -378,7 +378,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#pitch-ratio",el=>el.value),"700");
     await page.select("#pitch-ratio-unit","ratio");
     await page.focus("#pitch-ratio");
-    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-
       2**(7.00375/12))<1e-12);
     await page.$eval("#pitch-ratio",el=>el.blur());
     // Restore the round-number case used by the existing link contract.
@@ -400,7 +400,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="1.05";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#pitch-ratio");
-    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-
       2**(1/12))<1e-12, "physical-pixel snap targets one interval semitone");
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.select("#pitch-ratio-unit","semitones");
@@ -409,7 +409,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#pitch-ratio-unit","ratio");
     await page.focus("#pitch-ratio");
-    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-
       2**(1/12))<1e-12, "invalid typed ratio intervals must not overwrite r");
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.$eval("#pitch-ratio",el=>{
