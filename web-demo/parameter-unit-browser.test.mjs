@@ -365,7 +365,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#pitch-ratio-unit","ratio");
     await page.focus("#pitch-ratio");
-    const ratioExact=Number(await page.$eval("#pitch-ratio",el=>el.value));
+    const ratioExact=Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(ratioExact-2**(7/12))<1e-12);
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.select("#pitch-ratio-unit","cents");
