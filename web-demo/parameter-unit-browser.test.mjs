@@ -55,7 +55,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#low-value");
     const exact=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(exact-440*2**(25/1200))<1e-9,"full precision note conversion: "+exact);
-    assert.match(await page.$eval("#low-value",el=>el.value),/^\\d+(?:\\.\\d{1,3})?$/,
+    assert.match(await page.$eval("#low-value",el=>el.value),/^\d+(?:\.\d{1,3})?$/,
       "focused number must be compact instead of exposing the full floating-point tail");
     await page.$eval("#low-value",el=>el.blur());
 
