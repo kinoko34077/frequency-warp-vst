@@ -208,6 +208,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#engine",el=>el.value),"1");
     assert.equal(await page.$eval("#math-results",el=>el.querySelectorAll("math").length),5);
     assert.equal(await page.$eval("#math-results",el=>el.textContent.includes("|")),false);
+    // A21: FX visualization is not a permanent placeholder. The HUD has
+    // keyboard-accessible fold and restore controls independent of DSP.
+    assert.equal(await page.$eval("#fx-wave-preview",el=>el.hidden),true);
+    assert.equal(await page.$eval("#runtime-hud",el=>getComputedStyle(el).position),"fixed");
+    await page.click("#runtime-hud-collapse");
+    assert.equal(await page.$eval("#runtime-hud-body",el=>getComputedStyle(el).display),"none");
+    await page.click("#runtime-hud-collapse");
+    await page.click("#runtime-hud-hide");
+    assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),true);
+    await page.click("#runtime-hud-restore");
+    assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),false);
     assert.equal(await page.$eval("#ring-enabled",el=>el.closest(".effects-panel")!==null),true);
     assert.equal(await page.$eval("#crusher-enabled",el=>el.closest(".effects-panel")!==null),true);
     assert.equal(await page.$eval("#carrier",el=>el.closest(".effects-panel")!==null),true);
@@ -371,6 +382,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#carrier",el=>Number(el.value)),0);
     await page.$eval("#carrier-range",el=>{el.value="592";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.click("#ring-enabled");
+    assert.equal(await page.$eval("#fx-wave-preview",el=>el.hidden),false,
+      "ring modulation alone must show the shared FX waveform");
     await page.select("#mode","fold-h");
     await page.click("#carrier-link");
     await page.waitForFunction(()=>document.querySelector("#carrier-linked-value").textContent.includes("Hz") &&
@@ -901,6 +914,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.select("#harmonic-count","12");
     await page.click("#settings-done");
     await page.click("#crusher-enabled");
+    assert.equal(await page.$eval("#fx-wave-preview",el=>el.hidden),false,
+      "bitcrusher on must show a source/processed waveform");
     await page.$eval("#crusher-bits",el=>{el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#crusher-bits-value",el=>el.value),"3");
     const crusherMin=await page.$eval("#crusher-hold",el=>el.min);
