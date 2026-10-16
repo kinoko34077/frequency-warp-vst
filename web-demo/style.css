@@ -677,3 +677,18 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .effects-panel{display:block}
 .effects-panel-body{display:grid;gap:6px}
 @media(max-width:450px){.mini-harmonics{font-size:9px}.shared-dual-track .shared-dual-thumb::after{width:9px}}
+
+/* A22 physically meaningful move view and explicit DSP application feedback. */
+#axis-shift-unit{width:auto;min-width:42px;max-width:75px;font-size:10px;line-height:1.2;
+  padding:2px 3px;border:0;border-bottom:1px solid #54877b;border-radius:0;
+  color:#b5f0da;background:#122c30;min-height:24px}
+#axis-shift-value[data-invalid=true]{outline:2px solid #ffb69b}
+.harmonic-audio-status{font-size:10px;line-height:1.4;color:#b8d6c9;
+  margin-top:4px;white-space:normal;overflow-wrap:anywhere}
+.harmonic-audio-status[data-applied="requested"]{color:#a8e8c0}
+.harmonic-audio-status[data-applied="invalid"]{color:#ffcc96}
+#harmonic-pivot-link-note{font-size:10px;overflow-wrap:anywhere}
+@media(max-width:450px){
+  #axis-shift-unit{max-width:54px;font-size:9px;padding:2px 0}
+  .harmonic-pivot-link{white-space:normal}
+}
