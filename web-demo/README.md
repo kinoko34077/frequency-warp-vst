@@ -4,12 +4,14 @@ GitHub Pages: https://kinoko34077.github.io/frequency-warp-vst/
 
 ## Real-time behavior (Issue #14)
 
-**Play original** or **Play real-time warp** starts audio without first
-processing the whole 10–120 second recording. The source is decoded once
-in the browser, streamed through **AudioWorklet 128-sample quanta**, with
-actual spectral transformation in \`core/src/stream.rs\` compiled to WASM.
-The exact same Rust source is also compiled for the native library
-(and its persistent \`warp_stream_*\` C ABI can later feed VST3).
+**Play original** starts decoded audio through an independent browser
+AudioBufferSourceNode, so unavailable/invalid Rust DSP settings do not block
+listening. **Play real-time warp** streams through a shared Rust/WASM
+**AudioWorklet** in 128-sample quanta; the source is decoded once, never
+whole-file re-rendered merely to begin preview. The browser limits each
+preview to 600 seconds and input files to 75 MB. The actual spectral
+transformation lives in the Rust shared core (core/src/stream.rs), also
+compiled for native use through the persistent warp_stream_* C ABI for VST3.
 
 L/H, Curvature, Invert, Fold L/H/Blend and outside Pass/Kill update the
 persistent DSP on the audio rendering thread. They do **not** schedule a
@@ -80,11 +82,16 @@ Above **20,000Hz**, physical DSP is **not** currently implemented: any extended
 harmonic F above this boundary is a theoretical value retained for possible
 future oversampling, and must not silently be treated as active audio.
 
-The Web UI checks the current Rust Stream's accepted effective reference
-R=[1,20000]Hz and |shiftHz|<=20000Hz at playback, live parameter update
-and WAV export; incompatible theoretical settings are displayed but their
-audio application is explicitly rejected (not clamped). Physical iOS audio
-decode of the user's reported failing file still requires reproduction.
+The Web UI preserves theoretical reference F/R input down to 0.001 Hz and
+its graph notation. The current Rust Stream accepts an **effective audio**
+reference R=[1,20000] Hz: when a valid theoretical R is positive but below
+1 Hz, preview, live update and offline WAV rendering apply 1 Hz to the DSP
+only, with a visible warning; the theoretical input is **not rewritten**.
+Other incompatible DSP settings, including |shiftHz|>20000 Hz, are rejected
+before being sent to the stream, without silent theoretical-value clamping.
+When wet startup cannot proceed, independent original playback remains
+available. Physical iPhone Safari decode and field-performance acceptance
+of the reported failing audio file still require real-device evidence.
 
 A read-only *theoretical* table models Issue #16's integer harmonic series:
 - Original ideal fundamental F (entered manually, **not detected**);
