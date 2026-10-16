@@ -22,8 +22,13 @@
   const initiallyRequested=new URL(location.href).searchParams.get("layout_editor")==="1";
   try{debug.checked=initiallyRequested||localStorage.getItem(debugKey)==="1";}
   catch{debug.checked=initiallyRequested;}
+  const debugFeedback=$("#debug-mode-feedback");
+  let debugRevision=0;
   debug.addEventListener("change",async()=>{
+    const revision=++debugRevision;
     const enabled=debug.checked;
+    debugFeedback.hidden=true;
+    debugFeedback.textContent="";
     try{localStorage.setItem(debugKey,enabled?"1":"0");}catch{}
     if(!enabled){
       // Explicit settings switch takes precedence over a stale URL opt-in.
@@ -35,10 +40,18 @@
     }
     try{
       await import("./visual-editor.mjs");
+      // A late module must not re-enable an inspector after an OFF gesture.
+      if(revision!==debugRevision||!debug.checked){
+        window.dispatchEvent(new CustomEvent("fw:debug-change",{detail:{enabled:false}}));
+        return;
+      }
       window.dispatchEvent(new CustomEvent("fw:debug-change",{detail:{enabled:true}}));
     }catch(error){
+      if(revision!==debugRevision||!debug.checked)return;
       debug.checked=false;
       try{localStorage.setItem(debugKey,"0");}catch{}
+      debugFeedback.textContent="レイアウト編集を読み込めませんでした。接続を確認し、再度オンにしてください。";
+      debugFeedback.hidden=false;
       console.warn("Frequency Warp debug editor could not load",error);
     }
   });
