@@ -75,6 +75,35 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "fold/reference Hz was accidentally hidden behind the ⓘ tooltip");
     // Opt-in chain couples H=rF/m with axis pivot and supports reverse input.
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
+    // Direct F↔P is separate from virtual harmonic H=rF/m.
+    // In direct mode denominator m changes the *audible shift*, not pivot P.
+    await page.select("#pivot-link-target","F");
+    await page.click(".harmonic-pivot-link");
+    assert.equal(await page.$eval("#rational-enabled",el=>el.checked),true);
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-350)<.005);
+    await page.$eval("#denominator",el=>{
+      el.value="5";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-350)<.005,
+      "m must not shift the physical F-linked pivot");
+    assert.match(await page.$eval("#harmonic-audio-status",el=>el.textContent),/有理数シフトON.*Δ=/);
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="660";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#fundamental",el=>Number(el.value))-660)<.005,
+      "P→F in direct mode is P=F, never mP/r");
+    await page.$eval("#harmonic-pivot-link",el=>{
+      el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#rational-enabled",el=>el.checked),false,
+      "F link restores previously disabled rational DSP");
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#denominator",el=>{
+      el.value="4";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#pivot-link-target","H");
     await page.click(".harmonic-pivot-link");
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),true);
     assert.equal(await page.$eval("#rational-enabled",el=>el.checked),true,

@@ -134,6 +134,7 @@ function bounds(changed=""){
   return state.effective;
 }
 const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
+const pivotLinkTarget=()=>$("#pivot-link-target").value;
 let rationalEnabledByLink=false;
 function restoreRationalAfterUnlink(){
   if(rationalEnabledByLink)$("#rational-enabled").checked=false;
@@ -145,30 +146,32 @@ function linkFeedback(reason=""){
   note.textContent=reason;
 }
 function syncHarmonicToPivot(){
-  const {F,m,r}=harmonicParameters(),H=r*F/m;
-  if(!Number.isFinite(H)||H<0||(H>0&&H<.001)||H>20000){
+  const {F,m,r}=harmonicParameters(),target=pivotLinkTarget();
+  const H=r*F/m;
+  const pivot=target==="F"?F:H;
+  if(!Number.isFinite(pivot)||pivot<0||(pivot>0&&pivot<.001)||pivot>20000){
     // Theoretical F may exceed the physical pivot rail; F belongs to the
     // harmonic controls, and must NEVER be rewritten to make P fit.
     $("#harmonic-pivot-link").checked=false;
     restoreRationalAfterUnlink();
-    linkFeedback("連動解除：仮想基音 H="+concise3(H)+
+    linkFeedback("連動解除："+(target==="F"?"元基音 F=":"仮想基音 H=")+concise3(pivot)+
       " Hz は物理起点Pの操作可能域（0Hz、または0.001〜20,000 Hz）の範囲外です。Fの値と起点Pは保持しました。");
     return scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
   }
   linkFeedback("");
   if(pivotUnitControl){
-    pivotUnitControl.setCanonical(H);
+    pivotUnitControl.setCanonical(pivot);
     return pivotUnitControl.value;
   }
-  state.precise["axis-pivot"]=H;$("#axis-pivot").value=String(scaleFromPivot(H));
-  return H;
+  state.precise["axis-pivot"]=pivot;$("#axis-pivot").value=String(scaleFromPivot(pivot));
+  return pivot;
 }
 function syncPivotToHarmonic(){
   const P=scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
-  const result=setFundamentalFromPivot(P);
+  const result=setFundamentalFromPivot(P,pivotLinkTarget());
   if(!result)return;
-  if(pivotUnitControl)pivotUnitControl.setCanonical(result.H);
-  else {state.precise["axis-pivot"]=result.H;$("#axis-pivot").value=String(scaleFromPivot(result.H));}
+  if(pivotUnitControl)pivotUnitControl.setCanonical(result.pivot);
+  else {state.precise["axis-pivot"]=result.pivot;$("#axis-pivot").value=String(scaleFromPivot(result.pivot));}
 }
 function settings(){
   const {low,high}=bounds();
@@ -1341,6 +1344,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#carrier-link").checked=false;
   $("#harmonic-pivot-link").checked=false;
+  $("#pivot-link-target").value="H";
   restoreRationalAfterUnlink();
   $("#pivot-follow-low").checked=false;
   $("#axis-shift-unit").value="coordinate";
@@ -1467,6 +1471,10 @@ $("#harmonic-pivot-link").addEventListener("change",()=>{
     linkFeedback("");
   }
   updateParams("harmonic-pivot-link");updateEngineInfo();
+});
+$("#pivot-link-target").addEventListener("change",()=>{
+  if(isHarmonicPivotLinked())syncHarmonicToPivot();
+  updateParams("pivot-link-target");updateEngineInfo();
 });
 attachHarmonicPanel(id=>{
   if(isHarmonicPivotLinked()&&["fundamental","denominator","pitch-ratio"].includes(id)){
