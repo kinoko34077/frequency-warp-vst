@@ -69,7 +69,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#low-unit","hz");
     await page.focus("#low-value");
-    const half=Number(await page.$eval("#low-value",el=>el.value));
+    const half=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(half-(20*Math.exp(Math.log(1000)*(.5-.2)/.8)))<1e-8);
 
     // Invalid musical text must never turn the current accepted DSP value to zero.
@@ -81,7 +81,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#low-unit","hz");
     await page.focus("#low-value");
-    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-half)<1e-8);
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical))-half)<1e-8);
 
     // Snap is ON by default and uses the same source rail as dual thumbs.
     await page.$eval("#low-value",el=>el.blur());
