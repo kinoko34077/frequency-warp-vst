@@ -47,7 +47,7 @@ test("#236 failed import and late ON must not misrepresent current debug state",
       const el=document.querySelector("#debug-mode");
       el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
     });
-    await race.waitForTimeout(70);
+    await new Promise((resolve) => setTimeout(resolve, 70));
     await race.evaluate(()=>{
       const el=document.querySelector("#debug-mode");
       el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
