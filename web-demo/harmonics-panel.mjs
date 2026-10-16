@@ -80,7 +80,7 @@ function syncPair(id){
     range.value=String(id==="carrier"?Math.round(sliderFromCarrierHz(bounded)):bounded);
   }
 }
-/** Set F from the pivot while H=r*F/m stays the sole linked invariant.
+/** Solve the selected pivot invariant: direct P=F or harmonic P=H=rF/m.
  * Silent DOM update: app.mjs owns the single render/parameter notification. */
 export function setFundamentalFromPivot(pivot,target="H"){
   const {m,r}=harmonicParameters();
