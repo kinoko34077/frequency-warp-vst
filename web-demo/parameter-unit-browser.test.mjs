@@ -637,12 +637,11 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#fundamental-unit","percent");
     const theoreticalPct=Number(await page.$eval("#fundamental",el=>el.value));
-    assert.ok(Math.abs(theoreticalPct-
-      100*Math.log(100000/.001)/Math.log(5120000/.001))<.02,
-      "unlinked F rail travels across the declared physical F range");
+    assert.equal(theoreticalPct,100,
+      "physical F gesture rail must stop at 20kHz and avoid fake MHz oversampling");
     const theoreticalThumb=Number(await page.$eval("#fundamental-range",el=>el.value));
-    assert.ok(theoreticalThumb>0&&theoreticalThumb<1000,
-      "F=100kHz must not collapse onto the upper thumb endpoint");
+    assert.equal(theoreticalThumb,1000,
+      "a separately typed theoretical F above 20k may exist, but gestures must cap at the actual audio range");
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
     assert.equal(Number(await page.$eval("#fundamental",el=>el.value)),100000);

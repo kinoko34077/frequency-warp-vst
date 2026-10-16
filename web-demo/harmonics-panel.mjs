@@ -1,6 +1,7 @@
 import {deriveHarmonics} from "./harmonics.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
+import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
@@ -31,12 +32,13 @@ const commonHzToRail=hz=>hz<=0?0:hz<=20?
 const commonRailToHz=t=>t<=0?0:t<=.2?
   .001*Math.exp(Math.log(20000)*(Math.max(.001,t*1000)-1)/199):
   20*Math.exp(Math.log(1000)*(t*1000-200)/800);
-// Unlinked F has its own full-range logarithmic rail. A linked F projects H
-// instead, matching the pivot exactly without changing the canonical F value.
-const F_MIN_HZ=.001,F_MAX_HZ=5_120_000;
-const fToUnlinkedRail=F=>Math.log(clamp(F,F_MIN_HZ,F_MAX_HZ)/F_MIN_HZ)/
-  Math.log(F_MAX_HZ/F_MIN_HZ);
-const fFromUnlinkedRail=t=>F_MIN_HZ*Math.exp(clamp(t,0,1)*Math.log(F_MAX_HZ/F_MIN_HZ));
+// Unlinked F's draggable rail ends at the actual audio range, rather than
+// sweeping 5.12 MHz and suggesting non-existent oversampling. High precise
+// values remain theoretical input only and receive explicit DSP feedback.
+const F_MIN_HZ=.001,F_MAX_HZ=5_120_000,F_AUDIO_RAIL_MAX=20_000;
+const fToUnlinkedRail=F=>Math.log(clamp(F,F_MIN_HZ,F_AUDIO_RAIL_MAX)/F_MIN_HZ)/
+  Math.log(F_AUDIO_RAIL_MAX/F_MIN_HZ);
+const fFromUnlinkedRail=t=>F_MIN_HZ*Math.exp(clamp(t,0,1)*Math.log(F_AUDIO_RAIL_MAX/F_MIN_HZ));
 
 // Global effect reset must restore ALL harmonic binding owners and their
 // integer companions. Otherwise the settings dialog says "reset" while the
@@ -148,7 +150,19 @@ export function renderHarmonicPanel(foldPoint,axisMarker,resolveSettings){
     frag.appendChild(tr);
   }
   $("#harmonics-body").replaceChildren(frag);
-  $("#mini-fundamental").textContent=fmt(z.H)+" → "+moving;
+  const pivotHz=Number.isFinite(actual?.axisPivot)?actual.axisPivot:NaN;
+  $("#mini-fundamental").textContent="F "+fmt(F)+" / H "+fmt(z.H)+
+    " → "+moving+" / P "+fmt(pivotHz)+" Hz";
+  const audioNode=$("#harmonic-audio-status");
+  if(audioNode){
+    const checked=actual?prepareStreamSettings(actual):null;
+    const mode=actual?.rationalEnabled;
+    const text=!mode?"有理数シフトOFF：m・n・F・rの倍音配列は理論表示のみ。音声適用はH↔P＋音声適用をON":
+      checked&&!checked.ok?"音声へ未反映："+checked.message:
+      "有理数シフトON：Δ="+fmt(z.delta)+" HzをDSPへ要求（再生時のACKで反映確認）";
+    if(audioNode.textContent!==text)audioNode.textContent=text;
+    audioNode.dataset.applied=mode&&checked?.ok?"requested":mode?"invalid":"off";
+  }
   $("#mini-harmonics").replaceChildren(...z.rows.slice(0,3).map(row=>{
     const div=document.createElement("div");
     const shifted=axisMarker?.(row.translated);
