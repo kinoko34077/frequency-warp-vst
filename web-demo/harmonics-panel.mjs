@@ -82,13 +82,15 @@ function syncPair(id){
 }
 /** Set F from the pivot while H=r*F/m stays the sole linked invariant.
  * Silent DOM update: app.mjs owns the single render/parameter notification. */
-export function setFundamentalFromPivot(pivot){
+export function setFundamentalFromPivot(pivot,target="H"){
   const {m,r}=harmonicParameters();
-  if(!Number.isFinite(pivot))return null;
-  const F=clamp(fundamentalUnitControl?pivot*m/r:round3(pivot*m/r),.001,5_120_000);
+  if(!Number.isFinite(pivot)||!["F","H"].includes(target))return null;
+  const desired=target==="F"?pivot:pivot*m/r;
+  const F=clamp(fundamentalUnitControl?desired:round3(desired),.001,5_120_000);
   if(fundamentalUnitControl)fundamentalUnitControl.setCanonical(F);
   else {preciseFields.set("fundamental",F);$("#fundamental").value=String(F);syncPair("fundamental");}
-  return {F,H:r*F/m,clamped:Math.abs(r*F/m-pivot)>.001};
+  const H=r*F/m;
+  return {F,H,pivot:target==="F"?F:H,clamped:Math.abs((target==="F"?F:H)-pivot)>.001};
 }
 export function resolvedCarrierHz(foldPoint){
   const p=harmonicParameters();
