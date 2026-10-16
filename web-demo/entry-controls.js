@@ -58,6 +58,50 @@
   $("#settings-close").addEventListener("click",close);
   $("#settings-done").addEventListener("click",close);
   dialog.addEventListener("click",event=>{if(event.target===dialog)close();});
+  // Independent of the Web DSP module: the HUD remains usable on load errors.
+  const hud=$("#runtime-hud"),hudHead=$("#runtime-hud-head");
+  const collapse=$("#runtime-hud-collapse"),hide=$("#runtime-hud-hide");
+  const restore=$("#runtime-hud-restore"),brief=$("#runtime-hud-brief");
+  const updateBrief=()=>{
+    brief.textContent=($("#rt-indicator")?.textContent||"停止中").slice(0,55);
+  };
+  new MutationObserver(updateBrief).observe($("#rt-indicator"),{childList:true,subtree:true,characterData:true});
+  updateBrief();
+  collapse.addEventListener("click",()=>{
+    const folded=hud.classList.toggle("is-collapsed");
+    collapse.textContent=folded?"+":"−";
+    collapse.setAttribute("aria-expanded",String(!folded));
+    collapse.setAttribute("aria-label",folded?"処理状態の詳細を開く":"処理状態の詳細を畳む");
+  });
+  hide.addEventListener("click",()=>{
+    hud.classList.add("is-hidden");restore.hidden=false;updateBrief();
+  });
+  restore.addEventListener("click",()=>{
+    hud.classList.remove("is-hidden");restore.hidden=true;
+  });
+  let drag=null;
+  hudHead.addEventListener("pointerdown",event=>{
+    if(event.button!==0||event.target.closest("button"))return;
+    const box=hud.getBoundingClientRect();
+    drag={id:event.pointerId,dx:event.clientX-box.left,dy:event.clientY-box.top};
+    hudHead.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+  hudHead.addEventListener("pointermove",event=>{
+    if(!drag||drag.id!==event.pointerId)return;
+    hud.style.right="auto";hud.style.bottom="auto";
+    const width=hud.offsetWidth,height=hud.offsetHeight;
+    hud.style.left=Math.max(0,Math.min(window.innerWidth-width,event.clientX-drag.dx))+"px";
+    hud.style.top=Math.max(0,Math.min(window.innerHeight-height,event.clientY-drag.dy))+"px";
+  });
+  const endDrag=()=>{drag=null;};
+  hudHead.addEventListener("pointerup",endDrag);
+  hudHead.addEventListener("pointercancel",endDrag);
+  window.addEventListener("resize",()=>{
+    if(!hud.style.left)return;
+    hud.style.left=Math.max(0,Math.min(innerWidth-hud.offsetWidth,parseFloat(hud.style.left)))+"px";
+    hud.style.top=Math.max(0,Math.min(innerHeight-hud.offsetHeight,parseFloat(hud.style.top)))+"px";
+  });
   // A missing top-level import prevents app.mjs from executing *any* handler.
   // Avoid a deceptively ready UI when this happens: settings stay usable and
   // native file chooser opens, while audio decoding reports the missing boot.
