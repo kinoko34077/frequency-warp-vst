@@ -151,6 +151,28 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.click("#tab-map");
+    // A22: optional L→P minimum constraint remains distinct from the
+    // H↔P harmonic link; it changes the real physical pivot numeric field.
+    await page.$eval("#pivot-follow-low",el=>{
+      el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="10";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-20)<.01);
+    await page.$eval("#low-value",el=>{
+      el.value="30";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-30)<.01);
+    await page.$eval("#pivot-follow-low",el=>{
+      el.checked=false;el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.$eval("#axis-pivot-value",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#low-value",el=>{
+      el.value="20";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
 
     assert.equal(await page.$eval(".dual-range",el=>el.querySelectorAll("input[type=range]").length),2);
     for(const root of ["reflection-dual","shape-dual","dual-range"]){
