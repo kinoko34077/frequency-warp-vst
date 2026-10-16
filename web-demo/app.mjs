@@ -134,6 +134,11 @@ function bounds(changed=""){
   return state.effective;
 }
 const isHarmonicPivotLinked=()=>$("#harmonic-pivot-link").checked;
+let rationalEnabledByLink=false;
+function restoreRationalAfterUnlink(){
+  if(rationalEnabledByLink)$("#rational-enabled").checked=false;
+  rationalEnabledByLink=false;
+}
 function linkFeedback(reason=""){
   const note=$("#harmonic-pivot-link-note");
   note.hidden=!reason;
@@ -145,6 +150,7 @@ function syncHarmonicToPivot(){
     // Theoretical F may exceed the physical pivot rail; F belongs to the
     // harmonic controls, and must NEVER be rewritten to make P fit.
     $("#harmonic-pivot-link").checked=false;
+    restoreRationalAfterUnlink();
     linkFeedback("連動解除：仮想基音 H="+concise3(H)+
       " Hz は物理起点Pの操作可能域（0Hz、または0.001〜20,000 Hz）の範囲外です。Fの値と起点Pは保持しました。");
     return scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
@@ -1330,6 +1336,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#carrier-link").checked=false;
   $("#harmonic-pivot-link").checked=false;
+  restoreRationalAfterUnlink();
   $("#pivot-follow-low").checked=false;
   $("#axis-shift-unit").value="coordinate";
   linkFeedback("");
@@ -1447,10 +1454,13 @@ $("#harmonic-pivot-link").addEventListener("change",()=>{
   if(isHarmonicPivotLinked()){
     // This is now an explicitly labelled audible link, not a decorative
     // H→P constraint with an unrelated silent rational stage.
+    rationalEnabledByLink=!$("#rational-enabled").checked;
     $("#rational-enabled").checked=true;
     syncHarmonicToPivot();
+  }else{
+    restoreRationalAfterUnlink();
+    linkFeedback("");
   }
-  else linkFeedback("");
   updateParams("harmonic-pivot-link");updateEngineInfo();
 });
 attachHarmonicPanel(id=>{
