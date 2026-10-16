@@ -200,13 +200,16 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
       rail:{
         toPosition:value=>{
           const {m,r}=harmonicRailFactors();
-          return $("#harmonic-pivot-link")?.checked?
-            commonHzToRail(value*r/m):fToUnlinkedRail(value);
+          if(!$("#harmonic-pivot-link")?.checked)return fToUnlinkedRail(value);
+          // The displayed F slider and its percent unit must use the SAME
+          // selected physical P invariant as app.mjs: direct F or derived H.
+          return commonHzToRail($("#pivot-link-target")?.value==="F"?value:value*r/m);
         },
         fromPosition:t=>{
           const {m,r}=harmonicRailFactors();
-          return $("#harmonic-pivot-link")?.checked?
-            commonRailToHz(t)*m/r:fFromUnlinkedRail(t);
+          if(!$("#harmonic-pivot-link")?.checked)return fFromUnlinkedRail(t);
+          const pivotHz=commonRailToHz(t);
+          return $("#pivot-link-target")?.value==="F"?pivotHz:pivotHz*m/r;
         }
       },
       digits:3,
