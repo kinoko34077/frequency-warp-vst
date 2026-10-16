@@ -65,6 +65,10 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
   let lastRendered="";
   const viewDigits=digits=>(binding.unit==="note"||binding.unit==="cents")?0:digits;
   const display=(force=false)=>{
+    // Exact Float64 stays in the binding, never in an uncontrolled text length.
+    // Read-only canonical metadata allows regression tests to distinguish
+    // internal precision from the user-facing maximum 3 decimal digits.
+    field.dataset.fwCanonical=String(binding.value);
     // Zero has no pitch notation, but a unit choice must not silently change.
     if(force || field.ownerDocument.activeElement!==field){
       field.value=binding.value<=0&&binding.unit==="note"?"—":
@@ -102,9 +106,10 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     return true;
   };
   field.addEventListener("focus",()=>{
+    field.dataset.fwCanonical=String(binding.value);
     if(["hz","ratio","coordinate","integer"].includes(binding.unit))
-      field.value=String(binding.value);
-    else field.value=binding.value<=0&&binding.unit==="note"?"":String(binding.display(viewDigits(8)));
+      field.value=String(Number(binding.value.toFixed(Math.min(3,getDigits()))));
+    else field.value=binding.value<=0&&binding.unit==="note"?"":String(binding.display(viewDigits(Math.min(3,getDigits()))));
     lastRendered=field.value;
     field.select();
   });

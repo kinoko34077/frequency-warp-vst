@@ -53,8 +53,10 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#low-unit","hz");
     await page.focus("#low-value");
-    const exact=Number(await page.$eval("#low-value",el=>el.value));
+    const exact=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(exact-440*2**(25/1200))<1e-9,"full precision note conversion: "+exact);
+    assert.match(await page.$eval("#low-value",el=>el.value),/^\d+(?:\.\d{1,3})?$/,
+      "focused number must be compact instead of exposing the full floating-point tail");
     await page.$eval("#low-value",el=>el.blur());
 
     // % means its actual piecewise logarithmic thumb rail, not f/20000.
@@ -67,7 +69,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#low-unit","hz");
     await page.focus("#low-value");
-    const half=Number(await page.$eval("#low-value",el=>el.value));
+    const half=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(half-(20*Math.exp(Math.log(1000)*(.5-.2)/.8)))<1e-8);
 
     // Invalid musical text must never turn the current accepted DSP value to zero.
@@ -79,7 +81,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#low-unit","hz");
     await page.focus("#low-value");
-    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-half)<1e-8);
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical))-half)<1e-8);
 
     // Snap is ON by default and uses the same source rail as dual thumbs.
     await page.$eval("#low-value",el=>el.blur());
@@ -150,7 +152,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // Explicitly blur and refocus to expose the full canonical Hz editor.
     await page.$eval("#low-value",el=>el.blur());
     await page.focus("#low-value");
-    const recoveredLow=Number(await page.$eval("#low-value",el=>el.value));
+    const recoveredLow=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(recoveredLow-440*2**(25.375/1200))<1e-9,
       "hidden fractional cents remain canonical; actual "+recoveredLow+
       " vs expected "+(440*2**(25.375/1200)));
@@ -174,7 +176,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#high-unit","hz");
     await page.focus("#high-value");
-    const highExact=Number(await page.$eval("#high-value",el=>el.value));
+    const highExact=Number(await page.$eval("#high-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(highExact-880*2**(25/1200))<1e-9);
     await page.$eval("#high-value",el=>el.blur());
     await page.select("#high-unit","percent");
@@ -188,7 +190,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#high-unit","hz");
     await page.focus("#high-value");
-    assert.ok(Math.abs(Number(await page.$eval("#high-value",el=>el.value))-highExact)<1e-9);
+    assert.ok(Math.abs(Number(await page.$eval("#high-value",el=>el.dataset.fwCanonical))-highExact)<1e-9);
     await page.$eval("#high-value",el=>el.blur());
 
     // H default-on snap and keyboard gestures are a peer, not a new DSP path.
@@ -232,7 +234,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#pivot-unit","hz");
     await page.focus("#axis-pivot-value");
-    const pivotExact=Number(await page.$eval("#axis-pivot-value",el=>el.value));
+    const pivotExact=Number(await page.$eval("#axis-pivot-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(pivotExact-440*2**(25/1200))<1e-9);
     await page.$eval("#axis-pivot-value",el=>el.blur());
     await page.select("#pivot-unit","percent");
@@ -275,7 +277,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
-    const fExact=Number(await page.$eval("#fundamental",el=>el.value));
+    const fExact=Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(fExact-440*2**(25/1200))<1e-9);
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#fundamental-unit","percent");
@@ -284,7 +286,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       "linked F percentage must share its pivot octave rail");
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
-    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-fExact)<1e-9);
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical))-fExact)<1e-9);
     await page.$eval("#fundamental",el=>el.blur());
     // The preexisting opt-in H/P link remains tied to the precise F.
     const linkedPivot=Number(await page.$eval("#axis-pivot-value",el=>el.value));
@@ -296,7 +298,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#fundamental");
-    const fromRail=Number(await page.$eval("#fundamental",el=>el.value));
+    const fromRail=Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(fromRail-440)<3,"linked octave rail resolves F");
     await page.$eval("#fundamental",el=>el.blur());
     assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-110)<1);
@@ -306,7 +308,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
-    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-fromRail)<1e-6);
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical))-fromRail)<1e-6);
     await page.$eval("#fundamental",el=>el.blur());
     // Signed slope s is a dimensionless orientation/scale, not a musical
     // frequency or semitone interval. Its real rail is -4..+4 linearly.
@@ -363,7 +365,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#pitch-ratio-unit","ratio");
     await page.focus("#pitch-ratio");
-    const ratioExact=Number(await page.$eval("#pitch-ratio",el=>el.value));
+    const ratioExact=Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(ratioExact-2**(7/12))<1e-12);
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.select("#pitch-ratio-unit","cents");
@@ -376,7 +378,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#pitch-ratio",el=>el.value),"700");
     await page.select("#pitch-ratio-unit","ratio");
     await page.focus("#pitch-ratio");
-    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-
       2**(7.00375/12))<1e-12);
     await page.$eval("#pitch-ratio",el=>el.blur());
     // Restore the round-number case used by the existing link contract.
@@ -398,7 +400,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="1.05";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#pitch-ratio");
-    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-
       2**(1/12))<1e-12, "physical-pixel snap targets one interval semitone");
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.select("#pitch-ratio-unit","semitones");
@@ -407,7 +409,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#pitch-ratio-unit","ratio");
     await page.focus("#pitch-ratio");
-    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-
       2**(1/12))<1e-12, "invalid typed ratio intervals must not overwrite r");
     await page.$eval("#pitch-ratio",el=>el.blur());
     await page.$eval("#pitch-ratio",el=>{
@@ -457,7 +459,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="A3+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#fundamental");
-    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical))-
       4*220*2**(25/1200))<1e-9, "linked P→F fractional cents must stay exact");
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#pivot-unit","hz");
@@ -475,7 +477,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#carrier-unit","hz");
     await page.focus("#carrier");
-    const carrierExact=Number(await page.$eval("#carrier",el=>el.value));
+    const carrierExact=Number(await page.$eval("#carrier",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(carrierExact-440*2**(25/1200))<1e-9);
     await page.$eval("#carrier",el=>el.blur());
     await page.select("#carrier-unit","percent");
@@ -578,7 +580,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#a-min-unit","hz");
     await page.focus("#a-min-value");
-    const aMinExact=Number(await page.$eval("#a-min-value",el=>el.value));
+    const aMinExact=Number(await page.$eval("#a-min-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(aMinExact-440*2**(25/1200))<1e-9);
     await page.$eval("#a-min-value",el=>el.blur());
     await page.select("#a-min-unit","percent");
@@ -591,7 +593,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#a-min-unit","hz");
     await page.focus("#a-min-value");
-    assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.value))-aMinExact)<1e-9);
+    assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.dataset.fwCanonical))-aMinExact)<1e-9);
     await page.$eval("#a-min-value",el=>el.blur());
     const aMinStep=Math.round(200+800*Math.log(440/20)/Math.log(1000));
     await page.$eval("#a-min",(el,step)=>{
@@ -694,7 +696,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#sine-unit","hz");
     await page.focus("#sine-hz");
-    const sineExact=Number(await page.$eval("#sine-hz",el=>el.value));
+    const sineExact=Number(await page.$eval("#sine-hz",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(sineExact-440*2**(25/1200))<1e-9);
     assert.ok(Math.abs(Number(await page.$eval("#sine-cent",el=>el.value))-25)<.01);
     await page.select("#sine-unit","note");
@@ -706,7 +708,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(Number(await page.$eval("#sine-cent",el=>el.value)),25);
     await page.select("#sine-unit","hz");
     await page.focus("#sine-hz");
-    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.dataset.fwCanonical))-
       440*2**(25.375/1200))<1e-9);
     await page.$eval("#sine-hz",el=>el.blur());
     // Restore original +25c reference for the existing percent tests.
@@ -737,7 +739,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     });
     await page.select("#sine-unit","hz");
     await page.focus("#sine-hz");
-    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.dataset.fwCanonical))-
       440*2**(.2/12))<1e-9);
     await page.$eval("#sine-hz",el=>el.blur());
     await page.$eval("#sine-pitch",el=>{
@@ -783,7 +785,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="10000";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#low-value");
-    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical))-
       10000/1.08)<1e-8,"H edit must move actual canonical L, not its proxy");
     await page.$eval("#low-value",el=>el.blur());
     await page.focus("#high-value");
