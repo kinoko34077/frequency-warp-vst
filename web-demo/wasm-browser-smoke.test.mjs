@@ -81,6 +81,26 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.click(".harmonic-pivot-link");
     assert.equal(await page.$eval("#rational-enabled",el=>el.checked),true);
     assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-350)<.005);
+    // A25: a direct F↔P link must align F's draggable rail with the
+    // physical pivot rail, rather than silently using H=rF/m.
+    const directRail=await page.evaluate(()=>({
+      f:Number(document.querySelector("#fundamental-range").value),
+      p:Number(document.querySelector("#axis-pivot").value)
+    }));
+    assert.ok(Math.abs(directRail.f-directRail.p)<=1,
+      "F direct mode must use the P rail for F slider and percentage view");
+    await page.$eval("#fundamental-range",el=>{
+      el.value="650";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const directGesture=await page.evaluate(()=>({
+      F:Number(document.querySelector("#fundamental").dataset.fwCanonical),
+      P:Number(document.querySelector("#axis-pivot-value").dataset.fwCanonical)
+    }));
+    assert.ok(directGesture.F>350 && Math.abs(directGesture.F-directGesture.P)<.01,
+      "F rail drag must change physical P by the identical Hz, independent of m and r");
+    await page.$eval("#fundamental",el=>{
+      el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
     await page.$eval("#denominator",el=>{
       el.value="5";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -109,6 +129,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#rational-enabled",el=>el.checked),true,
       "the explicitly audible H↔P link must activate rational DSP, not only mathematical displays");
     assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-87.5)<.002);
+    const harmonicRail=await page.evaluate(()=>({
+      f:Number(document.querySelector("#fundamental-range").value),
+      p:Number(document.querySelector("#axis-pivot").value)
+    }));
+    assert.ok(Math.abs(harmonicRail.f-harmonicRail.p)<=1,
+      "H-linked F slider must project H=rF/m onto physical pivot rail");
     await page.click("#tab-math");
     for(const [id,value] of [["fundamental","480"],["denominator","5"]]){
       await page.$eval("#"+id,(el,v)=>{
