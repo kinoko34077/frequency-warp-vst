@@ -12,6 +12,7 @@ import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
+import {axisShiftUnits,axisShiftCanonical,axisShiftView} from "./axis-shift-view.mjs";
 
 const $=id=>document.querySelector(id);
 const MAX_PREVIEW_SECONDS=600;
@@ -62,6 +63,7 @@ const scaleFromHz=hz=>{
 const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":hz<20?Number(hz.toFixed(3))+" Hz":Math.round(hz)+" Hz";
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
+const concise3=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
 const displayDigits=()=>Number($("#decimal-digits")?.value||3);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
@@ -69,6 +71,18 @@ const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
   name==="a-min"&&aMinUnitControl?aMinUnitControl.value:
   name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:(state.precise[name]??fallback());
+function refreshAxisShiftView(p,force=false){
+  const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
+  const allowed=axisShiftUnits(p.curvature);
+  for(const option of unitSelector.options)option.disabled=!allowed.includes(option.value);
+  if(!allowed.includes(unitSelector.value))unitSelector.value="coordinate";
+  const unit=unitSelector.value,ref=p.axisReference;
+  const toView=u=>axisShiftView(u,unit,p.curvature,ref);
+  const min=toView(-2),max=toView(2);
+  field.min=String(min);field.max=String(max);field.step="any";
+  if(force||document.activeElement!==field)field.value=concise3(toView(p.axisShift));
+  field.setAttribute("aria-label","移動量 "+unit+"（内部座標u="+concise3(p.axisShift)+"）");
+}
 function showNumber(id,value){
   const field=$("#"+id);
   if(id==="low-value"&&lowUnitControl){lowUnitControl.refresh();return;}
@@ -131,7 +145,7 @@ function syncHarmonicToPivot(){
     // Theoretical F may exceed the physical pivot rail; F belongs to the
     // harmonic controls, and must NEVER be rewritten to make P fit.
     $("#harmonic-pivot-link").checked=false;
-    linkFeedback("連動解除：仮想基音 H="+Number(H.toPrecision(12))+
+    linkFeedback("連動解除：仮想基音 H="+concise3(H)+
       " Hz は物理起点Pの操作可能域（0Hz、または0.001〜20,000 Hz）の範囲外です。Fの値と起点Pは保持しました。");
     return scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
   }
@@ -216,7 +230,7 @@ function labels(id=""){
     '<mfrac><mi>d</mi><mrow><mn>'+displayNumber(p.axisReference)+'</mn><mi>Hz</mi></mrow></mfrac></msup>'+
     '</mrow></math> 折返し点からの距離 d に適用（単なる負の傾きは対象外）。';
   showNumber("wet-value",100*p.wet);
-  showNumber("axis-shift-value",p.axisShift);
+  refreshAxisShiftView(p);
   showNumber("a-min-value",p.aMinHz);
   showNumber("a-band-value",p.aBandBins);
   showNumber("a-quality-value",p.aQuality);
@@ -792,6 +806,16 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
+  // L is a cutoff; P is a coordinate anchor. Keep them independent unless
+  // the user explicitly enabled a minimum bound for P, preserving P=0.
+  if($("#pivot-follow-low").checked){
+    const low=bounds(changed).low;
+    const pivot=scalar("axis-pivot",()=>pivotFromScale($("#axis-pivot").value));
+    if(pivot>0&&pivot<low){
+      pivotUnitControl.setCanonical(low);
+      if(isHarmonicPivotLinked())syncPivotToHarmonic();
+    }
+  }
   labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
   state.offline=null;controls.download.disabled=true;
   // Export runs on a separate worker with a frozen parameter snapshot. Never
@@ -961,6 +985,7 @@ const inline={
   "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,192000]
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
+  if(id==="axis-shift-value")continue; // dynamic u/%/Hz/ratio projection below
   const field=$("#"+id);
   const integer=range==="crusher-bits"||range==="a-band"||range==="a-quality";
   const normalized=value=>{
@@ -1002,7 +1027,30 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
 }
-// Compact shared rails. Actual parameter updates still use the same
+// The move slider stores canonical u. Notation is conditional on curvature p,
+ // and only a valid inverse conversion may update the DSP control.
+ const moveField=$("#axis-shift-value"),moveUnit=$("#axis-shift-unit");
+ const parseMove=()=>{
+   if(moveField.value.trim()==="")return;
+   const value=Number(moveField.value);
+   if(!Number.isFinite(value))return;
+   const p=settings();
+   try{
+     const u=axisShiftCanonical(value,moveUnit.value,p.curvature,p.axisReference);
+     state.precise["axis-shift"]=u;
+     $("#axis-shift").value=String(round3(u));
+     updateParams("axis-shift");updateEngineInfo();
+   }catch{moveField.dataset.invalid="true";return;}
+   delete moveField.dataset.invalid;
+ };
+ moveField.addEventListener("input",parseMove);
+ moveField.addEventListener("change",parseMove);
+ moveField.addEventListener("focus",()=>{refreshAxisShiftView(settings(),true);moveField.select();});
+ moveField.addEventListener("blur",()=>{parseMove();refreshAxisShiftView(settings(),true);});
+ moveField.addEventListener("keydown",e=>{if(e.key==="Enter")moveField.blur();});
+ moveUnit.addEventListener("change",()=>refreshAxisShiftView(settings(),true));
+ $("#pivot-follow-low").addEventListener("change",()=>{updateParams("low");updateEngineInfo();});
+ // Compact shared rails. Actual parameter updates still use the same
 // source ranges and existing native Rust AudioWorklet/WAV bindings.
 dualControls.bounds=mountDualThumb($("#dual-range"),["low","high"],[
   v=>hzText(lowUnitControl?.value??hzFromScale(v)),v=>hzText(highUnitControl?.value??hzFromScale(v))
@@ -1282,6 +1330,8 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#ring-enabled").checked=false;$("#rational-enabled").checked=false;
   $("#carrier-link").checked=false;
   $("#harmonic-pivot-link").checked=false;
+  $("#pivot-follow-low").checked=false;
+  $("#axis-shift-unit").value="coordinate";
   linkFeedback("");
   $("#engine-auto").checked=false;
   $("#a-reverb").value="0";
@@ -1394,7 +1444,12 @@ $("#sine-enabled").addEventListener("change",async()=>{
 window.addEventListener("pagehide",stopSine);
 updateSineLabel();
 $("#harmonic-pivot-link").addEventListener("change",()=>{
-  if(isHarmonicPivotLinked())syncHarmonicToPivot();
+  if(isHarmonicPivotLinked()){
+    // This is now an explicitly labelled audible link, not a decorative
+    // H→P constraint with an unrelated silent rational stage.
+    $("#rational-enabled").checked=true;
+    syncHarmonicToPivot();
+  }
   else linkFeedback("");
   updateParams("harmonic-pivot-link");updateEngineInfo();
 });
