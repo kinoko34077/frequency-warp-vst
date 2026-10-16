@@ -231,7 +231,18 @@ function labels(id=""){
   $("#crusher-rate-explainer").textContent=p.crusherHold===0?
     "指定 0 Hz → 標本更新停止（最初の量子化値を保持・ゼロHz/DC）":
     "指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
-  drawCrusherPreview($("#crusher-preview"),{bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate});
+  const fxActive=p.crusherBits>0||p.ringEnabled;
+  $("#fx-wave-preview").hidden=!fxActive;
+  if(fxActive){
+    $("#fx-wave-caption").textContent=p.ringEnabled&&p.crusherBits>0?
+      "リング変調 → ビットクラッシャー（合成単音モデル）":
+      p.ringEnabled?"リング変調：入力×搬送波（合成単音モデル）":
+      "ビットクラッシャー：標本保持・量子化（合成単音モデル）";
+    drawCrusherPreview($("#crusher-preview"),{
+      bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate,
+      ringEnabled:p.ringEnabled,carrierHz:resolvedCarrierHz(foldPoint)
+    });
+  }
   const u=p.axisShift,ref=p.axisReference;
   $("#axis-mode-hint").textContent=p.invert>0?"反転も適用中":"";
   const modeCode=p.mode==="blend"?1:p.mode==="fold-l"?2:p.mode==="reciprocal"?3:0;

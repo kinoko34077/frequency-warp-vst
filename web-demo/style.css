@@ -623,3 +623,57 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .sine-monitor{padding:7px 11px!important}
 @media(max-width:800px){.workspace-grid{row-gap:8px;column-gap:6px}.quick-panel,.workspace-right{padding:11px}}
 @media(max-width:450px){.panel{padding:10px}.sine-monitor{padding:7px 9px!important}.quick-panel .control-grid{row-gap:10px}.workspace-right .math-controls{gap:6px}}
+
+/* A21: draggable, genuinely collapsible status tool window.
+   Interaction stays inside the HUD; no full-screen click interception. */
+.runtime-hud{pointer-events:auto;display:flex;flex-direction:column;align-items:stretch;justify-items:unset;touch-action:auto;max-height:min(45dvh,280px);overflow:auto}
+.runtime-hud-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:11px;font-weight:650;color:#a6e1d0;cursor:grab;touch-action:none;user-select:none}
+.runtime-hud-head:active{cursor:grabbing}
+.runtime-hud-buttons{display:flex;gap:5px}
+.runtime-hud-buttons button,#runtime-hud-restore{padding:4px 8px;min-width:28px;min-height:26px;
+  border:1px solid #4e8177;border-radius:6px;background:#163c37;color:#e6f7ee;cursor:pointer;font-size:12px}
+.runtime-hud-buttons button:focus-visible,#runtime-hud-restore:focus-visible{outline:2px solid #ffe0a1}
+.runtime-hud-body{display:grid;gap:5px;min-width:0}
+.runtime-hud.is-collapsed .runtime-hud-body{display:none}
+.runtime-hud.is-hidden{width:max-content;max-width:calc(100vw - 16px);padding:5px 8px}
+.runtime-hud.is-hidden .runtime-hud-head,.runtime-hud.is-hidden .runtime-hud-body{display:none}
+.runtime-hud.is-hidden #runtime-hud-restore{display:flex;gap:6px;align-items:center}
+#runtime-hud-restore[hidden]{display:none!important}
+.runtime-hud:not(.is-hidden) #runtime-hud-restore{display:none}
+#runtime-hud-brief{font-weight:400;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:600px){.runtime-hud{max-height:30dvh;width:min(290px,calc(100vw - 16px))}}
+/* Only render an FX waveform while either real effect is switched ON. */
+#fx-wave-preview[hidden]{display:none!important}
+#fx-wave-preview{min-width:0}
+
+/* A21 compact semantically grouped parameters, segmented handles and inline values. */
+.quick-panel .inline-value,.workspace-right .math-field>input[type=number],.quick-panel .math-field>input[type=number]{
+  background:transparent;border:0;border-bottom:1px solid #4a7770;border-radius:0;
+  padding:1px 2px;width:clamp(36px,8ch,86px);max-width:100%;box-shadow:none}
+.quick-panel .inline-value:focus-visible,.workspace-right .math-field>input[type=number]:focus-visible{outline:2px solid #8beacf;outline-offset:2px}
+.workspace-right .math-field{grid-template-columns:minmax(0,1fr) auto;gap:3px 6px}
+.workspace-right .math-field>.math-input{grid-column:1/-1}
+.mini-harmonics{display:flex;flex-wrap:wrap;gap:2px 10px;line-height:1.5}
+.mini-harmonics div{display:inline!important;padding:0!important;border:0!important;
+  border-radius:0!important;background:none!important;white-space:normal}
+.mini-harmonics div+div::before{content:"／ ";opacity:.7}
+.shared-dual-track .shared-dual-thumb{
+  width:23px!important;height:30px!important;min-width:23px!important;min-height:30px!important;
+  border:0!important;border-radius:2px!important;background:transparent!important;
+  box-shadow:none!important;display:grid!important;place-items:center!important}
+.shared-dual-track .shared-dual-thumb::after{
+  content:"";display:block;width:10px;height:24px;border:1px solid #d6fce9;border-radius:2px;
+  background:repeating-linear-gradient(to bottom,#53bda0 0 4px,#1f554c 4px 7px);
+  box-shadow:0 1px 4px #0009}
+.shared-dual-track .shared-dual-thumb.lower::after{
+  border-color:#ffe1ba;background:repeating-linear-gradient(to bottom,#e3a960 0 4px,#71452a 4px 7px)}
+.panel-fold>summary,.effects-panel>summary{cursor:pointer;list-style:none;color:#b7e9d9;
+  padding:5px 0;font-size:12px;font-weight:650;user-select:none}
+.panel-fold>summary::before,.effects-panel>summary::before{content:"▾";margin-right:6px}
+.panel-fold:not([open])>summary::before,.effects-panel:not([open])>summary::before{content:"▸"}
+.panel-fold:not([open]){min-height:0}
+.panel-fold>summary:focus-visible,.effects-panel>summary:focus-visible{outline:2px solid #9eefd1}
+.effects-panel{display:block}
+.effects-panel-body{display:grid;gap:6px}
+@media(max-width:450px){.mini-harmonics{font-size:9px}.shared-dual-track .shared-dual-thumb::after{width:9px}}

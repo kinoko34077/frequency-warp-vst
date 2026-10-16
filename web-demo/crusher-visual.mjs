@@ -66,7 +66,7 @@ export function sampleHoldRepresentatives(f,sampleRate,hold){
  * integer-sample history is held and where amplitude quantization occurs.
  * This is NOT a visualized loaded file or measured spectral recording.
  */
-export function drawCrusherPreview(canvas,{bits=0,hold=1,sampleRate=48000}={}){
+export function drawCrusherPreview(canvas,{bits=0,hold=1,sampleRate=48000,ringEnabled=false,carrierHz=0}={}){
   if(!canvas)return;
   const ctx=canvas.getContext("2d");
   const w=Math.max(240,Math.round(canvas.getBoundingClientRect().width||300));
@@ -74,10 +74,13 @@ export function drawCrusherPreview(canvas,{bits=0,hold=1,sampleRate=48000}={}){
   const length=192,cycles=4.3;
   const scaleX=i=>i*w/(length-1);
   const scaleY=y=>h/2-y*(h*.39);
+  // The blue source is a synthetic reference, NOT decoded file samples.
+  // Ring modulation multiplies that signed sample by cos(2π c t).
   const raw=i=>0.77*Math.sin(2*Math.PI*cycles*i/length);
+  const ringed=i=>ringEnabled?raw(i)*Math.cos(2*Math.PI*carrierHz*i/sampleRate):raw(i);
   const levels=2**(Math.max(2,bits)-1);
-  const held=i=>raw(hold===0?0:Math.floor(i/Math.max(1,hold))*Math.max(1,hold));
-  const rounded=i=>!bits?raw(i):Math.round(held(i)*levels)/levels;
+  const held=i=>ringed(hold===0?0:Math.floor(i/Math.max(1,hold))*Math.max(1,hold));
+  const rounded=i=>!bits?ringed(i):Math.round(held(i)*levels)/levels;
   ctx.clearRect(0,0,w,h);
   ctx.strokeStyle="#49676b";ctx.lineWidth=1;ctx.beginPath();
   ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);ctx.stroke();
@@ -99,7 +102,7 @@ export function drawCrusherPreview(canvas,{bits=0,hold=1,sampleRate=48000}={}){
       const delta=Math.max(1,Math.floor(hold));
       ctx.strokeStyle="rgba(255,189,105,.18)";ctx.lineWidth=.65;
       for(let i=0;i<length;i+=delta){
-        const x=scaleX(i),v=Math.round(raw(i)*levels)/levels;
+        const x=scaleX(i),v=Math.round(ringed(i)*levels)/levels;
         ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();
         ctx.fillStyle="rgba(255,189,105,.3)";
         ctx.fillRect(x-1,scaleY(v)-1.5,3,3);
