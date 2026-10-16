@@ -1,7 +1,7 @@
 import {STORAGE_KEY,sanitizeRule,normalizeChanges,cssForChanges,moveSibling} from './visual-editor-core.mjs';
 import {initEditorInteractions} from './visual-editor-interactions.mjs';
 /** Only loaded with ?layout_editor=1. Changes remain on this browser until exported. */
-if(new URL(location.href).searchParams.get('layout_editor')==='1'||localStorage.getItem('frequency-warp:debug-mode:v1')==='1'){
+{ // Dynamically imported only when the user has opted into editing.
   const host=document.createElement('aside');host.id='fw-layout-inspector';document.body.append(host);
   const shadow=host.attachShadow({mode:'open'});
   const style=document.createElement('style');style.id='fw-layout-overrides';document.head.append(style);
@@ -172,4 +172,8 @@ if(new URL(location.href).searchParams.get('layout_editor')==='1'||localStorage.
     }else pick(true);
   });
   save();refresh();status('要素をクリックして編集できます。');
+  // A stale initial import may finish after OFF; do not expose or apply edits.
+  if(!document.getElementById('debug-mode')?.checked){
+    host.hidden=true;style.textContent='';pick(false);
+  }
 }
