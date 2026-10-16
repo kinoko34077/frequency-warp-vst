@@ -124,7 +124,7 @@
             </div>
           </div>
           
-          <figure class="crusher-wave-view"><figcaption>波形例</figcaption><canvas id="crusher-preview" role="img" aria-label="ビットクラッシャーのサンプル保持と振幅の階段形状"></canvas></figure>
+          <figure class="crusher-wave-view" id="fx-wave-preview" hidden><figcaption id="fx-wave-caption">加工波形例（単音の理論モデル。実測ではありません）</figcaption><canvas id="crusher-preview" role="img" aria-label="リング変調とビットクラッシャーの波形モデル"></canvas></figure>
           <details class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
         </div>
       </section>
@@ -215,9 +215,13 @@
 <!-- Audio status is an overlay, not a child of the player layout. Updating
      text at audio-block cadence must never resize/shift any controls. -->
 <aside id="runtime-hud" class="runtime-hud" aria-label="再生・DSP状態">
+  <div class="runtime-hud-head" id="runtime-hud-head"><span>音声・処理状態</span><div class="runtime-hud-buttons"><button type="button" id="runtime-hud-collapse" aria-expanded="true" aria-controls="runtime-hud-body" aria-label="処理状態の詳細を畳む">−</button><button type="button" id="runtime-hud-hide" aria-label="処理状態を小さく表示">×</button></div></div>
+  <div id="runtime-hud-body" class="runtime-hud-body">
   <div id="rt-indicator" class="rt-indicator" role="status">停止中 · Rust/WASM</div>
   <div id="rt-telemetry" class="rt-indicator" aria-live="off"></div>
   <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを選択してください。</div>
+  </div>
+  <button type="button" id="runtime-hud-restore" hidden aria-label="音声処理状態を再表示">状態 <span id="runtime-hud-brief">停止中</span></button>
 </aside>
 
 <dialog id="settings-dialog" aria-labelledby="settings-title">
