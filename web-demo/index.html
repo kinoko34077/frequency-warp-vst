@@ -40,6 +40,7 @@
 
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
+        <details class="panel-fold" open><summary>変換パラメータ・追加加工</summary>
         <div class="control-grid">
           <div class="control shape-control">
             <div class="compact-title shape-title"><strong class="reflect-title">変換形状</strong><output id="invert-reference-hz" class="shape-marker" aria-live="polite">固定点 —</output><details class="info-tip"><summary aria-label="変換形状の説明" title="変換形状の説明">ⓘ</summary><div class="info-body">反転は周波数の並びを変えます。移動尺度p=0は倍率的、p=1は一定Hz的な移動です。<small class="slider-formula" id="curvature-log-formula" aria-live="polite"></small></div></details></div>
@@ -105,8 +106,7 @@
             </div>
           <div class="ends"><span>20 Hz</span><span>20 kHz</span></div>
         </div>
-        <div class="effects-panel">
-          <h3>追加加工</h3>
+        <details class="effects-panel" open><summary>追加加工</summary><div class="effects-panel-body">
           <div class="fx-item">
             <label class="fx-toggle"><input id="ring-enabled" type="checkbox"> リング変調</label><details class="info-tip"><summary aria-label="リング変調の説明" title="リング変調の説明">ⓘ</summary><div class="info-body">変換対象の音に搬送波を掛け、和・差の2つの側帯波を発生させます。搬送波は折返し点へ連動できます。</div></details>
             <div class="fx-body">
@@ -126,18 +126,22 @@
           
           <figure class="crusher-wave-view" id="fx-wave-preview" hidden><figcaption id="fx-wave-caption">加工波形例（単音の理論モデル。実測ではありません）</figcaption><canvas id="crusher-preview" role="img" aria-label="リング変調とビットクラッシャーの波形モデル"></canvas></figure>
           <details class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
-        </div>
+        </div></details>
+        </details>
       </section>
       <section class="panel sine-monitor" aria-labelledby="sine-heading">
+        <details class="panel-fold" open><summary>補助音</summary>
         <div class="section-header"><div><p class="eyebrow">AUXILIARY TONE</p><h2 id="sine-heading">補助音</h2></div>
           <label class="sine-toggle"><input id="sine-enabled" type="checkbox"> 再生 ON</label></div>
         <input id="sine-pitch" aria-label="補助サイン波の音程" type="range" min="36" max="96" step=".01" value="69">
         <div class="sine-meta"><strong id="sine-note">A4</strong><input class="inline-value" id="sine-cent" type="number" min="-50" max="50" step="any" value="0" aria-label="補助音 セント"><span class="unit-value-tools"><input class="inline-value" id="sine-hz" type="text" value="440" spellcheck="false" autocapitalize="off" aria-label="補助音周波数・音名入力"><select id="sine-unit" aria-label="補助音の表示・入力単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
         <label class="sine-volume">音量 <input id="sine-volume" type="range" min="0" max="100" step="1" value="25" aria-label="補助音量"><output id="sine-volume-value">25%</output></label>
+        </details>
       </section>
     </div>
 
     <aside class="panel workspace-right" aria-label="周波数グラフ・倍音ラボ">
+      <details class="panel-fold" open><summary>グラフ・倍音ラボ</summary>
       <div class="panel-tabs" role="tablist" aria-label="分析ビュー">
         <button id="tab-map" type="button" role="tab" aria-selected="true" aria-controls="view-map">グラフ＋倍音</button>
         <button id="tab-math" type="button" role="tab" aria-selected="false" aria-controls="view-math" tabindex="-1">詳細</button>
@@ -200,6 +204,7 @@
           </div>
         </details>
       <details class="advanced-stats"><summary>処理情報</summary><div class="performance-summary"><div id="engine-description"></div><div id="engine-stats"></div></div></details>
+      </details>
     </aside>
   </div>
   <div class="below-workspace">
