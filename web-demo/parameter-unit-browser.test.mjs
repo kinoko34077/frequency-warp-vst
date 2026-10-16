@@ -785,7 +785,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="10000";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#low-value");
-    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.value))-
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical))-
       10000/1.08)<1e-8,"H edit must move actual canonical L, not its proxy");
     await page.$eval("#low-value",el=>el.blur());
     await page.focus("#high-value");
