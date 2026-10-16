@@ -1093,6 +1093,11 @@ for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay"
     if(name==="a-min"){aMinUnitControl.fromSlider();return;}
     if(name==="axis-slope"){slopeUnitControl.fromSlider();return;}
     delete state.precise[name];
+    if(name==="rational-enabled"&&!$("#rational-enabled").checked&&isHarmonicPivotLinked()){
+      $("#harmonic-pivot-link").checked=false;
+      rationalEnabledByLink=false;
+      linkFeedback("有理数シフトをOFFにしたため、H↔P＋音声適用の連動を解除しました。");
+    }
     if(name==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams(name);updateEngineInfo();
   });
