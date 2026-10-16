@@ -80,7 +80,7 @@ function refreshAxisShiftView(p,force=false){
   const toView=u=>axisShiftView(u,unit,p.curvature,ref);
   const min=toView(-2),max=toView(2);
   field.min=String(min);field.max=String(max);field.step=unit==="coordinate"?"0.001":"any";
-  if(force||document.activeElement!==field)field.value=concise3(toView(p.axisShift));
+  if(force||document.activeElement!==field)field.value=String(Number(toView(p.axisShift).toFixed(displayDigits())));
   field.setAttribute("aria-label","移動量 "+unit+"（内部座標u="+concise3(p.axisShift)+"）");
 }
 function showNumber(id,value){
