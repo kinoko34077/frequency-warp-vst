@@ -77,6 +77,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
     await page.click(".harmonic-pivot-link");
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),true);
+    assert.equal(await page.$eval("#rational-enabled",el=>el.checked),true,
+      "the explicitly audible H↔P link must activate rational DSP, not only mathematical displays");
     assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-87.5)<.002);
     await page.click("#tab-math");
     for(const [id,value] of [["fundamental","480"],["denominator","5"]]){
@@ -261,6 +263,31 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0.1);
     assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/43\.05/);
     await page.$eval("#axis-shift-value",el=>el.blur());
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
+    // Exact endpoint coordinates expose meaningful physical units, not Hz
+    // aliases at a nonlinear intermediate p.
+    await page.select("#axis-shift-unit","hz");
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),43.05);
+    await page.$eval("#axis-shift-value",el=>{
+      el.value="70";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-shift",el=>Number(el.value))-.2)<.051);
+    await page.$eval("#curvature",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#axis-shift-unit",el=>el.value),"coordinate");
+    assert.equal(await page.$eval("#axis-shift-unit option[value=hz]",el=>el.disabled),true);
+    await page.select("#axis-shift-unit","ratio");
+    await page.$eval("#axis-shift-value",el=>{
+      el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(await page.$eval("#axis-shift",el=>Number(el.value))-Math.log(2))<.051);
+    await page.$eval("#curvature",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#axis-shift-unit option[value=ratio]",el=>el.disabled),true);
+    await page.$eval("#axis-shift-value",el=>{
+      el.value="0.123";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#axis-shift-unit","percent");
+    assert.ok(Math.abs(await page.$eval("#axis-shift-value",el=>Number(el.value))-53.075)<.01);
+    await page.select("#axis-shift-unit","coordinate");
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
     await page.select("#decimal-digits","2");
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.12);
