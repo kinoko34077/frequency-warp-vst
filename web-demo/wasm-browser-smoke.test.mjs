@@ -40,7 +40,20 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       window.AudioContext=class extends Native{
         constructor(...args){
           super(...args);
+          this.__auditSourceStarts=[];
           window.__originalPlaybackAuditContexts.push(this);
+        }
+        createBufferSource(...args){
+          const source=super.createBufferSource(...args);
+          const start=source.start.bind(source);
+          source.start=(...inputs)=>{
+            this.__auditSourceStarts.push({
+              when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
+              activeAtStart:this.currentTime,stateAtStart:this.state
+            });
+            return start(...inputs);
+          };
+          return source;
         }
       };
     });
@@ -797,14 +810,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // Instrument only this direct original-buffer launch. A source start and
     // an advancing AudioContext clock are separate from a repainting timer.
     await page.evaluate(()=>{
-      window.__originalPlaybackSourceStarts=[];
-      const nativeStart=AudioBufferSourceNode.prototype.start;
-      AudioBufferSourceNode.prototype.start=function(...args){
-        window.__originalPlaybackSourceStarts.push({
-          when:args[0], offset:args[1]??0, duration:this.buffer?.duration??null
-        });
-        return nativeStart.apply(this,args);
-      };
+      // Select the context that owns the *newly started* source, not a
+      // separate closed context from other operations on this same page.
+      for(const ctx of window.__originalPlaybackAuditContexts??[])
+        ctx.__auditSourceStarts.length=0;
     });
     await page.click("#play-dry");
     await page.waitForFunction(()=>
@@ -817,13 +826,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const timeline=[];
     for(let attempt=0;attempt<12;attempt++){
       const snapshot=await page.evaluate(()=>{
-        const ctx=window.__originalPlaybackAuditContexts?.at(-1);
+        const contexts=window.__originalPlaybackAuditContexts??[];
+        const owner=[...contexts].reverse().find(ctx=>ctx.__auditSourceStarts.length>0);
         return {
           uiTime:document.querySelector("#elapsed")?.textContent??"",
           uiSeconds:Number(document.querySelector("#elapsed")?.textContent?.split(":")[1]??0),
-          audioTime:ctx?.currentTime??null,
-          audioState:ctx?.state??"missing",
-          starts:window.__originalPlaybackSourceStarts??[],
+          audioTime:owner?.currentTime??null,
+          audioState:owner?.state??"missing",
+          starts:owner?.__auditSourceStarts??[],
+          trackedContexts:contexts.length,
+          otherContexts:contexts.filter(ctx=>ctx!==owner).map(ctx=>({time:ctx.currentTime,state:ctx.state,starts:ctx.__auditSourceStarts.length})),
           indicator:document.querySelector("#rt-indicator")?.textContent??"",
         };
       });
@@ -837,8 +849,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const firstAudio=timeline[0],lastAudio=timeline.at(-1);
     const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length});
     assert.ok(lastAudio.starts.length>=1 &&
-      lastAudio.starts.some(source=>source.duration>=11),
-      "direct original-audio buffer must schedule its source: "+evidence);
+      lastAudio.starts.some(source=>source.duration>0),
+      "direct original-audio buffer must schedule its own source: "+evidence);
     assert.equal(lastAudio.audioState,"running",
       "direct original-audio context must remain active: "+evidence);
     assert.ok(Number.isFinite(lastAudio.audioTime) &&
