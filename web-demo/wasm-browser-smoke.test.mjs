@@ -31,6 +31,32 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       args:["--no-sandbox","--disable-dev-shm-usage","--autoplay-policy=no-user-gesture-required"]
     });
     const page=await browser.newPage();
+    // #240: independently observe the real AudioContext clock in the Chrome
+    // page; do not mistake a stalled UI label for stopped source playback.
+    await page.evaluateOnNewDocument(()=>{
+      const Native=window.AudioContext;
+      if(!Native)return;
+      window.__originalPlaybackAuditContexts=[];
+      window.AudioContext=class extends Native{
+        constructor(...args){
+          super(...args);
+          this.__auditSourceStarts=[];
+          window.__originalPlaybackAuditContexts.push(this);
+        }
+        createBufferSource(...args){
+          const source=super.createBufferSource(...args);
+          const start=source.start.bind(source);
+          source.start=(...inputs)=>{
+            this.__auditSourceStarts.push({
+              when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
+              activeAtStart:this.currentTime,stateAtStart:this.state
+            });
+            return start(...inputs);
+          };
+          return source;
+        }
+      };
+    });
     const errors=[];
     page.on("pageerror",e=>errors.push(e.message));
     let okay=false;
@@ -781,6 +807,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#fundamental",el=>{
       el.value="100000";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
+    // Instrument only this direct original-buffer launch. A source start and
+    // an advancing AudioContext clock are separate from a repainting timer.
+    await page.evaluate(()=>{
+      // Select the context that owns the *newly started* source, not a
+      // separate closed context from other operations on this same page.
+      for(const ctx of window.__originalPlaybackAuditContexts??[])
+        ctx.__auditSourceStarts.length=0;
+    });
     await page.click("#play-dry");
     await page.waitForFunction(()=>
       !document.querySelector("#stop").disabled&&
@@ -788,9 +822,42 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       {timeout:12000});
     assert.equal(await page.evaluate(()=>window.__dryWorkletCount),0,
       "original-audio transport must not instantiate a wet AudioWorklet");
-    await new Promise(resolve=>setTimeout(resolve,550));
-    assert.ok(await page.$eval("#elapsed",el=>Number(el.textContent.split(":")[1]))>0,
-      "direct original-audio buffer must advance its playback timeline");
+
+    const timeline=[];
+    for(let attempt=0;attempt<12;attempt++){
+      const snapshot=await page.evaluate(()=>{
+        const contexts=window.__originalPlaybackAuditContexts??[];
+        const owner=[...contexts].reverse().find(ctx=>ctx.__auditSourceStarts.length>0);
+        return {
+          uiTime:document.querySelector("#elapsed")?.textContent??"",
+          uiSeconds:Number(document.querySelector("#elapsed")?.textContent?.split(":")[1]??0),
+          audioTime:owner?.currentTime??null,
+          audioState:owner?.state??"missing",
+          starts:owner?.__auditSourceStarts??[],
+          trackedContexts:contexts.length,
+          otherContexts:contexts.filter(ctx=>ctx!==owner).map(ctx=>({time:ctx.currentTime,state:ctx.state,starts:ctx.__auditSourceStarts.length})),
+          indicator:document.querySelector("#rt-indicator")?.textContent??"",
+        };
+      });
+      timeline.push(snapshot);
+      const first=timeline[0];
+      if(snapshot.starts.length>=1&&snapshot.audioState==="running"&&
+          Number.isFinite(snapshot.audioTime)&&
+          snapshot.audioTime-first.audioTime>.2&&snapshot.uiSeconds>.1)break;
+      await new Promise(resolve=>setTimeout(resolve,140));
+    }
+    const firstAudio=timeline[0],lastAudio=timeline.at(-1);
+    const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length});
+    assert.ok(lastAudio.starts.length>=1 &&
+      lastAudio.starts.some(source=>source.duration>0),
+      "direct original-audio buffer must schedule its own source: "+evidence);
+    assert.equal(lastAudio.audioState,"running",
+      "direct original-audio context must remain active: "+evidence);
+    assert.ok(Number.isFinite(lastAudio.audioTime) &&
+      lastAudio.audioTime-firstAudio.audioTime>.2,
+      "independent AudioContext clock must advance: "+evidence);
+    assert.ok(lastAudio.uiSeconds>.1,
+      "displayed original-audio timeline must follow an advancing clock: "+evidence);
     await page.click("#play-wet");
     assert.match(await page.$eval("#status",el=>el.textContent),/原音再生を継続中.*変換設定は未反映/,
       "rejected wet switch must preserve original playback");
