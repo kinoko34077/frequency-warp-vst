@@ -145,7 +145,16 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         pollBindingStatus(state,0);
     }
     static void confirmBinding(Shared& state) {
-        if(!state.commitBinding||!state.bindingFlow.canConfirm())return;
+        if(!state.commitBinding||!state.bindingFlow.canConfirm()||!state.child)return;
+        // An untrusted local script may post a wire command on its own.
+        // Only a real native modal YES is the user's explicit commit intent.
+        if(MessageBoxW(state.child,
+           L"Save this Worker-verified binding into the DAW project?\n"
+           L"Choose No to keep existing audio and state unchanged.",
+           L"Confirm FWS3 Binding",
+           MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES)return;
+        // Worker/Controller revalidate request, generation and current ticket
+        // after the dialog (including any host focus/engine change).
         if(!state.commitBinding(state.bindingFlow.request())) {
             state.bindingFlow.invalidate();
             sendBindingPhase(state,"rejected");return;
@@ -206,10 +215,12 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             return;
         }
         if(msg->kind==UiWireKind::SelectBinding) {
-            selectBinding(state);return;
+            if(state.hasFocus)selectBinding(state);
+            return;
         }
         if(msg->kind==UiWireKind::ConfirmBinding) {
-            confirmBinding(state);return;
+            if(state.hasFocus)confirmBinding(state);
+            return;
         }
         // Blur/navigation must not permit a new gesture from queued JS input.
         if(!state.hasFocus && msg->kind!=UiWireKind::End)return;
