@@ -58,3 +58,7 @@ add_test(NAME fw_ui_asset_policy_test COMMAND fw_ui_asset_policy_test)
 add_executable(fw_native_binding_flow_test native_binding_flow_test.cpp)
 target_compile_features(fw_native_binding_flow_test PRIVATE cxx_std_17)
 add_test(NAME fw_native_binding_flow_test COMMAND fw_native_binding_flow_test)
+
+add_executable(fw_ui_asset_snapshot_test ui_asset_snapshot_test.cpp)
+target_compile_features(fw_ui_asset_snapshot_test PRIVATE cxx_std_17)
+add_test(NAME fw_ui_asset_snapshot_test COMMAND fw_ui_asset_snapshot_test)

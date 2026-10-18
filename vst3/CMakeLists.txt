@@ -103,3 +103,16 @@ add_test(NAME fw_web_ui_message_test COMMAND fw_web_ui_message_test)
 add_executable(fw_stream_host_events_test tests/stream_host_events_test.cpp)
 target_compile_features(fw_stream_host_events_test PRIVATE cxx_std_17)
 add_test(NAME fw_stream_host_events_test COMMAND fw_stream_host_events_test)
+
+# UI-5B1: actual C++ -> Rust static-library SHA-256 ABI, plus pinned files.
+# Independent of the optional WebView2 UI and never called on audio thread.
+add_executable(fw_ui_digest_ffi_test tests/ui_digest_ffi_test.cpp)
+target_compile_features(fw_ui_digest_ffi_test PRIVATE cxx_std_17)
+target_link_libraries(fw_ui_digest_ffi_test PRIVATE FrequencyWarpNativeRuntime)
+if(WIN32)
+  target_link_libraries(fw_ui_digest_ffi_test PRIVATE
+    ws2_32 bcrypt userenv ntdll advapi32 user32 gdi32 comctl32 comdlg32 shell32)
+elseif(UNIX)
+  target_link_libraries(fw_ui_digest_ffi_test PRIVATE pthread dl m)
+endif()
+add_test(NAME fw_ui_digest_ffi_test COMMAND fw_ui_digest_ffi_test)

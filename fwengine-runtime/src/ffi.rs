@@ -4,6 +4,54 @@ use crate::{ParamEvent,Runtime};
 use std::{panic::{catch_unwind,AssertUnwindSafe},ptr,slice};
 use sha2::{Digest,Sha256};
 
+// UI-5B1 non-RT digest service, reusing the audited sha2 dependency already
+// linked into the VST3 static runtime. Never invoke from the audio callback.
+// Exactly 32 output bytes; invalid pointers/oversize have no side effects.
+#[no_mangle]
+pub unsafe extern "C" fn fw_native_sha256_bytes(
+    data:*const u8, length:usize, out:*mut u8, out_capacity:usize
+)->bool {
+    if out.is_null()||out_capacity!=32||length>8*1024*1024||
+       (length!=0&&data.is_null()) {return false;}
+    catch_unwind(AssertUnwindSafe(|| {
+        let input=if length==0 {&[][..]} else {slice::from_raw_parts(data,length)};
+        let hash=Sha256::digest(input);
+        ptr::copy_nonoverlapping(hash.as_ptr(),out,32);
+    })).is_ok()
+}
+
+#[cfg(test)]
+mod ui_sha256_tests {
+    use super::*;
+    #[test]
+    fn sha256_vectors_and_invalid_outputs() {
+        let mut output=[0u8;32];
+        let abc=b"abc";
+        assert!(unsafe{fw_native_sha256_bytes(abc.as_ptr(),abc.len(),
+                                              output.as_mut_ptr(),output.len())});
+        assert_eq!(output,[
+            0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,
+            0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,
+            0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,
+            0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad]);
+        let before=output;
+        assert!(!unsafe{fw_native_sha256_bytes(abc.as_ptr(),abc.len(),
+                                               output.as_mut_ptr(),31)});
+        assert!(!unsafe{fw_native_sha256_bytes(std::ptr::null(),1,
+                                               output.as_mut_ptr(),32)});
+        assert!(!unsafe{fw_native_sha256_bytes(abc.as_ptr(),8*1024*1024+1,
+                                               output.as_mut_ptr(),32)});
+        assert_eq!(output,before);
+        assert!(unsafe{fw_native_sha256_bytes(std::ptr::null(),0,
+                                              output.as_mut_ptr(),32)});
+        assert_eq!(output,[
+            0xe3,0xb0,0xc4,0x42,0x98,0xfc,0x1c,0x14,
+            0x9a,0xfb,0xf4,0xc8,0x99,0x6f,0xb9,0x24,
+            0x27,0xae,0x41,0xe4,0x64,0x9b,0x93,0x4c,
+            0xa4,0x95,0x99,0x1b,0x78,0x52,0xb8,0x55]);
+    }
+}
+
 // ABI handshake is called by VST3 Processor::initialize outside RT.
 #[no_mangle]
 pub extern "C" fn fw_native_abi_major() -> u32 { 1 }

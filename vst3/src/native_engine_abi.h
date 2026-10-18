@@ -8,6 +8,11 @@ extern "C" {
 struct FWNativeOpaque;
 // Stable Rust runtime ABI handshake; call from non-RT plugin lifecycle.
 std::uint32_t fw_native_abi_major();
+// Additive non-RT UI asset digest. True writes exactly 32 bytes; false
+// preserves output. Bounded to 8 MiB input, matching UI asset policy.
+// Digest identity is not proof of signer/publisher authenticity.
+bool fw_native_sha256_bytes(const std::uint8_t* data,std::size_t bytes,
+                            std::uint8_t* digest,std::size_t capacity);
 struct FWNativeEvent {
     std::uint32_t id;
     std::uint32_t offset;
