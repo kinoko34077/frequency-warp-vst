@@ -51,6 +51,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         std::uint64_t activationStarted=0;
         std::uint64_t lastUiDialog=0;
         bool navigationLoaded=false;
+        std::uint64_t servedIndexGeneration=0;
         std::filesystem::path siteRoot;
         Steinberg::Vst::EditController* host=nullptr;
         // Invoked on GUI STA. Native Controller queries the Processor and
@@ -284,6 +285,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!pending||!state.uiActivation.fail(pending))return;
         endAllEdits(state);state.uiReady=false;
         state.navigationLoaded=false;
+        state.servedIndexGeneration=0;
         state.activationStarted=0;
         // Keep last-known-good approved snapshot. The bundled website remains
         // available as the initial legacy fallback if no snapshot was active.
@@ -295,6 +297,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!gen||!state.view)return false;
         endAllEdits(state);state.uiReady=false;
         state.navigationLoaded=false;
+        state.servedIndexGeneration=0;
         state.activationStarted=GetTickCount64();
         if(FAILED(state.view->Navigate(L"https://fwvst.local/index.html"))) {
             rollbackUi(state);return false;
@@ -485,6 +488,12 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const auto found=local?ui_assets::findPinnedResource(pinned,ascii)
                               :ui_assets::RoutedResource{};
         const int status=found.file?200:(local?404:403);
+        // A versioned JS hello never proves the new page came from pinned
+        // bytes. Record that the native router actually served the index
+        // from the exact pending immutable generation.
+        if(found.file&&found.file->path=="index.html" &&
+           tx.pendingGeneration()!=0)
+            state.servedIndexGeneration=tx.pendingGeneration();
         ComPtr<IStream> stream;
         if(found.file) {
             const auto& bytes=found.file->bytes;
@@ -656,7 +665,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             liveNav->navigationLoaded=true;
                                             // Keep the web player in DOM for existing JS handlers,
                                             // but hide its file-preview panel inside the DAW.
-                                            const auto generation=liveNav->uiActivation.pendingGeneration();
+                                            const auto pending=liveNav->uiActivation.pendingGeneration();
+                                            const auto generation=pending &&
+                                                liveNav->servedIndexGeneration==pending?pending:0;
                                             std::wstring injected=LR"JS((()=>{
                                                   const style=document.createElement('style');
                                                   style.textContent='.player{display:none!important}';
@@ -761,6 +772,7 @@ public:
         if(state_->controller)state_->controller->Close();
         state_->uiActivation.editorDetached();
         state_->activationStarted=0;state_->navigationLoaded=false;
+        state_->servedIndexGeneration=0;
         state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
         DestroyWindow(state_->child);
         state_->child=nullptr;
