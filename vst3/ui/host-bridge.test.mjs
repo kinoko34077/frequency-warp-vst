@@ -41,11 +41,25 @@ function fixture() {
     removeEventListener(kind, fn) { if (listeners.get(kind) === fn) listeners.delete(kind); },
     deliver(data) { listeners.get("message")?.({ data }); }
   };
+  const windowListeners = new Map(), documentListeners = new Map();
+  const add = (registry, kind, fn) => {
+    if (!registry.has(kind)) registry.set(kind, new Set());
+    registry.get(kind).add(fn);
+  };
+  const remove = (registry, kind, fn) => registry.get(kind)?.delete(fn);
   const document = {
+    hidden: false,
+    addEventListener(kind, fn) { add(documentListeners, kind, fn); },
+    removeEventListener(kind, fn) { remove(documentListeners, kind, fn); },
+    fire(kind) { for (const fn of documentListeners.get(kind) ?? []) fn(); },
     body: new FakeNode("", nodes),
     createElement() { return new FakeNode("", nodes); },
     querySelector(selector) { return nodes.get(selector) ?? null; },
-    defaultView: { Event: class { constructor(type, options) {
+    defaultView: {
+      addEventListener(kind, fn) { add(windowListeners, kind, fn); },
+      removeEventListener(kind, fn) { remove(windowListeners, kind, fn); },
+      fire(kind) { for (const fn of windowListeners.get(kind) ?? []) fn(); },
+      Event: class { constructor(type, options) {
       this.type = type; this.bubbles = options?.bubbles;
     } } }
   };
@@ -174,4 +188,53 @@ test("native worker-approved generic slots appear, never echo, and revoke dynami
     genericSlots: [64, 64], values: { "64": 0.9 } });
   assert.deepEqual(bridge.visibleIds, [2, 3, 4, 5]);
   bridge.dispose();
+});
+
+test("native binding picker and explicit confirmation never send file paths or ticket data", () => {
+  const x = fixture();
+  const bridge = createHostUiBridge(x);
+  const panel = x.nodes.get("#fw-vst-binding-panel");
+  assert.equal(panel?.children.length, 4);
+  const [heading, select, confirm, status] = panel.children;
+  assert.equal(heading.textContent, "VST3 verified engine binding");
+  assert.equal(confirm.disabled, true);
+  select.fire("click");
+  assert.deepEqual(x.posted.at(-1), { protocol: PROTOCOL, kind: "binding-select" });
+  assert.equal(x.posted.length, 2);
+  x.webview.deliver({ protocol: PROTOCOL, kind: "binding-state", phase: "confirm" });
+  assert.equal(confirm.disabled, false);
+  confirm.fire("click");
+  assert.deepEqual(x.posted.at(-1), { protocol: PROTOCOL, kind: "binding-confirm" });
+  x.webview.deliver({ protocol: PROTOCOL, kind: "binding-state", phase: "committing" });
+  assert.equal(confirm.disabled, true);
+  confirm.fire("click");
+  assert.equal(x.posted.length, 3);
+  x.webview.deliver({ protocol: PROTOCOL, kind: "binding-state", phase: "accepted" });
+  assert.match(status.textContent, /saved and active/);
+  bridge.dispose();
+  select.fire("click");
+  assert.equal(x.posted.length, 3);
+});
+test("window blur and document visibility loss end active edits without duplicates", () => {
+  const x = fixture(), bridge = createHostUiBridge(x);
+  x.webview.deliver({ protocol: PROTOCOL, kind: "snapshot",
+    genericSlots: [64], values: { "64": 0.4 } });
+  const slider = x.nodes.get("#fw-vst-slot-64");
+  slider.value = "0.7"; slider.fire("input");
+  x.document.defaultView.fire("blur");
+  x.document.defaultView.fire("blur");
+  assert.deepEqual(x.posted.slice(-3), [
+    { protocol: PROTOCOL, kind: "edit-begin", id: 64 },
+    { protocol: PROTOCOL, kind: "edit-perform", id: 64, value: 0.7 },
+    { protocol: PROTOCOL, kind: "edit-end", id: 64 }
+  ]);
+  slider.fire("input");
+  x.document.hidden = true;
+  x.document.fire("visibilitychange");
+  assert.equal(x.posted.at(-1).kind, "edit-end");
+  const count = x.posted.length;
+  bridge.dispose();
+  x.document.defaultView.fire("blur");
+  x.document.fire("visibilitychange");
+  assert.equal(x.posted.length, count);
 });
