@@ -569,6 +569,29 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                       COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
                                     showError(target,L"Local Web UI mapping unsupported.");return S_OK;
                                 }
+                                // A user-selected UI is locally trusted only for its
+                                // approved bytes, NOT for external browser/system effects.
+                                EventRegistrationToken popupToken{};
+                                if(FAILED(target->view->add_NewWindowRequested(
+                                    Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+                                        [](ICoreWebView2*,
+                                            ICoreWebView2NewWindowRequestedEventArgs* args)->HRESULT {
+                                            if(args)args->put_Handled(TRUE);
+                                            return S_OK;
+                                        }).Get(),&popupToken))) {
+                                    showError(target,L"Popup protection unavailable.");return S_OK;
+                                }
+                                EventRegistrationToken permissionsToken{};
+                                if(FAILED(target->view->add_PermissionRequested(
+                                    Callback<ICoreWebView2PermissionRequestedEventHandler>(
+                                        [](ICoreWebView2*,
+                                            ICoreWebView2PermissionRequestedEventArgs* args)->HRESULT {
+                                            if(args)args->put_State(
+                                                COREWEBVIEW2_PERMISSION_STATE_DENY);
+                                            return S_OK;
+                                        }).Get(),&permissionsToken))) {
+                                    showError(target,L"Web permission protection unavailable.");return S_OK;
+                                }
                                 // Intercept *all* network/resource requests before navigation.
                                 // No request may silently fall through after pinned activation.
                                 if(FAILED(target->view->AddWebResourceRequestedFilter(
