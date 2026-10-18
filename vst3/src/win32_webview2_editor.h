@@ -94,7 +94,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             state.host->endEdit(id);state.editing[id]=false;
         }
     }
-    static void pollBindingStatus(Shared& state) {
+    static void pollBindingStatus(Shared& state,std::uint64_t currentMask) {
         if(state.pollBinding && state.bindingFlow.request())
             state.bindingFlow.observe(state.pollBinding());
         switch(state.bindingFlow.phase()) {
@@ -103,8 +103,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         case NativeBindingFlow::Phase::NeedsConfirmation: sendBindingPhase(state,"confirm");break;
         case NativeBindingFlow::Phase::Committing: sendBindingPhase(state,"committing");break;
         case NativeBindingFlow::Phase::Accepted:
-            sendBindingPhase(state,state.verifiedGenericMask &&
-                state.verifiedGenericMask()!=0 ? "accepted":"inactive");
+            sendBindingPhase(state,currentMask!=0 ? "accepted":"inactive");
             break;
         case NativeBindingFlow::Phase::Rejected: sendBindingPhase(state,"rejected");break;
         }
@@ -143,7 +142,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!state.bindingFlow.begin(request)) {
             sendBindingPhase(state,"rejected");return;
         }
-        pollBindingStatus(state);
+        pollBindingStatus(state,0);
     }
     static void confirmBinding(Shared& state) {
         if(!state.commitBinding||!state.bindingFlow.canConfirm())return;
@@ -152,17 +151,17 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             sendBindingPhase(state,"rejected");return;
         }
         state.bindingFlow.confirmQueued();
-        pollBindingStatus(state);
+        pollBindingStatus(state,0);
     }
     // Always run on the VST3 GUI/COM STA. Never touch audio callbacks here.
     static void sendSnapshot(Shared& state) {
         if(!state.alive||!state.uiReady||!state.view||!state.host)return;
-        pollBindingStatus(state);
+        const auto mask=state.verifiedGenericMask?
+            state.verifiedGenericMask():std::uint64_t{0};
+        pollBindingStatus(state,mask);
         std::ostringstream json;
         json.imbue(std::locale::classic());
         json.precision(17);
-        const auto mask=state.verifiedGenericMask?
-            state.verifiedGenericMask():std::uint64_t{0};
         // The browser may render normalized generic sliders, but may never
         // decide eligibility from external descriptor JSON or a raw WASM bit.
         json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","genericSlots":[)";
