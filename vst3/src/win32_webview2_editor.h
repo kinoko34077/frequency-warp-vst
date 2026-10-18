@@ -383,8 +383,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
         if(msg->kind==UiWireKind::UiActivationReady){
-            if(state.navigationLoaded && state.uiActivation.accept(
-                    msg->generation,1,true,true)) {
+            if(state.navigationLoaded &&
+               state.servedIndexGeneration==msg->generation &&
+               state.uiActivation.accept(msg->generation,1,true,true)) {
                 state.activationStarted=0;
                 state.uiReady=true;
                 state.displayedBindingPhase.clear();
