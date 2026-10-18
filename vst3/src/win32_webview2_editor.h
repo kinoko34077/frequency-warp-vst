@@ -53,6 +53,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         std::string displayedBindingPhase{};
         std::array<bool,128> editing{};
         bool uiReady=false;
+        bool hasFocus=false;
     };
     std::shared_ptr<Shared> state_=std::make_shared<Shared>();
     bool ownsCom_=false;
@@ -101,7 +102,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         case NativeBindingFlow::Phase::Preparing: sendBindingPhase(state,"preparing");break;
         case NativeBindingFlow::Phase::NeedsConfirmation: sendBindingPhase(state,"confirm");break;
         case NativeBindingFlow::Phase::Committing: sendBindingPhase(state,"committing");break;
-        case NativeBindingFlow::Phase::Accepted: sendBindingPhase(state,"accepted");break;
+        case NativeBindingFlow::Phase::Accepted:
+            sendBindingPhase(state,state.verifiedGenericMask &&
+                state.verifiedGenericMask()!=0 ? "accepted":"inactive");
+            break;
         case NativeBindingFlow::Phase::Rejected: sendBindingPhase(state,"rejected");break;
         }
     }
@@ -208,6 +212,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(msg->kind==UiWireKind::ConfirmBinding) {
             confirmBinding(state);return;
         }
+        // Blur/navigation must not permit a new gesture from queued JS input.
+        if(!state.hasFocus && msg->kind!=UiWireKind::End)return;
         // Generic DAW edits are native-masked against the latest verified,
         // same-project FWS3 and live worker permission, NEVER page metadata.
         const auto id=msg->id;
@@ -240,7 +246,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                UINT_PTR,DWORD_PTR ref) {
         if(message==WM_KILLFOCUS) {
             auto* state=reinterpret_cast<Shared*>(ref);
-            if(state)endAllEdits(*state);
+            if(state) {state->hasFocus=false;endAllEdits(*state);}
         }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
@@ -315,13 +321,24 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             }
                                             return S_OK;
                                         }).Get(),&msgToken);
+                                EventRegistrationToken gotFocusToken{};
+                                target->controller->add_GotFocus(
+                                    Callback<ICoreWebView2FocusChangedEventHandler>(
+                                        [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
+                                            const auto owner=messageTarget.lock();
+                                            if(owner && owner->alive)owner->hasFocus=true;
+                                            return S_OK;
+                                        }).Get(),&gotFocusToken);
                                 // Browser focus loss may not reach the parent HWND.
                                 EventRegistrationToken focusToken{};
                                 target->controller->add_LostFocus(
                                     Callback<ICoreWebView2FocusChangedEventHandler>(
                                         [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
                                             const auto owner=messageTarget.lock();
-                                            if(owner && owner->alive)endAllEdits(*owner);
+                                            if(owner && owner->alive) {
+                                                owner->hasFocus=false;
+                                                endAllEdits(*owner);
+                                            }
                                             return S_OK;
                                         }).Get(),&focusToken);
                                 // Refuse navigation to external origins in the embedded UI.
@@ -342,6 +359,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             }
                                             endAllEdits(*liveNav);
                                             liveNav->uiReady=false;
+                                            liveNav->hasFocus=false;
                                             liveNav->displayedBindingPhase.clear();
                                             return S_OK;
                                         }).Get(),&navToken);
