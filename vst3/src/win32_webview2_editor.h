@@ -9,6 +9,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <bcrypt.h>
 #include <commctrl.h>
 #include <WebView2.h>
 #include <wrl.h>
@@ -25,7 +26,6 @@
 #include <iomanip>
 #include "web_ui_message.h"
 #include "native_binding_flow.h"
-#include "native_engine_abi.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -121,6 +121,35 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         case NativeBindingFlow::Phase::Rejected: sendBindingPhase(state,"rejected");break;
         }
     }
+    // CNG is supplied by Windows and already linked through bcrypt.lib.
+    // Only a short visual fingerprint is shown; Worker remains authoritative.
+    static bool visualSha256(const std::vector<std::uint8_t>& data,
+                             std::array<std::uint8_t,32>& sha) noexcept {
+        BCRYPT_ALG_HANDLE algorithm=nullptr;
+        BCRYPT_HASH_HANDLE hash=nullptr;
+        bool ok=false;
+        if(!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(
+            &algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)))return false;
+        ULONG objectSize=0,returned=0;
+        if(BCRYPT_SUCCESS(BCryptGetProperty(algorithm,BCRYPT_OBJECT_LENGTH,
+                reinterpret_cast<PUCHAR>(&objectSize),sizeof(objectSize),
+                &returned,0)) && returned==sizeof(objectSize) &&
+           objectSize>0 && objectSize<=65536) {
+            std::vector<UCHAR> object(objectSize);
+            if(BCRYPT_SUCCESS(BCryptCreateHash(algorithm,&hash,
+                object.data(),objectSize,nullptr,0,0))) {
+                if(BCRYPT_SUCCESS(BCryptHashData(hash,
+                    const_cast<PUCHAR>(data.data()),
+                    static_cast<ULONG>(data.size()),0)) &&
+                   BCRYPT_SUCCESS(BCryptFinishHash(hash,sha.data(),
+                                                  static_cast<ULONG>(sha.size()),0)))
+                    ok=true;
+            }
+            if(hash)BCryptDestroyHash(hash);
+        }
+        BCryptCloseAlgorithmProvider(algorithm,0);
+        return ok;
+    }
     // The OS picker, never the HTML, supplies descriptor file contents.
     static void selectBinding(Shared& state) {
         if(!state.prepareBinding||!state.child) {
@@ -159,7 +188,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             sendBindingPhase(state,"rejected");return;
         }
         std::array<std::uint8_t,32> sha{};
-        if(!fw_native_sha256_bytes(bytes.data(),bytes.size(),sha.data(),sha.size())) {
+        if(!visualSha256(bytes,sha)) {
             sendBindingPhase(state,"rejected");return;
         }
         const auto request=state.prepareBinding(bytes);
