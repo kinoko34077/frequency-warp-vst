@@ -45,6 +45,25 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   const genericNodes = new Map();
   let genericPanel = null, genericKey = "";
   let bindingPanel = null, bindingStatus = null, bindingConfirm = null;
+  let uiPanel = null;
+  function createUiPanel() {
+    if (typeof document.createElement !== "function" ||
+        typeof document.body?.appendChild !== "function") return;
+    uiPanel = document.createElement("section");
+    uiPanel.id = "fw-vst-ui-reload";
+    uiPanel.style.cssText = "display:flex;gap:8px;padding:8px;position:sticky;" +
+      "top:0;z-index:999;background:#1c1e24;color:#fff";
+    for (const [caption, kind] of [
+      ["Select verified UI", "ui-select"], ["Back to previous UI", "ui-back"]
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = caption;
+      listen(button, "click", () => emit(kind));
+      uiPanel.appendChild(button);
+    }
+    document.body.appendChild(uiPanel);
+  }
   function createBindingPanel() {
     if (typeof document.createElement !== "function" ||
         typeof document.body?.appendChild !== "function") return;
@@ -224,6 +243,7 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   }
   bindAll(bindings);
   createBindingPanel();
+  createUiPanel();
   listen(document.defaultView, "blur", endAllGestures);
   listen(document, "visibilitychange", () => {
     if (document.hidden) endAllGestures();
@@ -250,6 +270,7 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       genericPanel = null; genericKey = "";
       bindingPanel?.remove(); bindingPanel = null;
       bindingStatus = null; bindingConfirm = null;
+      uiPanel?.remove(); uiPanel = null;
     }
   };
 }
