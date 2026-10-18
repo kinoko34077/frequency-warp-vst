@@ -491,8 +491,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // A versioned JS hello never proves the new page came from pinned
         // bytes. Record that the native router actually served the index
         // from the exact pending immutable generation.
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT context=
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+        const bool isTopLevelDocument=
+            SUCCEEDED(args->get_ResourceContext(&context)) &&
+            context==COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT;
         if(found.file&&found.file->path=="index.html" &&
-           tx.pendingGeneration()!=0)
+           isTopLevelDocument&&tx.pendingGeneration()!=0)
             state.servedIndexGeneration=tx.pendingGeneration();
         ComPtr<IStream> stream;
         if(found.file) {
@@ -660,6 +665,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 if(liveNav->uiActivation.pendingGeneration())
                                                     rollbackUi(*liveNav);
                                                 else showError(liveNav,L"Frequency Warp local website load failed.");
+                                                return S_OK;
+                                            }
+                                            LPWSTR actualUri=nullptr;
+                                            if(FAILED(browser->get_Source(&actualUri)))return S_OK;
+                                            const std::wstring currentUri=actualUri?actualUri:L"";
+                                            CoTaskMemFree(actualUri);
+                                            if(currentUri!=L"https://fwvst.local/index.html") {
+                                                if(liveNav->uiActivation.pendingGeneration())
+                                                    rollbackUi(*liveNav);
                                                 return S_OK;
                                             }
                                             liveNav->navigationLoaded=true;
