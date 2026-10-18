@@ -31,6 +31,12 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       !document || typeof document.querySelector !== "function" ||
       !validateBindings(bindings)) throw new TypeError("Invalid trusted host UI bridge");
   let disposed = false, applying = false;
+  const lifecycleListeners = [];
+  const listen = (target, kind, handler) => {
+    if (typeof target?.addEventListener !== "function") return;
+    target.addEventListener(kind, handler);
+    lifecycleListeners.push([target, kind, handler]);
+  };
   const editing = new Set(), subscriptions = [];
   const controls = new Map();
   // VST3-only DOM controls mirror the NATIVE Controller's latest active
@@ -38,6 +44,50 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   // its worker+ticket-derived mask for every incoming edit event.
   const genericNodes = new Map();
   let genericPanel = null, genericKey = "";
+  let bindingPanel = null, bindingStatus = null, bindingConfirm = null;
+  function createBindingPanel() {
+    if (typeof document.createElement !== "function" ||
+        typeof document.body?.appendChild !== "function") return;
+    bindingPanel = document.createElement("section");
+    bindingPanel.id = "fw-vst-binding-panel";
+    bindingPanel.style.cssText = "padding:10px;margin:8px;border:1px solid #777;" +
+      "border-radius:8px;background:#1e1f24;color:#fff;font:13px system-ui";
+    const heading = document.createElement("div");
+    heading.textContent = "VST3 verified engine binding";
+    bindingPanel.appendChild(heading);
+    const select = document.createElement("button");
+    select.textContent = "Select binding JSON";
+    select.type = "button";
+    listen(select, "click", () => emit("binding-select"));
+    bindingPanel.appendChild(select);
+    bindingConfirm = document.createElement("button");
+    bindingConfirm.textContent = "Confirm binding";
+    bindingConfirm.type = "button";
+    bindingConfirm.disabled = true;
+    listen(bindingConfirm, "click", () => {
+      if (!bindingConfirm.disabled) emit("binding-confirm");
+    });
+    bindingPanel.appendChild(bindingConfirm);
+    bindingStatus = document.createElement("div");
+    bindingStatus.textContent = "No binding requested";
+    bindingStatus.style.cssText = "min-height:2em;overflow-wrap:anywhere";
+    bindingPanel.appendChild(bindingStatus);
+    document.body.appendChild(bindingPanel);
+  }
+  function showBindingPhase(phase) {
+    const messages = {
+      idle: "No binding requested",
+      preparing: "Worker verifying descriptor; nothing saved",
+      confirm: "Worker prepared descriptor. Confirm to save FWS3",
+      committing: "Commit queued; awaiting worker confirmation",
+      accepted: "Binding saved and active",
+      inactive: "Saved binding not currently authorized",
+      rejected: "Binding rejected; existing audio preserved"
+    };
+    if (!Object.prototype.hasOwnProperty.call(messages, phase)) return;
+    if (bindingStatus) bindingStatus.textContent = messages[phase];
+    if (bindingConfirm) bindingConfirm.disabled = phase !== "confirm";
+  }
   function syncNativeGenericSlots(ids) {
     if (!Array.isArray(ids) || ids.length > 64 ||
         !ids.every(id => Number.isInteger(id) && id >= 64 && id <= 127) ||
@@ -100,6 +150,7 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
     editing.add(id);
     emit("edit-begin", { id });
   }
+  function endAllGestures() { for (const id of Array.from(editing)) end(id); }
   function bindAll(newBindings) {
     if (!validateBindings(newBindings)) return false;
     for (const [node, kind, listener] of subscriptions) node.removeEventListener(kind, listener);
@@ -163,6 +214,8 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       for (const [id, value] of Object.entries(msg.values)) {
         if (/^(0|[1-9][0-9]{0,2})$/.test(id)) applyValue(Number(id), value);
       }
+    } else if (msg.kind === "binding-state") {
+      showBindingPhase(msg.phase);
     } else if (msg.kind === "bindings") {
       // Descriptor requests from host are hints for HTML mapping only.
       // The NATIVE host remains authoritative for slot identity/semantics.
@@ -170,6 +223,11 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
     }
   }
   bindAll(bindings);
+  createBindingPanel();
+  listen(document.defaultView, "blur", endAllGestures);
+  listen(document, "visibilitychange", () => {
+    if (document.hidden) endAllGestures();
+  });
   webview.addEventListener("message", onMessage);
   emit("hello", { version: 1, visibleBindings: Array.from(controls.keys()) });
   return {
@@ -183,10 +241,15 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       webview.removeEventListener?.("message", onMessage);
       for (const [node, kind, listener] of subscriptions) node.removeEventListener(kind, listener);
       subscriptions.length = 0; controls.clear();
+      for (const [node, kind, fn] of lifecycleListeners)
+        node.removeEventListener(kind, fn);
+      lifecycleListeners.length = 0;
       for (const node of genericNodes.values()) node.remove();
       genericNodes.clear();
       if (genericPanel) genericPanel.remove();
       genericPanel = null; genericKey = "";
+      bindingPanel?.remove(); bindingPanel = null;
+      bindingStatus = null; bindingConfirm = null;
     }
   };
 }
