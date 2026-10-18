@@ -1046,7 +1046,11 @@ public:
                 // ever derives authority from local HTML or a raw WASM mask.
                 queryNewGenericStatus();
                 return currentVerifiedGenericUiMask();
-            });
+            },[this](const std::vector<uint8_t>& descriptor){
+                return sendPrepareNewGenericDescriptor(descriptor);
+            },[this](uint64_t request){
+                return sendCommitNewGeneric(request);
+            },[this](){return pollNewGenericStatus();});
 #endif
         return new Win32EngineEditor(this,[this](const std::vector<uint8_t>& bytes){
             return sendPackageToProcessor(bytes);
