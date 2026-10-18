@@ -238,6 +238,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     static LRESULT CALLBACK browserWindowProc(HWND hwnd,UINT message,
                                                WPARAM w,LPARAM l,
                                                UINT_PTR,DWORD_PTR ref) {
+        if(message==WM_KILLFOCUS) {
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state)endAllEdits(*state);
+        }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state)sendSnapshot(*state);
@@ -311,6 +315,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             }
                                             return S_OK;
                                         }).Get(),&msgToken);
+                                // Browser focus loss may not reach the parent HWND.
+                                EventRegistrationToken focusToken{};
+                                target->controller->add_LostFocus(
+                                    Callback<ICoreWebView2FocusChangedEventHandler>(
+                                        [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
+                                            const auto owner=messageTarget.lock();
+                                            if(owner && owner->alive)endAllEdits(*owner);
+                                            return S_OK;
+                                        }).Get(),&focusToken);
                                 // Refuse navigation to external origins in the embedded UI.
                                 std::weak_ptr<Shared> nav=target;
                                 EventRegistrationToken navToken{};
@@ -327,6 +340,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 if(url.rfind(L"https://fwvst.local/",0)!=0)
                                                     args->put_Cancel(TRUE);
                                             }
+                                            endAllEdits(*liveNav);
+                                            liveNav->uiReady=false;
+                                            liveNav->displayedBindingPhase.clear();
                                             return S_OK;
                                         }).Get(),&navToken);
                                 EventRegistrationToken loadToken{};
@@ -371,9 +387,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
 public:
     explicit Win32WebView2Editor(
         Steinberg::Vst::EditController* controller,
-        std::function<std::uint64_t()> verifiedGenericMask={})
+        std::function<std::uint64_t()> verifiedGenericMask={},
+        std::function<std::uint64_t(const std::vector<std::uint8_t>&)> prepareBinding={},
+        std::function<bool(std::uint64_t)> commitBinding={},
+        std::function<NewBindingStatus()> pollBinding={})
         :EditorView(controller,&kWebUiEditorRect),editController_(controller){
         state_->verifiedGenericMask=std::move(verifiedGenericMask);
+        state_->prepareBinding=std::move(prepareBinding);
+        state_->commitBinding=std::move(commitBinding);
+        state_->pollBinding=std::move(pollBinding);
     }
     static bool runtimeAvailable() noexcept {
         LPWSTR version=nullptr;
