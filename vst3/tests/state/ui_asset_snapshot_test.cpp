@@ -72,6 +72,18 @@ int main(){
         need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"drive path accepted");
         bad=trusted;bad.files[1].path="INDEX.html";
         need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"casefold alias accepted");
+        bad=trusted;bad.files[1].path="index.html";
+        need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"duplicate path accepted");
+        bad=trusted;bad.files[1].path="asset/THEME.css";
+        need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"nested alias accepted");
+        bad=trusted;bad.files[1].path="asset/CON.txt";
+        need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"reserved name accepted");
+        bad=trusted;bad.files[1].path="asset/THEME~1.css";
+        need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"8.3 alias accepted");
+        bad=trusted;bad.files[1].path="asset/theme.css.";
+        need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"trailing dot accepted");
+        bad=trusted;bad.files[0].bytes=kMaxFileBytes+1;
+        need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"oversize accepted");
         bad=trusted;bad.files.erase(bad.files.begin()+1);
         need(!stagePinnedCandidate(root,bad,fakeDigest,accepted),"missing bridge accepted");
         need(!stagePinnedCandidate(root,trusted,rejectDigest,accepted),
@@ -88,6 +100,9 @@ int main(){
             need(!stagePinnedCandidate(root,trusted,fakeDigest,accepted),
                  "symlink candidate accepted");
             fs::remove(root/"asset"/"shortcut.css");
+        } else {
+            std::cout<<"SKIP symlink negative fixture: OS privilege unavailable: "
+                     <<ec.message()<<'\n';
         }
         need(stagePinnedCandidate(root,trusted,fakeDigest,accepted),
              "legitimate candidate not recoverable after failures");
