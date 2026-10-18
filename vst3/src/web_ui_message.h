@@ -11,11 +11,12 @@
 #include <string_view>
 
 namespace fw {
-enum class UiWireKind { Hello, Begin, Perform, End, SelectBinding, ConfirmBinding };
+enum class UiWireKind { Hello, Begin, Perform, End, SelectBinding, ConfirmBinding, UiSelect, UiBack, UiActivationReady };
 struct UiWireMessage {
     UiWireKind kind;
     uint32_t id=0;
     double normalized=0.0;
+    std::uint64_t generation=0;
 };
 inline std::optional<UiWireMessage> parseUiWireMessage(std::wstring_view json) {
     constexpr std::wstring_view prefix=
@@ -33,6 +34,31 @@ inline std::optional<UiWireMessage> parseUiWireMessage(std::wstring_view json) {
             return std::nullopt;
         if(tail.back()!=L'}'||tail.size()<33)return std::nullopt;
         return UiWireMessage{UiWireKind::Hello,0,0.0};
+    }
+    // The UI requests an OS-only action; its payload never includes a path,
+    // trust claim, authorization token or file descriptor.
+    if(kind==L"ui-select" && tail==L"}")
+        return UiWireMessage{UiWireKind::UiSelect};
+    if(kind==L"ui-back" && tail==L"}")
+        return UiWireMessage{UiWireKind::UiBack};
+    if(kind==L"ui-activation-ready") {
+        constexpr std::wstring_view startField=L",\"generation\":";
+        constexpr std::wstring_view endField=L",\"version\":1}";
+        if(tail.substr(0,startField.size())!=startField)return std::nullopt;
+        tail.remove_prefix(startField.size());
+        if(tail.empty()||tail.front()<L'1'||tail.front()>L'9')return std::nullopt;
+        std::uint64_t generation=0;
+        std::size_t count=0;
+        while(count<tail.size()&&tail[count]>=L'0'&&tail[count]<=L'9'){
+            const auto next=static_cast<std::uint64_t>(tail[count]-L'0');
+            if(generation>(UINT64_MAX-next)/10)return std::nullopt;
+            generation=generation*10+next;count++;
+        }
+        tail.remove_prefix(count);
+        if(tail!=endField)return std::nullopt;
+        UiWireMessage ready{UiWireKind::UiActivationReady};
+        ready.generation=generation;
+        return ready;
     }
     // JS supplies no path, engine identity, permission or ticket.
     if(kind==L"binding-select" && tail==L"}")
