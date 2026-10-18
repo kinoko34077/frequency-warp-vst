@@ -14,12 +14,17 @@
 #include <wrl.h>
 #include <wrl/client.h>
 #include <filesystem>
+#include <fstream>
+#include <commdlg.h>
+#include <vector>
+#include <algorithm>
 #include <cstring>
 #include <array>
 #include <sstream>
 #include <locale>
 #include <iomanip>
 #include "web_ui_message.h"
+#include "native_binding_flow.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -41,6 +46,11 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // Invoked on GUI STA. Native Controller queries the Processor and
         // returns a recent worker+saved-FWS3 mask or zero, never JS claims.
         std::function<std::uint64_t()> verifiedGenericMask{};
+        std::function<std::uint64_t(const std::vector<std::uint8_t>&)> prepareBinding{};
+        std::function<bool(std::uint64_t)> commitBinding{};
+        std::function<NewBindingStatus()> pollBinding{};
+        NativeBindingFlow bindingFlow{};
+        std::string displayedBindingPhase{};
         std::array<bool,128> editing{};
         bool uiReady=false;
     };
@@ -67,9 +77,83 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if (state && state->alive && IsWindow(state->child))
             SetWindowTextW(state->child,detail);
     }
+    // Only the native Controller/Worker owns binding state and request IDs.
+    static void sendBindingPhase(Shared& state,const char* phase) {
+        if(!state.uiReady||!state.view||state.displayedBindingPhase==phase)return;
+        state.displayedBindingPhase=phase;
+        const std::string json=std::string(
+            R"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-state","phase":")")
+            +phase+R"("})";
+        const std::wstring wire(json.begin(),json.end());
+        state.view->PostWebMessageAsJson(wire.c_str());
+    }
+    static void endAllEdits(Shared& state) {
+        if(!state.host)return;
+        for(std::uint32_t id=0;id<128;id++)if(state.editing[id]) {
+            state.host->endEdit(id);state.editing[id]=false;
+        }
+    }
+    static void pollBindingStatus(Shared& state) {
+        if(state.pollBinding && state.bindingFlow.request())
+            state.bindingFlow.observe(state.pollBinding());
+        switch(state.bindingFlow.phase()) {
+        case NativeBindingFlow::Phase::Idle: sendBindingPhase(state,"idle");break;
+        case NativeBindingFlow::Phase::Preparing: sendBindingPhase(state,"preparing");break;
+        case NativeBindingFlow::Phase::NeedsConfirmation: sendBindingPhase(state,"confirm");break;
+        case NativeBindingFlow::Phase::Committing: sendBindingPhase(state,"committing");break;
+        case NativeBindingFlow::Phase::Accepted: sendBindingPhase(state,"accepted");break;
+        case NativeBindingFlow::Phase::Rejected: sendBindingPhase(state,"rejected");break;
+        }
+    }
+    // The OS picker, never the HTML, supplies descriptor file contents.
+    static void selectBinding(Shared& state) {
+        if(!state.prepareBinding||!state.child) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        const auto phase=state.bindingFlow.phase();
+        if(phase==NativeBindingFlow::Phase::Preparing ||
+           phase==NativeBindingFlow::Phase::NeedsConfirmation ||
+           phase==NativeBindingFlow::Phase::Committing)return;
+        wchar_t filename[32768]{};
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=state.child;
+        dialog.lpstrFile=filename;dialog.nMaxFile=32768;
+        dialog.lpstrFilter=L"Engine binding JSON (*.json)\0*.json\0\0";
+        dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+        if(!GetOpenFileNameW(&dialog))return;
+        const std::filesystem::path filePath{filename};
+        if(_wcsicmp(filePath.extension().c_str(),L".json")!=0) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        std::ifstream input(filePath,std::ios::binary|std::ios::ate);
+        if(!input){sendBindingPhase(state,"rejected");return;}
+        const auto size=input.tellg();
+        if(size<=0||size>65536){sendBindingPhase(state,"rejected");return;}
+        input.seekg(0);
+        std::vector<std::uint8_t> bytes(static_cast<size_t>(size));
+        if(!input.read(reinterpret_cast<char*>(bytes.data()),size) ||
+           std::find(bytes.begin(),bytes.end(),0)!=bytes.end()) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        const auto request=state.prepareBinding(bytes);
+        if(!state.bindingFlow.begin(request)) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        pollBindingStatus(state);
+    }
+    static void confirmBinding(Shared& state) {
+        if(!state.commitBinding||!state.bindingFlow.canConfirm())return;
+        if(!state.commitBinding(state.bindingFlow.request())) {
+            state.bindingFlow.invalidate();
+            sendBindingPhase(state,"rejected");return;
+        }
+        state.bindingFlow.confirmQueued();
+        pollBindingStatus(state);
+    }
     // Always run on the VST3 GUI/COM STA. Never touch audio callbacks here.
     static void sendSnapshot(Shared& state) {
         if(!state.alive||!state.uiReady||!state.view||!state.host)return;
+        pollBindingStatus(state);
         std::ostringstream json;
         json.imbue(std::locale::classic());
         json.precision(17);
@@ -114,8 +198,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!msg)return;
         if(msg->kind==UiWireKind::Hello){
             state.uiReady=true;
+            state.displayedBindingPhase.clear();
             sendSnapshot(state);
             return;
+        }
+        if(msg->kind==UiWireKind::SelectBinding) {
+            selectBinding(state);return;
+        }
+        if(msg->kind==UiWireKind::ConfirmBinding) {
+            confirmBinding(state);return;
         }
         // Generic DAW edits are native-masked against the latest verified,
         // same-project FWS3 and live worker permission, NEVER page metadata.
