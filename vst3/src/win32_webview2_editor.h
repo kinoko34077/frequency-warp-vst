@@ -379,6 +379,22 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!state.alive||!state.host||state.modalOpen)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
+        if(msg->kind==UiWireKind::UiActivationReady){
+            if(state.navigationLoaded && state.uiActivation.accept(
+                    msg->generation,1,true,true)) {
+                state.activationStarted=0;
+                state.uiReady=true;
+                state.displayedBindingPhase.clear();
+                sendSnapshot(state);
+            }
+            return;
+        }
+        // Until the current native-snapshot/bridge handshake is verified,
+        // *no* DOM gesture, binding or hello can edit the DAW state.
+        if(state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
+            return;
+        if(msg->kind==UiWireKind::UiSelect){selectApprovedUi(state);return;}
+        if(msg->kind==UiWireKind::UiBack){selectPreviousUi(state);return;}
         if(msg->kind==UiWireKind::Hello){
             state.uiReady=true;
             state.displayedBindingPhase.clear();
@@ -431,7 +447,12 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
-            if(state)sendSnapshot(*state);
+            if(state) {
+                if(state->activationStarted &&
+                   GetTickCount64()-state->activationStarted>8000)
+                    rollbackUi(*state);
+                sendSnapshot(*state);
+            }
             return 0;
         }
         return DefSubclassProc(hwnd,message,w,l);
@@ -627,9 +648,12 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             if(!liveNav||!liveNav->alive)return S_OK;
                                             BOOL ok=FALSE;
                                             if(FAILED(args->get_IsSuccess(&ok))||!ok){
-                                                showError(liveNav,L"Frequency Warp local website load failed.");
+                                                if(liveNav->uiActivation.pendingGeneration())
+                                                    rollbackUi(*liveNav);
+                                                else showError(liveNav,L"Frequency Warp local website load failed.");
                                                 return S_OK;
                                             }
+                                            liveNav->navigationLoaded=true;
                                             // Keep the web player in DOM for existing JS handlers,
                                             // but hide its file-preview panel inside the DAW.
                                             browser->ExecuteScript(
@@ -728,6 +752,7 @@ public:
         }
         if(state_->controller)state_->controller->Close();
         state_->uiActivation.editorDetached();
+        state_->activationStarted=0;state_->navigationLoaded=false;
         state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
         DestroyWindow(state_->child);
         state_->child=nullptr;
