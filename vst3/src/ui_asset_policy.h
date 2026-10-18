@@ -10,6 +10,12 @@
 #include <set>
 #include <string>
 #include <system_error>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace fw {
 namespace ui_assets {
@@ -17,6 +23,16 @@ namespace fs=std::filesystem;
 constexpr std::uintmax_t kMaxFileBytes=8ull*1024*1024;
 constexpr std::uintmax_t kMaxTotalBytes=48ull*1024*1024;
 constexpr std::size_t kMaxFiles=1024;
+// Reparse points include NTFS junctions not covered by fs::is_symlink.
+inline bool hasUnsafeReparsePoint(const fs::path& path) noexcept {
+#ifdef _WIN32
+    const auto attributes=GetFileAttributesW(path.c_str());
+    return attributes==INVALID_FILE_ATTRIBUTES ||
+        (attributes&FILE_ATTRIBUTE_REPARSE_POINT)!=0;
+#else
+    (void)path;return false;
+#endif
+}
 struct Candidate {
     std::size_t files=0;
     std::uintmax_t bytes=0;
@@ -39,7 +55,7 @@ inline bool allowedExtension(const fs::path& p) {
 inline bool inspectCandidate(const fs::path& root,Candidate& out) noexcept {
     try {
         if(root.empty()||!fs::exists(root)||fs::is_symlink(fs::symlink_status(root))||
-           !fs::is_directory(root))return false;
+           hasUnsafeReparsePoint(root)||!fs::is_directory(root))return false;
         Candidate checked{};
         auto iterator=fs::recursive_directory_iterator(
             root,fs::directory_options::none);
@@ -47,7 +63,7 @@ inline bool inspectCandidate(const fs::path& root,Candidate& out) noexcept {
         for(;iterator!=end;++iterator) {
             const auto& entry=*iterator;
             const auto type=entry.symlink_status();
-            if(fs::is_symlink(type))return false; // includes escaping symlinks
+            if(fs::is_symlink(type)||hasUnsafeReparsePoint(entry.path()))return false;
             if(fs::is_directory(type))continue;
             if(!fs::is_regular_file(type))return false;
             const auto relative=entry.path().lexically_relative(root);
