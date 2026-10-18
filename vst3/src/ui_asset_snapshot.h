@@ -33,6 +33,8 @@ struct PinnedSnapshot {
     std::uint32_t version=0;
     std::vector<PinnedFile> files; // immutable via shared_ptr<const Snapshot>
 };
+// Non-RT GUI/thread-confined transaction: output must not be read or
+// concurrently reassigned by another thread without caller synchronization.
 // In production provide the existing native Rust sha2 verifier via
 // fw_native_sha256_bytes. The portable tests inject a deterministic fake to
 // isolate the file/manifest transaction; Rust SHA-256 has separate vectors.
@@ -54,7 +56,15 @@ inline bool validPinnedRelativePath(const std::string& path) noexcept {
         if(length==0)return false;
         const auto part=path.substr(start,length);
         if(part=="."||part==".."||part.front()=='.'||
-           part.back()==' '||part.back()=='.')return false;
+           part.back()==' '||part.back()=='.'||
+           part.find('~')!=std::string::npos)return false;
+        // Windows device aliases (including CON.txt) cannot be accepted.
+        auto stem=part.substr(0,part.find('.'));
+        for(char& c:stem)if(c>='a'&&c<='z')c=static_cast<char>(c-'a'+'A');
+        if(stem=="CON"||stem=="PRN"||stem=="AUX"||stem=="NUL"||
+           (stem.size()==4 &&
+            ((stem.substr(0,3)=="COM")||(stem.substr(0,3)=="LPT"))&&
+            stem[3]>='1'&&stem[3]<='9'))return false;
         if(end==std::string::npos)break;
         start=end+1;
     }
@@ -104,7 +114,7 @@ inline bool stagePinnedCandidate(const fs::path& root,
             for(const auto& part:relative){
                 current/=part;
                 const auto type=fs::symlink_status(current);
-                if(fs::is_symlink(type))return false;
+                if(fs::is_symlink(type)||hasUnsafeReparsePoint(current))return false;
             }
             if(!fs::is_regular_file(current)||
                fs::file_size(current)!=expected.bytes)return false;
