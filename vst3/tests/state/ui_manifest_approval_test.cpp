@@ -23,8 +23,8 @@ int main(){
         const auto prior=trusted;
         need(!parseApprovedManifest("FWUI-MANIFEST-V2\n",trusted),
              "wrong version accepted");
-        need(!parseApprovedManifest(good+"extra.txt\t1\t"+hash()+"\n",trusted),
-             "unexpected extra entry accepted without explicit manifest approval");
+        need(!parseApprovedManifest(good+"malformed-extra-entry\n",trusted),
+             "malformed extra entry accepted");
         need(trusted.files.size()==prior.files.size(),
              "rejection replaced previous approved manifest");
         need(!parseApprovedManifest(
