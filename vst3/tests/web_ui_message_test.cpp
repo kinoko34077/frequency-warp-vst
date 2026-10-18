@@ -21,7 +21,15 @@ int main(){
     const auto end=parseUiWireMessage(
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"edit-end","id":5})");
     require(end && end->kind==UiWireKind::End&&end->id==5,"end 5");
+    const auto select=parseUiWireMessage(
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-select"})");
+    const auto confirm=parseUiWireMessage(
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-confirm"})");
+    require(select && select->kind==UiWireKind::SelectBinding,"native-only picker");
+    require(confirm && confirm->kind==UiWireKind::ConfirmBinding,"explicit confirm");
     for(auto bad:{
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-select","path":"C:/unsafe"})",
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-confirm","ticket":1})",
         LR"({"protocol":"untrusted","kind":"edit-perform","id":5,"value":0.5})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"evil","id":4})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"edit-perform","id":128,"value":0.5})",
