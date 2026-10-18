@@ -4,6 +4,10 @@ on:
     paths:
       - 'vst3/src/ui_asset_policy.h'
       - 'vst3/src/ui_asset_snapshot.h'
+      - 'vst3/src/ui_manifest_approval.h'
+      - 'vst3/src/ui_pinned_resource_router.h'
+      - 'vst3/src/ui_activation_transaction.h'
+      - 'vst3/tools/**'
       - 'vst3/src/native_engine_abi.h'
       - 'fwengine-runtime/src/ffi.rs'
       - 'vst3/src/native_binding_flow.h'
@@ -17,6 +21,10 @@ on:
     paths:
       - 'vst3/src/ui_asset_policy.h'
       - 'vst3/src/ui_asset_snapshot.h'
+      - 'vst3/src/ui_manifest_approval.h'
+      - 'vst3/src/ui_pinned_resource_router.h'
+      - 'vst3/src/ui_activation_transaction.h'
+      - 'vst3/tools/**'
       - 'vst3/src/native_engine_abi.h'
       - 'fwengine-runtime/src/ffi.rs'
       - 'vst3/src/native_binding_flow.h'
@@ -48,5 +56,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Test native FWUI manifest generation with no network
+        run: node --test vst3/tools/create-fwui-manifest.test.mjs
       - name: Verify actual native sha2 FFI golden vectors
         run: cargo test --manifest-path fwengine-runtime/Cargo.toml --lib ui_sha256_tests::sha256_vectors_and_invalid_outputs
