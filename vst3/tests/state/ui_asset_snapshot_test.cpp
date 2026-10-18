@@ -47,17 +47,17 @@ int main(){
         TrustedManifest trusted{1,{expected("index.html",html),
                                    expected("host-bridge.mjs",js),
                                    expected("asset/theme.css",css)}};
-        PinnedSnapshot accepted{};
+        std::shared_ptr<const PinnedSnapshot> accepted;
         need(stagePinnedCandidate(root,trusted,fakeDigest,accepted),
              "known manifest does not stage");
-        need(accepted.version==1&&accepted.files.size()==3,"incorrect pinned snapshot");
-        need(std::string(accepted.files[0].bytes.begin(),
-                         accepted.files[0].bytes.end())==html,"pinned content differs");
-        const auto pinnedHtml=accepted.files[0].bytes;
+        need(accepted->version==1&&accepted->files.size()==3,"incorrect pinned snapshot");
+        need(std::string(accepted->files[0].bytes.begin(),
+                         accepted->files[0].bytes.end())==html,"pinned content differs");
+        const auto pinnedHtml=accepted->files[0].bytes;
         write(root/"index.html",html+" CHANGED");
         need(!stagePinnedCandidate(root,trusted,fakeDigest,accepted),
              "post-manifest mutation accepted");
-        need(accepted.files[0].bytes==pinnedHtml,"failure destroyed last-good snapshot");
+        need(accepted->files[0].bytes==pinnedHtml,"failure destroyed last-good snapshot");
         write(root/"index.html",html);
         TrustedManifest bad=trusted;
         bad.files[0].sha256[0]^=1;
@@ -91,7 +91,7 @@ int main(){
         }
         need(stagePinnedCandidate(root,trusted,fakeDigest,accepted),
              "legitimate candidate not recoverable after failures");
-        need(accepted.files[0].bytes==pinnedHtml,
+        need(accepted->files[0].bytes==pinnedHtml,
              "recovery changed prior approved bytes");
         std::cout<<"UI-5B1 candidate pinning and transactional rollback PASS\n";
     }catch(const std::exception& e) {
