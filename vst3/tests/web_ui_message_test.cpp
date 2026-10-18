@@ -27,7 +27,22 @@ int main(){
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-confirm"})");
     require(select && select->kind==UiWireKind::SelectBinding,"native-only picker");
     require(confirm && confirm->kind==UiWireKind::ConfirmBinding,"explicit confirm");
+    const auto chooseUi=parseUiWireMessage(
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-select"})");
+    const auto backUi=parseUiWireMessage(
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-back"})");
+    const auto readyUi=parseUiWireMessage(
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":12,"version":1})");
+    require(chooseUi&&chooseUi->kind==UiWireKind::UiSelect,"native-only UI picker");
+    require(backUi&&backUi->kind==UiWireKind::UiBack,"native-only UI Back");
+    require(readyUi&&readyUi->kind==UiWireKind::UiActivationReady&&
+            readyUi->generation==12,"generation-correlated UI handshake");
     for(auto bad:{
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-select","path":"x"})",
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-back","target":1})",
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":0,"version":1})",
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":1,"version":2})",
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":01,"version":1})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-select","path":"C:/unsafe"})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-confirm","ticket":1})",
         LR"({"protocol":"untrusted","kind":"edit-perform","id":5,"value":0.5})",
