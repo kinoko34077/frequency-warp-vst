@@ -26,6 +26,8 @@
 #include <iomanip>
 #include "web_ui_message.h"
 #include "native_binding_flow.h"
+#include "ui_activation_transaction.h"
+#include "ui_pinned_resource_router.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -42,6 +44,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         bool alive=true;
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> view;
+        ComPtr<ICoreWebView2Environment> environment;
+        ui_assets::UiActivationTransaction uiActivation{};
         std::filesystem::path siteRoot;
         Steinberg::Vst::EditController* host=nullptr;
         // Invoked on GUI STA. Native Controller queries the Processor and
@@ -331,6 +335,61 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         }
         return DefSubclassProc(hwnd,message,w,l);
     }
+    // Serve only immutable, digest-verified snapshot bytes when the native
+    // activation transaction has a candidate or active image. A 404 / 403
+    // response MUST be explicitly set; otherwise WebView2 falls through to
+    // mutable virtual-host folder mapping or the network.
+    static HRESULT pinnedResourceResponse(
+        Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
+        if(!args||!state.environment)return E_INVALIDARG;
+        ComPtr<ICoreWebView2WebResourceRequest> request;
+        if(FAILED(args->get_Request(&request))||!request)return E_FAIL;
+        LPWSTR raw=nullptr;
+        if(FAILED(request->get_Uri(&raw)))return E_FAIL;
+        const std::wstring uri=raw?raw:L"";
+        CoTaskMemFree(raw);
+        std::string ascii;
+        ascii.reserve(uri.size());
+        bool isAscii=true;
+        for(const wchar_t c:uri){
+            if(c<0x21||c>0x7e){isAscii=false;break;}
+            ascii.push_back(static_cast<char>(c));
+        }
+        const auto& tx=state.uiActivation;
+        const auto pinned=tx.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake
+            ?tx.pending():tx.active();
+        const bool local=isAscii && ascii.rfind("https://fwvst.local/",0)==0;
+        if(!pinned&&local)return S_OK; // existing bundled offline mode only
+        const auto found=local?ui_assets::findPinnedResource(pinned,ascii)
+                              :ui_assets::RoutedResource{};
+        const int status=found.file?200:(local?404:403);
+        ComPtr<IStream> stream;
+        if(found.file) {
+            const auto& bytes=found.file->bytes;
+            HGLOBAL owned=GlobalAlloc(GMEM_MOVEABLE,bytes.empty()?1:bytes.size());
+            if(!owned)return E_OUTOFMEMORY;
+            void* address=GlobalLock(owned);
+            if(!address){GlobalFree(owned);return E_OUTOFMEMORY;}
+            if(!bytes.empty())std::memcpy(address,bytes.data(),bytes.size());
+            GlobalUnlock(owned);
+            if(FAILED(CreateStreamOnHGlobal(owned,TRUE,&stream))){
+                GlobalFree(owned);return E_FAIL;
+            }
+        }
+        std::wstring mimeHeaders=L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+        if(found.mime) {
+            mimeHeaders=L"Content-Type: ";
+            for(const char* p=found.mime;*p;p++)
+                mimeHeaders.push_back(static_cast<wchar_t>(*p));
+            mimeHeaders+=L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+        }
+        ComPtr<ICoreWebView2WebResourceResponse> response;
+        const auto ok=state.environment->CreateWebResourceResponse(
+            stream.Get(),status,status==200?L"OK":L"Denied",
+            mimeHeaders.c_str(),&response);
+        if(FAILED(ok)||!response)return E_FAIL;
+        return args->put_Response(response.Get());
+    }
     static void createBrowser(const std::shared_ptr<Shared>& state) {
         std::weak_ptr<Shared> weak=state;
         const std::wstring profile=
@@ -347,13 +406,14 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                     std::weak_ptr<Shared> sub=live;
                     const HRESULT started=env->CreateCoreWebView2Controller(live->child,
                         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                            [sub](HRESULT status,ICoreWebView2Controller* ctrl)->HRESULT {
+                            [sub,ownEnv=ComPtr<ICoreWebView2Environment>(env)](HRESULT status,ICoreWebView2Controller* ctrl)->HRESULT {
                                 auto target=sub.lock();
                                 if(!target || !target->alive)return S_OK;
                                 if(FAILED(status)||!ctrl) {
                                     showError(target,L"WebView2 controller failed. Native file UI remains available.");return S_OK;
                                 }
                                 target->controller=ctrl;
+                                target->environment=ownEnv;
                                 if(FAILED(ctrl->get_CoreWebView2(&target->view))||!target->view) {
                                     showError(target,L"WebView2 browser creation failed.");return S_OK;
                                 }
@@ -371,6 +431,24 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                       L"fwvst.local",target->siteRoot.c_str(),
                                       COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
                                     showError(target,L"Local Web UI mapping unsupported.");return S_OK;
+                                }
+                                // Intercept *all* network/resource requests before navigation.
+                                // No request may silently fall through after pinned activation.
+                                if(FAILED(target->view->AddWebResourceRequestedFilter(
+                                    L"*",COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL))) {
+                                    showError(target,L"Resource interception unavailable.");return S_OK;
+                                }
+                                std::weak_ptr<Shared> resources=target;
+                                EventRegistrationToken resourceToken{};
+                                if(FAILED(target->view->add_WebResourceRequested(
+                                    Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+                                        [resources](ICoreWebView2*,
+                                            ICoreWebView2WebResourceRequestedEventArgs* args)->HRESULT {
+                                            const auto current=resources.lock();
+                                            if(!current||!current->alive)return E_ABORT;
+                                            return pinnedResourceResponse(*current,args);
+                                        }).Get(),&resourceToken))) {
+                                    showError(target,L"Web resource interception failed.");return S_OK;
                                 }
                                 // Accept only trusted top-level local page messages.
                                 // Slot and numeric validation additionally occur in
@@ -548,7 +626,8 @@ public:
             state_->host=nullptr;
         }
         if(state_->controller)state_->controller->Close();
-        state_->view.Reset();state_->controller.Reset();
+        state_->uiActivation.editorDetached();
+        state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
         DestroyWindow(state_->child);
         state_->child=nullptr;
         systemWindow=nullptr;
