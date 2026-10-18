@@ -25,6 +25,7 @@
 #include <iomanip>
 #include "web_ui_message.h"
 #include "native_binding_flow.h"
+#include "native_engine_abi.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -54,6 +55,18 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         std::array<bool,128> editing{};
         bool uiReady=false;
         bool hasFocus=false;
+        bool modalOpen=false;
+        std::wstring preparedFile{};
+        std::wstring preparedDigest{};
+    };
+    // Native file and confirmation dialogs pump host messages. Re-entrant
+    // JS commands cannot initiate a second transaction during a modal loop.
+    struct ModalGuard final {
+        Shared& state;
+        explicit ModalGuard(Shared& s):state(s){state.modalOpen=true;}
+        ~ModalGuard(){state.modalOpen=false;}
+        ModalGuard(const ModalGuard&)=delete;
+        ModalGuard& operator=(const ModalGuard&)=delete;
     };
     std::shared_ptr<Shared> state_=std::make_shared<Shared>();
     bool ownsCom_=false;
@@ -117,14 +130,21 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(phase==NativeBindingFlow::Phase::Preparing ||
            phase==NativeBindingFlow::Phase::NeedsConfirmation ||
            phase==NativeBindingFlow::Phase::Committing)return;
-        wchar_t filename[32768]{};
+        std::vector<wchar_t> filename(32768,L'\0');
         OPENFILENAMEW dialog{};
         dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=state.child;
-        dialog.lpstrFile=filename;dialog.nMaxFile=32768;
+        dialog.lpstrFile=filename.data();dialog.nMaxFile=static_cast<DWORD>(filename.size());
         dialog.lpstrFilter=L"Engine binding JSON (*.json)\0*.json\0\0";
         dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
-        if(!GetOpenFileNameW(&dialog))return;
-        const std::filesystem::path filePath{filename};
+        bool selected=false;
+        {
+            ModalGuard modal(state);
+            selected=GetOpenFileNameW(&dialog)!=FALSE;
+        }
+        // DAW may remove the editor while the native chooser pumps messages.
+        if(!state.alive||!state.child||!IsWindow(state.child))return;
+        if(!selected)return;
+        const std::filesystem::path filePath{filename.data()};
         if(_wcsicmp(filePath.extension().c_str(),L".json")!=0) {
             sendBindingPhase(state,"rejected");return;
         }
@@ -138,24 +158,41 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
            std::find(bytes.begin(),bytes.end(),0)!=bytes.end()) {
             sendBindingPhase(state,"rejected");return;
         }
+        std::array<std::uint8_t,32> sha{};
+        if(!fw_native_sha256_bytes(bytes.data(),bytes.size(),sha.data(),sha.size())) {
+            sendBindingPhase(state,"rejected");return;
+        }
         const auto request=state.prepareBinding(bytes);
         if(!state.bindingFlow.begin(request)) {
             sendBindingPhase(state,"rejected");return;
         }
+        state.preparedFile=filePath.filename().wstring();
+        std::wostringstream digestLabel;
+        digestLabel<<std::hex<<std::setfill(L'0');
+        // Short fingerprint for visual disambiguation only, not Worker authority.
+        for(std::size_t i=0;i<8;i++)
+            digestLabel<<std::setw(2)<<static_cast<unsigned>(sha[i]);
+        state.preparedDigest=digestLabel.str();
         pollBindingStatus(state,0);
     }
     static void confirmBinding(Shared& state) {
         if(!state.commitBinding||!state.bindingFlow.canConfirm()||!state.child)return;
-        // An untrusted local script may post a wire command on its own.
-        // Only a real native modal YES is the user's explicit commit intent.
-        if(MessageBoxW(state.child,
-           L"Save this Worker-verified binding into the DAW project?\n"
-           L"Choose No to keep existing audio and state unchanged.",
-           L"Confirm FWS3 Binding",
-           MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES)return;
-        // Worker/Controller revalidate request, generation and current ticket
-        // after the dialog (including any host focus/engine change).
-        if(!state.commitBinding(state.bindingFlow.request())) {
+        const auto originalRequest=state.bindingFlow.request();
+        const std::wstring label=L"File: "+state.preparedFile+
+            L"\nSHA-256 prefix: "+state.preparedDigest+
+            L"\nSave this Worker-verified binding to the DAW project?"+
+            L"\nNo keeps the existing project unchanged.";
+        int selected=IDNO;
+        {
+            ModalGuard modal(state);
+            selected=MessageBoxW(state.child,label.c_str(),
+                L"Confirm FWS3 Binding",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||
+           selected!=IDYES||!state.bindingFlow.canConfirm()||
+           state.bindingFlow.request()!=originalRequest)return;
+        // Worker/Controller revalidate request, generation and current ticket.
+        if(!state.commitBinding(originalRequest)) {
             state.bindingFlow.invalidate();
             sendBindingPhase(state,"rejected");return;
         }
@@ -205,7 +242,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.view->PostWebMessageAsJson(message.c_str());
     }
     static void receive(Shared& state,std::wstring_view raw) {
-        if(!state.alive||!state.host)return;
+        if(!state.alive||!state.host||state.modalOpen)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
         if(msg->kind==UiWireKind::Hello){
@@ -222,8 +259,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             if(state.hasFocus)confirmBinding(state);
             return;
         }
-        // Blur/navigation must not permit a new gesture from queued JS input.
-        if(!state.hasFocus && msg->kind!=UiWireKind::End)return;
+        // Host mouse automation does not necessarily grant WebView keyboard
+        // focus. Only OS-sensitive picker and confirmation need focus.
         // Generic DAW edits are native-masked against the latest verified,
         // same-project FWS3 and live worker permission, NEVER page metadata.
         const auto id=msg->id;
@@ -469,6 +506,10 @@ public:
     Steinberg::tresult PLUGIN_API removed() override {
         if(!state_->child)return Steinberg::kResultFalse;
         state_->alive=false;
+        state_->bindingFlow.invalidate();
+        state_->preparedFile.clear();state_->preparedDigest.clear();
+        state_->prepareBinding={};state_->commitBinding={};
+        state_->pollBinding={};state_->verifiedGenericMask={};
         KillTimer(state_->child,1);
         RemoveWindowSubclass(state_->child,browserWindowProc,
             reinterpret_cast<UINT_PTR>(this));
