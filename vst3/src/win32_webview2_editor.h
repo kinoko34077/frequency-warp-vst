@@ -9,17 +9,23 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <bcrypt.h>
 #include <commctrl.h>
 #include <WebView2.h>
 #include <wrl.h>
 #include <wrl/client.h>
 #include <filesystem>
+#include <fstream>
+#include <commdlg.h>
+#include <vector>
+#include <algorithm>
 #include <cstring>
 #include <array>
 #include <sstream>
 #include <locale>
 #include <iomanip>
 #include "web_ui_message.h"
+#include "native_binding_flow.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -41,8 +47,26 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // Invoked on GUI STA. Native Controller queries the Processor and
         // returns a recent worker+saved-FWS3 mask or zero, never JS claims.
         std::function<std::uint64_t()> verifiedGenericMask{};
+        std::function<std::uint64_t(const std::vector<std::uint8_t>&)> prepareBinding{};
+        std::function<bool(std::uint64_t)> commitBinding{};
+        std::function<NewBindingStatus()> pollBinding{};
+        NativeBindingFlow bindingFlow{};
+        std::string displayedBindingPhase{};
         std::array<bool,128> editing{};
         bool uiReady=false;
+        bool hasFocus=false;
+        bool modalOpen=false;
+        std::wstring preparedFile{};
+        std::wstring preparedDigest{};
+    };
+    // Native file and confirmation dialogs pump host messages. Re-entrant
+    // JS commands cannot initiate a second transaction during a modal loop.
+    struct ModalGuard final {
+        Shared& state;
+        explicit ModalGuard(Shared& s):state(s){state.modalOpen=true;}
+        ~ModalGuard(){state.modalOpen=false;}
+        ModalGuard(const ModalGuard&)=delete;
+        ModalGuard& operator=(const ModalGuard&)=delete;
     };
     std::shared_ptr<Shared> state_=std::make_shared<Shared>();
     bool ownsCom_=false;
@@ -67,14 +91,152 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if (state && state->alive && IsWindow(state->child))
             SetWindowTextW(state->child,detail);
     }
+    // Only the native Controller/Worker owns binding state and request IDs.
+    static void sendBindingPhase(Shared& state,const char* phase) {
+        if(!state.uiReady||!state.view||state.displayedBindingPhase==phase)return;
+        state.displayedBindingPhase=phase;
+        const std::string json=std::string(
+            R"({"protocol":"frequency-warp.host-ui.v1","kind":"binding-state","phase":")")
+            +phase+R"("})";
+        const std::wstring wire(json.begin(),json.end());
+        state.view->PostWebMessageAsJson(wire.c_str());
+    }
+    static void endAllEdits(Shared& state) {
+        if(!state.host)return;
+        for(std::uint32_t id=0;id<128;id++)if(state.editing[id]) {
+            state.host->endEdit(id);state.editing[id]=false;
+        }
+    }
+    static void pollBindingStatus(Shared& state,std::uint64_t currentMask) {
+        if(state.pollBinding && state.bindingFlow.request())
+            state.bindingFlow.observe(state.pollBinding());
+        switch(state.bindingFlow.phase()) {
+        case NativeBindingFlow::Phase::Idle: sendBindingPhase(state,"idle");break;
+        case NativeBindingFlow::Phase::Preparing: sendBindingPhase(state,"preparing");break;
+        case NativeBindingFlow::Phase::NeedsConfirmation: sendBindingPhase(state,"confirm");break;
+        case NativeBindingFlow::Phase::Committing: sendBindingPhase(state,"committing");break;
+        case NativeBindingFlow::Phase::Accepted:
+            sendBindingPhase(state,currentMask!=0 ? "accepted":"inactive");
+            break;
+        case NativeBindingFlow::Phase::Rejected: sendBindingPhase(state,"rejected");break;
+        }
+    }
+    // CNG is supplied by Windows and already linked through bcrypt.lib.
+    // Only a short visual fingerprint is shown; Worker remains authoritative.
+    static bool visualSha256(const std::vector<std::uint8_t>& data,
+                             std::array<std::uint8_t,32>& sha) noexcept {
+        BCRYPT_ALG_HANDLE algorithm=nullptr;
+        BCRYPT_HASH_HANDLE hash=nullptr;
+        bool ok=false;
+        if(!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(
+            &algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)))return false;
+        ULONG objectSize=0,returned=0;
+        if(BCRYPT_SUCCESS(BCryptGetProperty(algorithm,BCRYPT_OBJECT_LENGTH,
+                reinterpret_cast<PUCHAR>(&objectSize),sizeof(objectSize),
+                &returned,0)) && returned==sizeof(objectSize) &&
+           objectSize>0 && objectSize<=65536) {
+            std::vector<UCHAR> object(objectSize);
+            if(BCRYPT_SUCCESS(BCryptCreateHash(algorithm,&hash,
+                object.data(),objectSize,nullptr,0,0))) {
+                if(BCRYPT_SUCCESS(BCryptHashData(hash,
+                    const_cast<PUCHAR>(data.data()),
+                    static_cast<ULONG>(data.size()),0)) &&
+                   BCRYPT_SUCCESS(BCryptFinishHash(hash,sha.data(),
+                                                  static_cast<ULONG>(sha.size()),0)))
+                    ok=true;
+            }
+            if(hash)BCryptDestroyHash(hash);
+        }
+        BCryptCloseAlgorithmProvider(algorithm,0);
+        return ok;
+    }
+    // The OS picker, never the HTML, supplies descriptor file contents.
+    static void selectBinding(Shared& state) {
+        if(!state.prepareBinding||!state.child) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        const auto phase=state.bindingFlow.phase();
+        if(phase==NativeBindingFlow::Phase::Preparing ||
+           phase==NativeBindingFlow::Phase::NeedsConfirmation ||
+           phase==NativeBindingFlow::Phase::Committing)return;
+        std::vector<wchar_t> filename(32768,L'\0');
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=state.child;
+        dialog.lpstrFile=filename.data();dialog.nMaxFile=static_cast<DWORD>(filename.size());
+        dialog.lpstrFilter=L"Engine binding JSON (*.json)\0*.json\0\0";
+        dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+        bool selected=false;
+        {
+            ModalGuard modal(state);
+            selected=GetOpenFileNameW(&dialog)!=FALSE;
+        }
+        // DAW may remove the editor while the native chooser pumps messages.
+        if(!state.alive||!state.child||!IsWindow(state.child))return;
+        if(!selected)return;
+        const std::filesystem::path filePath{filename.data()};
+        if(_wcsicmp(filePath.extension().c_str(),L".json")!=0) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        std::ifstream input(filePath,std::ios::binary|std::ios::ate);
+        if(!input){sendBindingPhase(state,"rejected");return;}
+        const auto size=input.tellg();
+        if(size<=0||size>65536){sendBindingPhase(state,"rejected");return;}
+        input.seekg(0);
+        std::vector<std::uint8_t> bytes(static_cast<size_t>(size));
+        if(!input.read(reinterpret_cast<char*>(bytes.data()),size) ||
+           std::find(bytes.begin(),bytes.end(),0)!=bytes.end()) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        std::array<std::uint8_t,32> sha{};
+        if(!visualSha256(bytes,sha)) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        const auto request=state.prepareBinding(bytes);
+        if(!state.bindingFlow.begin(request)) {
+            sendBindingPhase(state,"rejected");return;
+        }
+        state.preparedFile=filePath.filename().wstring();
+        std::wostringstream digestLabel;
+        digestLabel<<std::hex<<std::setfill(L'0');
+        // Short fingerprint for visual disambiguation only, not Worker authority.
+        for(std::size_t i=0;i<8;i++)
+            digestLabel<<std::setw(2)<<static_cast<unsigned>(sha[i]);
+        state.preparedDigest=digestLabel.str();
+        pollBindingStatus(state,0);
+    }
+    static void confirmBinding(Shared& state) {
+        if(!state.commitBinding||!state.bindingFlow.canConfirm()||!state.child)return;
+        const auto originalRequest=state.bindingFlow.request();
+        const std::wstring label=L"File: "+state.preparedFile+
+            L"\nSHA-256 prefix: "+state.preparedDigest+
+            L"\nSave this Worker-verified binding to the DAW project?"+
+            L"\nNo keeps the existing project unchanged.";
+        int selected=IDNO;
+        {
+            ModalGuard modal(state);
+            selected=MessageBoxW(state.child,label.c_str(),
+                L"Confirm FWS3 Binding",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||
+           selected!=IDYES||!state.bindingFlow.canConfirm()||
+           state.bindingFlow.request()!=originalRequest)return;
+        // Worker/Controller revalidate request, generation and current ticket.
+        if(!state.commitBinding(originalRequest)) {
+            state.bindingFlow.invalidate();
+            sendBindingPhase(state,"rejected");return;
+        }
+        state.bindingFlow.confirmQueued();
+        pollBindingStatus(state,0);
+    }
     // Always run on the VST3 GUI/COM STA. Never touch audio callbacks here.
     static void sendSnapshot(Shared& state) {
         if(!state.alive||!state.uiReady||!state.view||!state.host)return;
+        const auto mask=state.verifiedGenericMask?
+            state.verifiedGenericMask():std::uint64_t{0};
+        pollBindingStatus(state,mask);
         std::ostringstream json;
         json.imbue(std::locale::classic());
         json.precision(17);
-        const auto mask=state.verifiedGenericMask?
-            state.verifiedGenericMask():std::uint64_t{0};
         // The browser may render normalized generic sliders, but may never
         // decide eligibility from external descriptor JSON or a raw WASM bit.
         json<<R"({"protocol":"frequency-warp.host-ui.v1","kind":"snapshot","genericSlots":[)";
@@ -109,14 +271,25 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.view->PostWebMessageAsJson(message.c_str());
     }
     static void receive(Shared& state,std::wstring_view raw) {
-        if(!state.alive||!state.host)return;
+        if(!state.alive||!state.host||state.modalOpen)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
         if(msg->kind==UiWireKind::Hello){
             state.uiReady=true;
+            state.displayedBindingPhase.clear();
             sendSnapshot(state);
             return;
         }
+        if(msg->kind==UiWireKind::SelectBinding) {
+            if(state.hasFocus)selectBinding(state);
+            return;
+        }
+        if(msg->kind==UiWireKind::ConfirmBinding) {
+            if(state.hasFocus)confirmBinding(state);
+            return;
+        }
+        // Host mouse automation does not necessarily grant WebView keyboard
+        // focus. Only OS-sensitive picker and confirmation need focus.
         // Generic DAW edits are native-masked against the latest verified,
         // same-project FWS3 and live worker permission, NEVER page metadata.
         const auto id=msg->id;
@@ -147,6 +320,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     static LRESULT CALLBACK browserWindowProc(HWND hwnd,UINT message,
                                                WPARAM w,LPARAM l,
                                                UINT_PTR,DWORD_PTR ref) {
+        if(message==WM_KILLFOCUS) {
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state) {state->hasFocus=false;endAllEdits(*state);}
+        }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state)sendSnapshot(*state);
@@ -220,6 +397,26 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             }
                                             return S_OK;
                                         }).Get(),&msgToken);
+                                EventRegistrationToken gotFocusToken{};
+                                target->controller->add_GotFocus(
+                                    Callback<ICoreWebView2FocusChangedEventHandler>(
+                                        [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
+                                            const auto owner=messageTarget.lock();
+                                            if(owner && owner->alive)owner->hasFocus=true;
+                                            return S_OK;
+                                        }).Get(),&gotFocusToken);
+                                // Browser focus loss may not reach the parent HWND.
+                                EventRegistrationToken focusToken{};
+                                target->controller->add_LostFocus(
+                                    Callback<ICoreWebView2FocusChangedEventHandler>(
+                                        [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
+                                            const auto owner=messageTarget.lock();
+                                            if(owner && owner->alive) {
+                                                owner->hasFocus=false;
+                                                endAllEdits(*owner);
+                                            }
+                                            return S_OK;
+                                        }).Get(),&focusToken);
                                 // Refuse navigation to external origins in the embedded UI.
                                 std::weak_ptr<Shared> nav=target;
                                 EventRegistrationToken navToken{};
@@ -236,6 +433,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 if(url.rfind(L"https://fwvst.local/",0)!=0)
                                                     args->put_Cancel(TRUE);
                                             }
+                                            endAllEdits(*liveNav);
+                                            liveNav->uiReady=false;
+                                            liveNav->hasFocus=false;
+                                            liveNav->displayedBindingPhase.clear();
                                             return S_OK;
                                         }).Get(),&navToken);
                                 EventRegistrationToken loadToken{};
@@ -280,9 +481,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
 public:
     explicit Win32WebView2Editor(
         Steinberg::Vst::EditController* controller,
-        std::function<std::uint64_t()> verifiedGenericMask={})
+        std::function<std::uint64_t()> verifiedGenericMask={},
+        std::function<std::uint64_t(const std::vector<std::uint8_t>&)> prepareBinding={},
+        std::function<bool(std::uint64_t)> commitBinding={},
+        std::function<NewBindingStatus()> pollBinding={})
         :EditorView(controller,&kWebUiEditorRect),editController_(controller){
         state_->verifiedGenericMask=std::move(verifiedGenericMask);
+        state_->prepareBinding=std::move(prepareBinding);
+        state_->commitBinding=std::move(commitBinding);
+        state_->pollBinding=std::move(pollBinding);
     }
     static bool runtimeAvailable() noexcept {
         LPWSTR version=nullptr;
@@ -328,6 +535,10 @@ public:
     Steinberg::tresult PLUGIN_API removed() override {
         if(!state_->child)return Steinberg::kResultFalse;
         state_->alive=false;
+        state_->bindingFlow.invalidate();
+        state_->preparedFile.clear();state_->preparedDigest.clear();
+        state_->prepareBinding={};state_->commitBinding={};
+        state_->pollBinding={};state_->verifiedGenericMask={};
         KillTimer(state_->child,1);
         RemoveWindowSubclass(state_->child,browserWindowProc,
             reinterpret_cast<UINT_PTR>(this));
