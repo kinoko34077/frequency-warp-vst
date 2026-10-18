@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -30,7 +31,7 @@ struct PinnedFile {
 };
 struct PinnedSnapshot {
     std::uint32_t version=0;
-    std::vector<PinnedFile> files; // serve THESE bytes, never mutable root
+    std::vector<PinnedFile> files; // immutable via shared_ptr<const Snapshot>
 };
 // In production provide the existing native Rust sha2 verifier via
 // fw_native_sha256_bytes. The portable tests inject a deterministic fake to
@@ -67,7 +68,7 @@ inline std::string casefoldAscii(std::string value) {
 inline bool stagePinnedCandidate(const fs::path& root,
                                   const TrustedManifest& manifest,
                                   DigestFn digest,
-                                  PinnedSnapshot& output) noexcept {
+                                  std::shared_ptr<const PinnedSnapshot>& output) noexcept {
     if(!digest||manifest.version!=1||manifest.files.empty()||
        manifest.files.size()>kMaxFiles)return false;
     try {
@@ -126,7 +127,7 @@ inline bool stagePinnedCandidate(const fs::path& root,
         if(!index||!bridge)return false;
         // Output changes only after all files, names and hashes are valid.
         // Previously verified files never alias the mutable source directory.
-        output=std::move(staged);
+        output=std::make_shared<const PinnedSnapshot>(std::move(staged));
         return true;
     }catch(...){return false;}
 }
