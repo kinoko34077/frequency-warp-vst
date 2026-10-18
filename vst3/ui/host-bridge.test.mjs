@@ -238,3 +238,21 @@ test("window blur and document visibility loss end active edits without duplicat
   x.document.fire("visibilitychange");
   assert.equal(x.posted.length, count);
 });
+
+test("UI selection and Back are native-only intents with no path or trust claim", () => {
+  const x = fixture();
+  const bridge = createHostUiBridge(x);
+  const panel = x.nodes.get("#fw-vst-ui-reload");
+  assert.equal(panel?.children.length, 2);
+  const [select, back] = panel.children;
+  select.fire("click");
+  back.fire("click");
+  assert.deepEqual(x.posted.slice(1), [
+    { protocol: PROTOCOL, kind: "ui-select" },
+    { protocol: PROTOCOL, kind: "ui-back" }
+  ]);
+  const count = x.posted.length;
+  bridge.dispose();
+  select.fire("click"); back.fire("click");
+  assert.equal(x.posted.length, count);
+});
