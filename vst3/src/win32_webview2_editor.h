@@ -28,6 +28,8 @@
 #include "native_binding_flow.h"
 #include "ui_activation_transaction.h"
 #include "ui_pinned_resource_router.h"
+#include "ui_manifest_approval.h"
+#include "native_engine_abi.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -46,6 +48,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2> view;
         ComPtr<ICoreWebView2Environment> environment;
         ui_assets::UiActivationTransaction uiActivation{};
+        std::uint64_t activationStarted=0;
+        std::uint64_t lastUiDialog=0;
+        bool navigationLoaded=false;
         std::filesystem::path siteRoot;
         Steinberg::Vst::EditController* host=nullptr;
         // Invoked on GUI STA. Native Controller queries the Processor and
@@ -273,6 +278,102 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const std::string ascii=json.str();
         const std::wstring message(ascii.begin(),ascii.end());
         state.view->PostWebMessageAsJson(message.c_str());
+    }
+    static void rollbackUi(Shared& state) {
+        const auto pending=state.uiActivation.pendingGeneration();
+        if(!pending||!state.uiActivation.fail(pending))return;
+        endAllEdits(state);state.uiReady=false;
+        state.navigationLoaded=false;
+        state.activationStarted=0;
+        // Keep last-known-good approved snapshot. The bundled website remains
+        // available as the initial legacy fallback if no snapshot was active.
+        if(state.alive&&state.view)
+            state.view->Navigate(L"https://fwvst.local/index.html");
+    }
+    static bool startUiNavigation(Shared& state) {
+        const auto gen=state.uiActivation.begin(true);
+        if(!gen||!state.view)return false;
+        endAllEdits(state);state.uiReady=false;
+        state.navigationLoaded=false;
+        state.activationStarted=GetTickCount64();
+        if(FAILED(state.view->Navigate(L"https://fwvst.local/index.html"))) {
+            rollbackUi(state);return false;
+        }
+        return true;
+    }
+    static void selectApprovedUi(Shared& state) {
+        if(state.modalOpen||!state.alive||!state.child||!state.view||
+           state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
+            return;
+        const auto tick=GetTickCount64();
+        if(tick-state.lastUiDialog<1000)return;
+        state.lastUiDialog=tick;
+        std::vector<wchar_t> name(32768,L'\0');
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=state.child;
+        dialog.lpstrFile=name.data();dialog.nMaxFile=static_cast<DWORD>(name.size());
+        dialog.lpstrFilter=L"Approved FWUI manifest (*.fwui)\0*.fwui\0\0";
+        dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+        bool chosen=false;
+        {
+            ModalGuard modal(state);
+            chosen=GetOpenFileNameW(&dialog)!=FALSE;
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||!chosen)return;
+        const auto file=std::filesystem::path(name.data());
+        if(file.extension()!=L".fwui"||
+           file.native().rfind(L"\\\\",0)==0||
+           ui_assets::hasUnsafeReparsePoint(file))return;
+        std::ifstream input(file,std::ios::binary|std::ios::ate);
+        if(!input)return;
+        const auto size=input.tellg();
+        if(size<=0||size>1024*1024)return;
+        input.seekg(0);
+        std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+        if(!input.read(reinterpret_cast<char*>(bytes.data()),size))return;
+        ui_assets::TrustedManifest manifest;
+        if(!ui_assets::parseApprovedManifest(
+            std::string_view(reinterpret_cast<const char*>(bytes.data()),
+                             bytes.size()),manifest))return;
+        std::shared_ptr<const ui_assets::PinnedSnapshot> snapshot;
+        if(!ui_assets::stagePinnedCandidate(file.parent_path()/L"ui",
+             manifest,fw_native_sha256_bytes,snapshot))return;
+        std::array<std::uint8_t,32> hash{};
+        if(!fw_native_sha256_bytes(bytes.data(),bytes.size(),
+                                  hash.data(),hash.size()))return;
+        std::wostringstream fingerprint;
+        fingerprint<<std::hex<<std::setfill(L'0');
+        for(std::size_t i=0;i<8;i++)
+            fingerprint<<std::setw(2)<<static_cast<unsigned>(hash[i]);
+        const auto prompt=L"Activate this explicitly selected UI manifest?\n"+
+            file.filename().wstring()+
+            L"\nSHA-256 prefix: "+fingerprint.str()+
+            L"\nManifest identifies file content, not publisher signature."+
+            L"\nNo retains the existing UI.";
+        int consent=IDNO;
+        {
+            ModalGuard modal(state);
+            consent=MessageBoxW(state.child,prompt.c_str(),
+                L"Confirm local UI activation",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||consent!=IDYES)return;
+        if(!state.uiActivation.prepare(snapshot))return;
+        if(!startUiNavigation(state))state.uiActivation.cancel();
+    }
+    static void selectPreviousUi(Shared& state) {
+        if(!state.alive||!state.child||!state.view||state.modalOpen)return;
+        if(state.uiActivation.phase()!=ui_assets::UiActivationTransaction::Phase::Idle||
+           !state.uiActivation.previous())return;
+        int consent=IDNO;
+        {
+            ModalGuard modal(state);
+            consent=MessageBoxW(state.child,
+                L"Restore the previous verified UI snapshot?\nAudio and DAW state remain unchanged.",
+                L"Back to previous UI",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||consent!=IDYES)return;
+        if(!state.uiActivation.prepareBack())return;
+        if(!startUiNavigation(state))state.uiActivation.cancel();
     }
     static void receive(Shared& state,std::wstring_view raw) {
         if(!state.alive||!state.host||state.modalOpen)return;
