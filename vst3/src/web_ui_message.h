@@ -11,7 +11,7 @@
 #include <string_view>
 
 namespace fw {
-enum class UiWireKind { Hello, Begin, Perform, End };
+enum class UiWireKind { Hello, Begin, Perform, End, SelectBinding, ConfirmBinding };
 struct UiWireMessage {
     UiWireKind kind;
     uint32_t id=0;
@@ -34,6 +34,11 @@ inline std::optional<UiWireMessage> parseUiWireMessage(std::wstring_view json) {
         if(tail.back()!=L'}'||tail.size()<33)return std::nullopt;
         return UiWireMessage{UiWireKind::Hello,0,0.0};
     }
+    // JS supplies no path, engine identity, permission or ticket.
+    if(kind==L"binding-select" && tail==L"}")
+        return UiWireMessage{UiWireKind::SelectBinding,0,0.0};
+    if(kind==L"binding-confirm" && tail==L"}")
+        return UiWireMessage{UiWireKind::ConfirmBinding,0,0.0};
     UiWireKind type;
     if(kind==L"edit-begin")type=UiWireKind::Begin;
     else if(kind==L"edit-perform")type=UiWireKind::Perform;
