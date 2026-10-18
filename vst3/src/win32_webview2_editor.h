@@ -656,21 +656,29 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             liveNav->navigationLoaded=true;
                                             // Keep the web player in DOM for existing JS handlers,
                                             // but hide its file-preview panel inside the DAW.
-                                            browser->ExecuteScript(
-                                                LR"JS((()=>{
+                                            const auto generation=liveNav->uiActivation.pendingGeneration();
+                                            std::wstring injected=LR"JS((()=>{
                                                   const style=document.createElement('style');
                                                   style.textContent='.player{display:none!important}';
                                                   document.head.appendChild(style);
                                                   const note=document.createElement('div');
-                                                  note.textContent='VST3 embedded WebView2 — generic controls appear only when native FWS3 authorization is active';
+                                                  note.textContent='VST3 — generic edits need native verified binding';
                                                   note.style.cssText='padding:8px;background:#462f15;color:#fff;font:14px system-ui';
                                                   document.body.prepend(note);
                                                   import('./host-bridge.mjs').then(m=>{
                                                     window.__fwVstHostBridge=m.createHostUiBridge({
                                                       webview:window.chrome.webview,document
                                                     });
+                                                    const generation=)JS";
+                                            injected+=std::to_wstring(generation);
+                                            injected+=LR"JS(;
+                                                    if(generation>0)window.chrome.webview.postMessage({
+                                                      protocol:'frequency-warp.host-ui.v1',
+                                                      kind:'ui-activation-ready',generation,version:1
+                                                    });
                                                   }).catch(()=>{});
-                                                })())JS",nullptr);
+                                                })())JS";
+                                            browser->ExecuteScript(injected.c_str(),nullptr);
                                             return S_OK;
                                         }).Get(),&loadToken);
                                 target->view->Navigate(L"https://fwvst.local/index.html");
