@@ -220,6 +220,132 @@ function settings(){
   }
   return value;
 }
+
+// U4 comparison: two bounded, source-scoped coherent configurations.
+// A source generation changes ONLY after successful decode/commit.
+const comparisonSlots={A:null,B:null};
+let comparisonPending=null,comparisonCurrent=null,applyingConfiguration=false;
+function comparisonMessage(text,phase="idle"){
+  const node=$("#comparison-status");
+  if(!node)return;
+  if(node.textContent!==text)node.textContent=text;
+  node.dataset.phase=phase;
+}
+function updateComparisonButtons(){
+  for(const slot of ["A","B"]){
+    $("#compare-save-"+slot.toLowerCase()).disabled=!state.dry;
+    $("#compare-load-"+slot.toLowerCase()).disabled=!state.dry||!comparisonSlots[slot];
+  }
+}
+function captureCurrentConfiguration(){
+  const p=settings(),h=captureHarmonicConfiguration();
+  const manualCrusherBits=state.precise["crusher-bits"]??Number($("#crusher-bits").value);
+  return createSoundConfiguration({
+    sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
+    harmonic:h,audio:p,
+    values:{
+      low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
+      axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
+      wet:p.wet,zeroReflectGain:p.zeroReflectGain,zeroReflectDecay:p.zeroReflectDecay,
+      aMinHz:p.aMinHz,aReverb:p.aReverb,aBandBins:p.aBandBins,aQuality:p.aQuality,
+      crusherRateHz:p.crusherRateHz,crusherBits:p.crusherBits,manualCrusherBits
+    },
+    selectors:{
+      mode:$("#mode").value,outside:$("#outside").value,quality:$("#quality").value,
+      overlap:$("#overlap").value,engine:$("#engine").value,
+      pivotLinkTarget:$("#pivot-link-target").value,harmonicCount:$("#harmonic-count").value
+    },
+    flags:{
+      engineAuto:$("#engine-auto").checked,ringEnabled:$("#ring-enabled").checked,
+      rationalEnabled:$("#rational-enabled").checked,crusherEnabled:$("#crusher-enabled").checked,
+      carrierLink:$("#carrier-link").checked,harmonicPivotLink:$("#harmonic-pivot-link").checked,
+      pivotFollowLow:$("#pivot-follow-low").checked,rationalEnabledByLink
+    }
+  });
+}
+function applyConfigurationSilently(c){
+  // Preconditions are checked before entry. No DOM events or intermediate DSP
+  // writes: the owning adapters accept exact canonical numbers first.
+  const v=c.values,s=c.selectors,t=c.flags;
+  for(const [id,value] of Object.entries({
+    mode:s.mode,outside:s.outside,quality:s.quality,overlap:s.overlap,
+    engine:s.engine,harmonicCount:s.harmonicCount,pivotLinkTarget:s.pivotLinkTarget
+  })){
+    const selectorId=id==="harmonicCount"?"harmonic-count":
+      id==="pivotLinkTarget"?"pivot-link-target":id;
+    $("#"+selectorId).value=value;
+  }
+  for(const [id,value] of Object.entries({
+    "engine-auto":t.engineAuto,"ring-enabled":t.ringEnabled,
+    "rational-enabled":t.rationalEnabled,"crusher-enabled":t.crusherEnabled,
+    "carrier-link":t.carrierLink,"harmonic-pivot-link":t.harmonicPivotLink,
+    "pivot-follow-low":t.pivotFollowLow
+  }))$("#"+id).checked=value;
+  rationalEnabledByLink=t.rationalEnabledByLink;
+  lowUnitControl.setCanonical(v.low);highUnitControl.setCanonical(v.high);
+  pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
+  aMinUnitControl.setCanonical(v.aMinHz);
+  restoreHarmonicConfiguration(c.harmonic);
+  state.precise=Object.assign(Object.create(null),{
+    curvature:v.curvature,invert:v.invert,"zero-reflect":v.zeroReflectGain,
+    "zero-decay":v.zeroReflectDecay,"axis-shift":v.axisShift,wet:v.wet,
+    "a-reverb":v.aReverb,"a-band":v.aBandBins,"a-quality":v.aQuality,
+    "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
+  });
+  for(const [id,val] of Object.entries({
+    curvature:v.curvature,invert:v.invert,
+    "zero-reflect":100*v.zeroReflectGain,"zero-decay":100*v.zeroReflectDecay,
+    "axis-shift":v.axisShift,wet:v.wet,"a-reverb":100*v.aReverb,
+    "a-band":v.aBandBins,"a-quality":v.aQuality,
+    "crusher-bits":v.manualCrusherBits,
+    "crusher-hold":sliderFromFrequency(v.crusherRateHz,state.ctx?.sampleRate||state.decoded.sampleRate)
+  }))$("#"+id).value=String(val);
+  linkFeedback("");
+}
+function switchSoundConfiguration(slot){
+  const saved=comparisonSlots[slot];
+  if(!saved)return;
+  try{
+    validateSoundConfiguration(saved,{
+      sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate
+    });
+    const preflight=prepareStreamSettings({
+      ...saved.audio,sampleRate:state.ctx?.sampleRate||state.decoded.sampleRate
+    });
+    if(!preflight.ok)throw Error(preflight.message);
+    const previous=captureCurrentConfiguration();
+    // Every sound path is evaluated as a single transaction, with a local
+    // rollback before the lone updateParams request if a mismatch is found.
+    try{
+      applyConfigurationSilently(saved);
+      const actual=settings();
+      for(const [key,value] of Object.entries(saved.audio)){
+        if(key==="sampleRate")continue;
+        if(!Object.is(actual[key],value))
+          throw Error("復帰検証失敗: "+key);
+      }
+    }catch(error){
+      applyConfigurationSilently(previous);
+      throw error;
+    }
+    applyingConfiguration=true;
+    try{
+      updateParams("comparison");updateEngineInfo();tuneWet();
+    }finally{applyingConfiguration=false;}
+    comparisonCurrent=null;
+    if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
+      const f=state.player.feedback.current;
+      comparisonPending={slot,revision:f.phase==="pending"?f.requestedRevision:null};
+      comparisonMessage("設定"+slot+"：DSP反映確認中","pending");
+    }else{
+      comparisonPending=null;
+      comparisonMessage("設定"+slot+"を復帰 · "+
+        (state.player?"原音再生中（変換未確認）":"停止中（変換未確認）"),"ready");
+    }
+  }catch(error){
+    comparisonMessage("切替不可："+error.message,"error");
+  }
+}
 function labels(id=""){
   bounds(id);
   const p=settings();
