@@ -699,3 +699,7 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   font-size:10px}
 #pivot-link-target:focus-visible{outline:2px solid #8ce6cb}
 @media(max-width:450px){#pivot-link-target{max-width:100%;font-size:9px}}
+
+/* Task exit point remains in the source card, with a real touch hit box. */
+.export-shortcut{min-height:40px;padding:7px 10px;max-width:100%;
+  text-align:left;align-self:start}
