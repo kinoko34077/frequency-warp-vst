@@ -1133,6 +1133,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
 
     await page.click("#mini-expand");
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false,"graph must stay visible when equations open");
+    assert.equal(await page.evaluate(()=>document.activeElement?.textContent?.trim()),"仮想基音と倍音",
+      "Opening expert detail must focus the revealed heading");
+    const detailRect=await page.$eval("#view-math .section-header h2",el=>{
+      const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight};
+    });
+    assert.ok(detailRect.top>=0&&detailRect.bottom<=detailRect.height,
+      "Expert detail must scroll into the visible viewport: "+JSON.stringify(detailRect));
     assert.match(await page.$eval("#harmonic-table-title",el=>el.textContent),/12倍音/);
     const harmonics=await page.$eval("#harmonics-body",el=>el.children.length);
     assert.equal(harmonics,12);
