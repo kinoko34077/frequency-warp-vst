@@ -458,11 +458,18 @@ function playPosition(){
   if(!state.player||!state.ctx||!duration())return state.seek;
   return (state.player.offset+Math.max(0,state.ctx.currentTime-state.player.at))%duration();
 }
+function syncWaveSeekAccessibility(seconds){
+  const wave=$("#wave"),pct=duration()?Math.round(clamp(seconds/duration(),0,1)*100):0;
+  const value=String(pct),time=fmtTime(Math.floor(seconds));
+  if(wave.getAttribute("aria-valuenow")!==value)wave.setAttribute("aria-valuenow",value);
+  if(wave.getAttribute("aria-valuetext")!==time)wave.setAttribute("aria-valuetext",time);
+}
 function refreshPlayhead(){
   const seconds=playPosition();
   $("#elapsed").textContent=fmtTime(seconds);
   $("#duration").textContent=fmtTime(duration());
   $("#playhead").style.left=(duration()?clamp(seconds/duration(),0,1)*100:0)+"%";
+  syncWaveSeekAccessibility(seconds);
   state.raf=requestAnimationFrame(refreshPlayhead);
 }
 function playheadFromPointer(e){
@@ -470,29 +477,29 @@ function playheadFromPointer(e){
   const rect=$("#wave").getBoundingClientRect();
   const frac=clamp((e.clientX-rect.left)/rect.width,0,.999999);
   state.seek=frac*duration();
-  if(state.player){
-    seek(state.seek);
-  }else{
-    play("wet",state.seek).catch(err=>message("再生失敗: "+err.message,"error"));
-  }
+  // Choosing a timeline position must not silently choose Wet playback.
+  // Leave the source stopped until an explicit Original or Processed action.
+  if(state.player)seek(state.seek);
   refreshStatusSeek();
 }
 function refreshStatusSeek(){
   $("#elapsed").textContent=fmtTime(state.seek);
   $("#playhead").style.left=(duration()?100*state.seek/duration():0)+"%";
+  syncWaveSeekAccessibility(state.seek);
 }
 $("#wave").addEventListener("pointerdown",playheadFromPointer);
-$("#wave").addEventListener("keydown",e=>{
+$("#wave").addEventListener("keydown",event=>{
   if(!state.dry)return;
-  if(e.key==="Enter"||e.key===" "){
-    e.preventDefault();play("wet",state.seek).catch(err=>message(err.message,"error"));
-  }else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){
-    e.preventDefault();const diff=e.key==="ArrowLeft"?-2:2;
-    const pos=clamp(playPosition()+diff,0,Math.max(0,duration()-.01));
-    state.seek=pos;
-    if(state.player)seek(pos);
-    refreshStatusSeek();
-  }
+  const key=event.key;
+  const arrows=["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"];
+  if(!arrows.includes(key)&&key!=="Home"&&key!=="End")return;
+  event.preventDefault();
+  const delta=key==="ArrowLeft"||key==="ArrowDown"?-2:2;
+  const pos=key==="Home"?0:key==="End"?Math.max(0,duration()-.01)
+    :clamp(playPosition()+delta,0,Math.max(0,duration()-.01));
+  state.seek=pos;
+  if(state.player)seek(pos);
+  refreshStatusSeek();
 });
 async function context(){
   try{if(navigator.audioSession)navigator.audioSession.type="playback";}catch{}
