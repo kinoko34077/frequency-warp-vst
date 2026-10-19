@@ -5,9 +5,12 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
-#include <WebView2.h>
+#include <unknwn.h>
+#include <objidl.h>
 #include <wrl.h>
 #include <wrl/client.h>
+#include <wrl/event.h>
+#include <WebView2.h>
 #include <filesystem>
 #include <memory>
 #include <iostream>
