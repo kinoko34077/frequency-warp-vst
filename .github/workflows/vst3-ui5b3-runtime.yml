@@ -1,0 +1,38 @@
+name: UI-5B3 native Windows WebView2 runtime smoke
+on:
+  pull_request:
+    paths:
+      - 'vst3/tests/webview2-runtime/**'
+      - '.github/workflows/vst3-ui5b3-runtime.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  webview2-live:
+    runs-on: windows-2022
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore official pinned WebView2 C++ SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -Version 1.0.4258.31 -OutputDirectory _deps -NonInteractive -ExcludeVersion
+          if (-not (Test-Path "_deps/Microsoft.Web.WebView2/build/native/include/WebView2.h")) { throw "SDK missing" }
+      - name: Configure standalone WebView2 runtime smoke
+        shell: pwsh
+        run: |
+          cmake -S vst3/tests/webview2-runtime -B _build/webview2-runtime -G "Visual Studio 17 2022" -A x64 -DFW_WEBVIEW2_SDK_DIR="$env:GITHUB_WORKSPACE/_deps/Microsoft.Web.WebView2"
+      - name: Compile native live runtime probe
+        shell: pwsh
+        run: cmake --build _build/webview2-runtime --config Release --parallel 2
+      - name: Execute real WebView2 InPrivate/navigation/storage probe
+        shell: pwsh
+        run: |
+          ctest --test-dir _build/webview2-runtime -C Release --output-on-failure --timeout 55
+      - name: Runtime acceptance limitation
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Output "A pass proves only: actual STA/HWND WebView2 startup, InPrivate profile creation, native about:blank NavigationId and ClearBrowsingDataAll callback on this specific hosted runner."
+          Write-Output "It does NOT prove plugin WebResourceRequested/asset pinning, fault injection, real FL Studio or a second DAW."
+          Write-Output "No binary artifact is released or uploaded."
