@@ -85,10 +85,17 @@
   const hud=$("#runtime-hud"),hudHead=$("#runtime-hud-head");
   const collapse=$("#runtime-hud-collapse"),hide=$("#runtime-hud-hide");
   const restore=$("#runtime-hud-restore"),brief=$("#runtime-hud-brief");
+  // A collapsed mobile badge must still disclose real warnings/failures.
+  // Hiding the detailed HUD is not permission to hide a failed audio state.
+  const status=$("#status");
   const updateBrief=()=>{
-    brief.textContent=($("#rt-indicator")?.textContent||"停止中").slice(0,55);
+    const important=["error","warning"].includes(status.dataset.kind)
+      ?status.textContent.trim():"";
+    brief.textContent=(important||$("#rt-indicator")?.textContent||"停止中").slice(0,55);
   };
-  new MutationObserver(updateBrief).observe($("#rt-indicator"),{childList:true,subtree:true,characterData:true});
+  const statusObserver=new MutationObserver(updateBrief);
+  statusObserver.observe($("#rt-indicator"),{childList:true,subtree:true,characterData:true});
+  statusObserver.observe(status,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["data-kind"]});
   updateBrief();
   // On narrow touch screens the full floating diagnostics can obscure the
   // right-hand square graph or linked frequency selector. Retain an explicit
