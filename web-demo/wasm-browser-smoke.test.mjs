@@ -678,7 +678,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#axis-shift",el=>{el.value=".25";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.$eval(".offline-tool",el=>el.open=false);
     // The existing real-time regression measures workers created DURING
-    // playback, not the two deliberate U5 export jobs already completed.
+    // playback, not the deliberate U5 export job already completed.
     await page.evaluate(()=>{window.offlineWorkersCreated=0;});
 
     // AUD-05: the independent original player has no DSP feedback tracker.
