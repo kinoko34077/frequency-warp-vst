@@ -333,13 +333,24 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.navigationLoaded=false;
         state.servedIndexGeneration=0;
         state.activationStarted=GetTickCount64();
-        if(!mapLegacyBundledUi(state,false)){
-            rollbackUi(state);
-            return false;
-        }
-        if(FAILED(state.view->Navigate(L"https://fwvst.local/index.html"))) {
-            rollbackUi(state);return false;
-        }
+        // The exact origin is shared by successive approved UIs. Clear all
+        // storage, cookies, worker registrations and caches BEFORE navigation
+        // or an earlier approved bundle could control the next one.
+        if(!state.isolatedProfile){rollbackUi(state);return false;}
+        const std::weak_ptr<Shared> weak=state.weakSelf;
+        const HRESULT clear=state.isolatedProfile->ClearBrowsingDataAll(
+            Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+                [weak,gen](HRESULT result)->HRESULT {
+                    auto owner=weak.lock();
+                    if(!owner||!owner->alive||
+                       owner->uiActivation.pendingGeneration()!=gen)return S_OK;
+                    if(FAILED(result)||!mapLegacyBundledUi(*owner,false)||
+                       !owner->view||
+                       FAILED(owner->view->Navigate(L"https://fwvst.local/index.html")))
+                        rollbackUi(*owner);
+                    return S_OK;
+                }).Get());
+        if(FAILED(clear)){rollbackUi(state);return false;}
         return true;
     }
     static void selectApprovedUi(Shared& state) {
@@ -627,7 +638,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             mimeHeaders=L"Content-Type: ";
             for(const char* p=found.mime;*p;p++)
                 mimeHeaders.push_back(static_cast<wchar_t>(*p));
-            mimeHeaders+=L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+            mimeHeaders+=L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff"
+                         L"\r\nContent-Security-Policy: worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
         }
         ComPtr<ICoreWebView2WebResourceResponse> response;
         const auto ok=state.environment->CreateWebResourceResponse(
