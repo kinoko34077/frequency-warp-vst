@@ -28,6 +28,7 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
 static constexpr wchar_t kPinnedUrl[]=L"https://fwvst-smoke.invalid/index.html";
+static constexpr wchar_t kRejectedUrl[]=L"https://fwvst-smoke.invalid/missing.html";
 static constexpr char kPinnedHtmlA[]="<html><body>PINNED_A</body></html>";
 static constexpr char kPinnedHtmlB[]="<html><body>PINNED_B</body></html>";
 
@@ -41,7 +42,8 @@ struct Smoke {
     bool awaitingPinned=false;
     unsigned pinnedRequests=0;
     unsigned clears=0;
-    unsigned phase=0; // 0: UI A, 1: UI B, 2: Back to A
+    unsigned phase=0; // 0: A, 1: B, 2: Back A, 3: reject missing, 4: recover A
+    unsigned deniedRequests=0;
     bool resourceReady=false;
     std::filesystem::path uiRoot;
     ComPtr<ICoreWebView2Environment> env;
@@ -101,6 +103,7 @@ static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
                 CoTaskMemFree(name);
                 const bool pinned=uri==kPinnedUrl;
                 if(pinned)++owner->pinnedRequests;
+                if(uri==kRejectedUrl)++owner->deniedRequests;
                 ComPtr<IStream> stream;
                 if(pinned) {
                     const char* current=owner->phase==1?kPinnedHtmlB:kPinnedHtmlA;
@@ -135,7 +138,7 @@ static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
     }
     s->awaitingPinned=true;
     s->navigationId=0;
-    if(FAILED(s->view->Navigate(kPinnedUrl))){
+    if(FAILED(s->view->Navigate(s->phase==3?kRejectedUrl:kPinnedUrl))){
         s->complete(false,"pinned URL navigation failed synchronously");
         return false;
     }
@@ -261,7 +264,8 @@ int wmain() {
                                             const bool expected=uri&&
                                                 (active->awaitingBlank
                                                   ?std::wstring_view(uri)==L"about:blank"
-                                                  :active->awaitingPinned&&std::wstring_view(uri)==kPinnedUrl);
+                                                  :active->awaitingPinned&&std::wstring_view(uri)==
+                                                      (active->phase==3?kRejectedUrl:kPinnedUrl));
                                             CoTaskMemFree(uri);
                                             if(!expected||!id||!initiated) {
                                                 event->put_Cancel(TRUE);
@@ -284,6 +288,25 @@ int wmain() {
                                             BOOL success=FALSE;
                                             if(FAILED(event->get_NavigationId(&id))||
                                                !id||id!=active->navigationId)return S_OK;
+                                            if(active->awaitingPinned&&active->phase==3) {
+                                                // A user-selected but unapproved/missing document
+                                                // must get an actual HTTP 403, not directory/network
+                                                // fallback. After the rejection, recover through
+                                                // another native blank -> clear -> pinned A load.
+                                                if(active->deniedRequests==0) {
+                                                    active->complete(false,"unknown candidate did not hit native 403 router");
+                                                    return S_OK;
+                                                }
+                                                std::cout<<"PASS candidate rejection: native HTTP 403"<<std::endl;
+                                                active->phase=4;
+                                                active->awaitingPinned=false;
+                                                active->awaitingBlank=true;
+                                                active->navigationId=0;
+                                                active->pinnedRequests=0;
+                                                if(FAILED(active->view->Navigate(L"about:blank")))
+                                                    active->complete(false,"rejected candidate rollback blank failed");
+                                                return S_OK;
+                                            }
                                             LPWSTR source=nullptr;
                                             const bool ready=SUCCEEDED(event->get_IsSuccess(&success))&&
                                                 success&&SUCCEEDED(browser->get_Source(&source))&&source&&
@@ -321,9 +344,10 @@ int wmain() {
                                                                 return S_OK;
                                                             }
                                                             std::cout<<"PASS stage "<<stage<<" live immutable DOM + storage"<<std::endl;
-                                                            if(stage==2){
-                                                                checked->complete(checked->clears==3,
-                                                                    "real A-to-B-to-Back(A) Chromium navigation and triple storage clear");
+                                                            if(stage==4){
+                                                                checked->complete(checked->clears==5&&
+                                                                    checked->deniedRequests>=1,
+                                                                    "real A-to-B-to-Back(A), reject unknown 403, recover A and five storage clears");
                                                                 return S_OK;
                                                             }
                                                             ++checked->phase;
