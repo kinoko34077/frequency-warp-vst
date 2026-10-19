@@ -36,6 +36,7 @@ int main(){
     for(auto bad:{
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-select","path":"x"})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-back","target":1})",
+        LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":12,"version":1})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":0,"version":1})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":1,"version":2})",
         LR"({"protocol":"frequency-warp.host-ui.v1","kind":"ui-activation-ready","generation":01,"version":1})",
