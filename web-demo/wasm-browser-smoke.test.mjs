@@ -678,6 +678,28 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       Number(savedA.move))<.051,"restoration leaves one consistent saved processing position");
     assert.equal(await page.$eval("#stop",el=>el.disabled),true,
       "A/B restores while stopped must never silently launch audio");
+    const desktopViewport=page.viewport();
+    for(const width of [320,390]){
+      await page.setViewport({width,height:844,deviceScaleFactor:1,isMobile:true,hasTouch:true});
+      const geometry=await page.evaluate(()=>{
+        const left=document.querySelector(".workspace-left").getBoundingClientRect();
+        const right=document.querySelector(".workspace-right").getBoundingClientRect();
+        const graph=document.querySelector("#curve").getBoundingClientRect();
+        const buttons=[...document.querySelectorAll(".comparison-actions button")].map(el=>{
+          const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+          return {width:r.width,height:r.height,reachable:hit===el||el.contains(hit)};
+        });
+        return {leftEdge:left.right,rightEdge:right.left,graphW:graph.width,
+          graphH:graph.height,overflow:document.documentElement.scrollWidth>innerWidth,
+          buttons};
+      });
+      assert.ok(geometry.leftEdge<=geometry.rightEdge+1&&
+        Math.abs(geometry.graphW-geometry.graphH)<2&&!geometry.overflow,
+        "A/B compare must retain left controls / right square graph at "+width+": "+JSON.stringify(geometry));
+      assert.ok(geometry.buttons.every(v=>v.height>=40&&v.reachable),
+        "A/B actual touch hit targets at "+width+": "+JSON.stringify(geometry));
+    }
+    await page.setViewport(desktopViewport);
 
     // AUD-05: the independent original player has no DSP feedback tracker.
     // Reset must neither throw TypeError nor interrupt original transport.
