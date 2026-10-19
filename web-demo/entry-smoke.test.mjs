@@ -199,6 +199,14 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await setReflectDecay("12.345");
     assert.ok(Math.abs(await canonicalReflectDecay()-.12345)<1e-12);
     assert.equal(await page.$eval("#zero-decay",el=>Number(el.value)),12);
+    const setInvert=percent=>page.$eval("#invert-value",(el,value)=>{
+      el.value=String(value);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },percent);
+    const canonicalInvert=()=>page.$eval("#invert-value",
+      el=>Number(el.dataset.fwCanonical));
+    await setInvert("34.567");
+    assert.ok(Math.abs(await canonicalInvert()-.34567)<1e-12);
+    assert.ok(Math.abs(await page.$eval("#invert",el=>Number(el.value))-.345)<1e-9);
     await page.click("#compare-save-a");
     await setWet("50");
     await page.click("#settings-open");
@@ -206,6 +214,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#settings-done");
     await setReflectGain("80");
     await setReflectDecay("80");
+    await setInvert("70");
     await page.click("#compare-save-b");
     await page.click("#compare-load-a");
     assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
@@ -219,11 +228,18 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.ok(Math.abs(await canonicalReflectDecay()-.12345)<1e-12,
       "A/B must preserve reflection decay Float64 rather than integer thumb");
     assert.equal(await page.$eval("#zero-decay",el=>Number(el.value)),12);
+    assert.ok(Math.abs(await canonicalInvert()-.34567)<1e-12,
+      "A/B must preserve inversion Float64 rather than 0.005 shape thumb");
     await page.click("#compare-load-b");
     assert.equal(await canonicalWet(),.5);
     assert.equal(await canonicalAReverb(),.75);
     assert.equal(await canonicalReflectGain(),.8);
     assert.equal(await canonicalReflectDecay(),.8);
+    assert.equal(await canonicalInvert(),.7);
+    await page.$eval("#invert-value",el=>{
+      el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await canonicalInvert(),.7,"empty inversion input preserves accepted value");
     await page.$eval("#zero-decay-value",el=>{
       el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -254,6 +270,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),100);
     assert.equal(await canonicalReflectDecay(),0,"reset must return reflect decay to zero");
     assert.equal(await page.$eval("#zero-decay",el=>Number(el.value)),0);
+    assert.equal(await canonicalInvert(),0,"reset returns inversion to 0%");
+    assert.equal(await page.$eval("#invert",el=>Number(el.value)),0);
     // The Rust offline renderer has ALREADY removed stream lookahead and
     // flushed the tail. The saved WAV must therefore mix Dry and processed
     // samplewise, unlike the latency-compensated *realtime* AudioWorklet.
