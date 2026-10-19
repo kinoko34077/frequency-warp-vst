@@ -699,3 +699,14 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   font-size:10px}
 #pivot-link-target:focus-visible{outline:2px solid #8ce6cb}
 @media(max-width:450px){#pivot-link-target{max-width:100%;font-size:9px}}
+
+/* U4: a bounded experiment strip under the player, never a full-page modal. */
+.comparison-tools{display:grid;gap:4px;min-width:0;margin-top:6px}
+.comparison-title{font-size:10px;color:#b6d3ce;font-weight:700}
+.comparison-actions{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.comparison-actions button{min-width:0;min-height:28px;padding:4px 7px;font-size:11px;
+  border-radius:6px;flex:1 1 auto}
+#comparison-status{display:block;height:16px;line-height:16px;font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:#b6d3ce}
+#comparison-status[data-phase="error"]{color:#f6af9a}
+#comparison-status[data-phase="pending"]{color:#f2d29c}
