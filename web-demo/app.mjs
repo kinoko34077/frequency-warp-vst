@@ -515,17 +515,6 @@ function makeBuffer(){
   state.dry.forEach((ch,i)=>audio.copyToChannel(ch,i));
   return audio;
 }
-function invalidateExportOnMix(){
-  const had=Boolean(state.offline||state.offlineWorker);
-  state.offline=null;state.exportIdentity=null;
-  controls.download.disabled=true;
-  if(state.offlineWorker){
-    state.offlineWorker.terminate();state.offlineWorker=null;
-    controls.render.disabled=!state.dry;
-    $("#progress").value=0;
-  }
-  if(had)message("Mixが変更されたため、WAVは再変換してください。","warning");
-}
 function tuneWet(){
   const p=state.player;
   // A direct original-audio transport must never derive its level from DSP.
@@ -1025,7 +1014,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
     if(range==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
-    if(range==="wet"){invalidateExportOnMix();labels();tuneWet();drawCurve();}
+    if(range==="wet"){labels();tuneWet();drawCurve();}
     else {updateParams(changed);updateEngineInfo();}
   };
   field.addEventListener("focus",()=>{
@@ -1137,9 +1126,7 @@ $("#decimal-digits").addEventListener("change",()=>{
   slopeUnitControl.refresh();
   updateSineLabel();
 });
-$("#wet").addEventListener("input",()=>{
-  delete state.precise.wet;invalidateExportOnMix();labels();tuneWet();drawCurve();
-});
+$("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
 $("#slope-one").addEventListener("click",()=>{
   slopeUnitControl.setCanonical(1);
   updateParams("axis-slope");updateEngineInfo();
@@ -1278,9 +1265,11 @@ controls.render.addEventListener("click",()=>{
     message("WAV書出し設定未反映: "+preflight.message,"error");
     return;
   }
-  const renderIdentity=freezeExportIdentity(state.sourceGeneration,{
-    ...renderSettings,wet:settings().wet
-  });
+  // Wet is the final samplewise mix performed at download, NOT a new
+  // spectral render. The accepted Web contract exports 0/50/100% Mix from
+  // one complete processed buffer without rendering the track three times.
+  const {wet:unusedMix,...spectralSettings}=renderSettings;
+  const renderIdentity=freezeExportIdentity(state.sourceGeneration,spectralSettings);
   state.offline=null;state.exportIdentity=renderIdentity;
   controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;
@@ -1339,15 +1328,14 @@ controls.download.addEventListener("click",()=>{
   const check=prepareStreamSettings({
     ...settings(),sampleRate:state.decoded.sampleRate
   });
-  const now=check.settings?{...check.settings,wet:settings().wet}:null;
-  if(!check.ok||!matchesExportIdentity(state.exportIdentity,state.sourceGeneration,now)){
+  const {wet:currentMix,...spectralNow}=check.settings||{};
+  if(!check.ok||!matchesExportIdentity(state.exportIdentity,state.sourceGeneration,spectralNow)){
     state.offline=null;state.exportIdentity=null;
     controls.download.disabled=true;
     message("変更後の設定に一致するWAVではありません。再度変換してください。","warning");
     return;
   }
-  const mixed=state.offline.map((ch,i)=>
-    mixWet(state.dry[i],ch,state.exportIdentity.settings.wet));
+  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,currentMix));
   const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
   const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
   document.body.append(el);el.click();el.remove();
