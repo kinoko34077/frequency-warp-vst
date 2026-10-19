@@ -1379,7 +1379,15 @@ function showTab(tab){
 }
 $("#tab-map").addEventListener("click",()=>showTab("map"));
 $("#tab-math").addEventListener("click",()=>showTab("math"));
-$("#mini-expand").addEventListener("click",()=>showTab("math"));
+$("#mini-expand").addEventListener("click",()=>{
+  showTab("math");
+  // The disclosure is below a square graph; leave the graph in place, but
+  // move keyboard/screen-reader focus to the content that was just revealed.
+  const heading=$("#view-math .section-header h2");
+  heading.tabIndex=-1;
+  heading.focus({preventScroll:true});
+  heading.scrollIntoView({block:"nearest",behavior:"auto"});
+});
 for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
   $(node).addEventListener("keydown",e=>{
     if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;
