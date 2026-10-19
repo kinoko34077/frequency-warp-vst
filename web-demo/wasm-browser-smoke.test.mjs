@@ -654,6 +654,80 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
+    // U4: compare whole canonical configurations, not rounded input strings.
+    assert.equal(await page.$eval("#compare-save-a",el=>el.disabled),false);
+    await page.click("#compare-save-a");
+    const savedA=await page.evaluate(()=>({
+      low:document.querySelector("#low-value").dataset.fwCanonical,
+      fundamental:document.querySelector("#fundamental").dataset.fwCanonical,
+      move:document.querySelector("#axis-shift").value
+    }));
+    await page.$eval("#axis-shift-value",el=>{
+      el.value=".123";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.click("#compare-save-b");
+    assert.equal(await page.$eval("#compare-load-a",el=>el.disabled),false);
+    await page.click("#compare-load-a");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Aを復帰/);
+    assert.equal(await page.$eval("#low-value",el=>el.dataset.fwCanonical),savedA.low);
+    assert.equal(await page.$eval("#fundamental",el=>el.dataset.fwCanonical),savedA.fundamental);
+    await page.click("#compare-load-b");
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.123);
+    await page.click("#compare-load-a");
+    assert.ok(Math.abs(await page.$eval("#axis-shift",el=>Number(el.value))-
+      Number(savedA.move))<.051,"restoration leaves one consistent saved processing position");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true,
+      "A/B restores while stopped must never silently launch audio");
+    const desktopViewport=page.viewport();
+    for(const width of [320,390]){
+      await page.setViewport({width,height:844,deviceScaleFactor:1});
+      const geometry=await page.evaluate(()=>{
+        const left=document.querySelector(".workspace-left").getBoundingClientRect();
+        const right=document.querySelector(".workspace-right").getBoundingClientRect();
+        const graph=document.querySelector("#curve").getBoundingClientRect();
+        const buttons=[...document.querySelectorAll(".comparison-actions button")].map(el=>{
+          const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+          return {width:r.width,height:r.height,reachable:hit===el||el.contains(hit)};
+        });
+        return {leftEdge:left.right,rightEdge:right.left,graphW:graph.width,
+          graphH:graph.height,overflow:document.documentElement.scrollWidth>innerWidth,
+          buttons};
+      });
+      assert.ok(geometry.leftEdge<=geometry.rightEdge+1&&
+        Math.abs(geometry.graphW-geometry.graphH)<2&&!geometry.overflow,
+        "A/B compare must retain left controls / right square graph at "+width+": "+JSON.stringify(geometry));
+      assert.ok(geometry.buttons.every(v=>v.height>=40&&v.reachable),
+        "A/B actual touch hit targets at "+width+": "+JSON.stringify(geometry));
+    }
+    await page.setViewport(desktopViewport);
+
+    // U5: short real WAV render belongs to one source+DSP+Wet configuration.
+    await page.click("#export-jump");
+    assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
+      "Source → WAV action must expand the offline tool directly");
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),"render",
+      "Navigation must land on the next enabled export action");
+    await page.click("#render");
+    await page.waitForFunction(()=>!document.querySelector("#download").disabled,
+      {timeout:45000});
+    assert.equal(await page.$eval("#progress",el=>Number(el.value)),100);
+    await page.$eval("#wet",el=>{
+      el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),false,
+      "Mix is a download-time blend; old processed channels remain reusable");
+    await page.$eval("#axis-shift",el=>{
+      el.value=".15";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),true,
+      "DSP control change must invalidate completed frozen WAV");
+    await page.$eval("#wet",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#axis-shift",el=>{el.value=".25";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval(".offline-tool",el=>el.open=false);
+    // The existing real-time regression measures workers created DURING
+    // playback, not the deliberate U5 export job already completed.
+    await page.evaluate(()=>{window.offlineWorkersCreated=0;});
+
     // AUD-05: the independent original player has no DSP feedback tracker.
     // Reset must neither throw TypeError nor interrupt original transport.
     const resetPage=await browser.newPage();
@@ -665,6 +739,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await resetPage.waitForFunction(()=>!document.querySelector("#play-dry").disabled,{timeout:20000});
     await resetPage.click("#play-dry");
     await resetPage.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:12000});
+    assert.equal(await resetPage.$eval("#harmonic-apply-evidence",el=>el.dataset.phase),"dry",
+      "Original audio must not look like acknowledged processed playback near the graph");
     await resetPage.click("#settings-open");
     await resetPage.click("#settings-reset");
     assert.equal(resetErrors.length,0,
@@ -870,6 +946,36 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>
       document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
       !document.querySelector("#stop").disabled,{timeout:25000});
+    assert.match(await page.$eval("#harmonic-apply-evidence",el=>el.textContent),
+      /DSP初期設定|DSPが最新設定/, "Wet entry must disclose DSP acceptance without claiming spectrum measurements");
+    // Mix is a local gain, not a revisioned DSP parameter. A fully Dry
+    // audition must immediately say original-only without inventing an ACK.
+    await page.$eval("#wet",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#harmonic-apply-evidence",el=>el.dataset.phase),"dry");
+    await page.$eval("#wet",el=>{
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    // Use a genuine Rust parameter change for the request/ACK test.
+    const previousShift=await page.$eval("#axis-shift",el=>el.value);
+    await page.$eval("#axis-shift",el=>{
+      el.value=el.value==="0.3"?"0.4":"0.3";
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>document.querySelector("#harmonic-apply-evidence")?.dataset.phase==="applied",
+      {timeout:12000});
+    const auditionAck=await page.$eval("#harmonic-apply-evidence",el=>({
+      text:el.textContent,title:el.title,height:el.getBoundingClientRect().height
+    }));
+    assert.match(auditionAck.text,/最新設定を受理.*実音の測定ではありません/);
+    assert.match(auditionAck.title,/DSP ACK #[1-9]/);
+    assert.ok(auditionAck.height<=18,"Local feedback must not reflow the graph");
+    await page.$eval("#axis-shift",(el,value)=>{
+      el.value=value;el.dispatchEvent(new Event("input",{bubbles:true}));
+    },previousShift);
+    await page.waitForFunction(()=>document.querySelector("#harmonic-apply-evidence")?.dataset.phase==="applied",
+      {timeout:12000});
     assert.ok(await page.evaluate(()=>window.__dryWorkletCount)>=1,
       "a valid wet switch must initialize the real Rust/WASM AudioWorklet");
     await page.click("#stop");
@@ -887,6 +993,31 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
     }
+    // U4 live contract: A/B compare is not marked reflected until the
+    // current real AudioWorklet acknowledges the newest complete snapshot.
+    await page.click("#compare-save-a");
+    const savedMove=await page.$eval("#axis-shift",el=>el.value);
+    await page.$eval("#axis-shift",el=>{
+      el.value=el.value===".55"?".65":".55";
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click("#compare-save-b");
+    await page.click("#compare-load-a");
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
+      {timeout:15000});
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定A.*DSP最新設定の受理/);
+    assert.ok(Math.abs(Number(await page.$eval("#axis-shift-value",el=>el.value))-Number(savedMove))<.06);
+    await page.click("#compare-load-b");
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
+      {timeout:15000});
+    assert.ok(Math.abs(Number(await page.$eval("#axis-shift-value",el=>el.value))-.55)<.11||
+      Math.abs(Number(await page.$eval("#axis-shift-value",el=>el.value))-.65)<.11);
+    await page.click("#compare-load-a");
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
+      {timeout:15000});
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false,
+      "Live comparison must retain the chosen source and transport mode");
+
     // A19: 0.001 Hz theoretical F is allowed to coexist with a 1 Hz
     // effective Rust transform reference. It must not stop audible playback.
     // Floating HUD changes also must NOT move the player buttons.
@@ -971,12 +1102,22 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "periodic real worklet stats must not overwrite a rejected edit");
     assert.match(await page.$eval("#status",el=>el.textContent),/音声処理へ未反映/,
       "unapplied setting remains explicit until a newer valid ACK");
+    // The unsupported *theoretical* configuration may be saved, but cannot
+    // later displace a valid live Wet stream when selected for playback.
+    await page.click("#compare-save-b");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Bを記録/);
     await page.$eval("#fundamental",el=>{
       el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.waitForFunction(()=>
       document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
+    await page.click("#compare-load-b");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/切替不可/);
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.dataset.fwCanonical)),350,
+      "Rejected B must not rewrite current full-precision canonical F");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false,
+      "Rejected B must preserve existing original audio and Wet stream");
     await page.$eval("#rational-enabled",el=>{
       el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -1133,6 +1274,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
 
     await page.click("#mini-expand");
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false,"graph must stay visible when equations open");
+    assert.equal(await page.evaluate(()=>document.activeElement?.textContent?.trim()),"仮想基音と倍音",
+      "Opening expert detail must focus the revealed heading");
+    const detailRect=await page.$eval("#view-math .section-header h2",el=>{
+      const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight};
+    });
+    assert.ok(detailRect.top>=0&&detailRect.bottom<=detailRect.height,
+      "Expert detail must scroll into the visible viewport: "+JSON.stringify(detailRect));
     assert.match(await page.$eval("#harmonic-table-title",el=>el.textContent),/12倍音/);
     const harmonics=await page.$eval("#harmonics-body",el=>el.children.length);
     assert.equal(harmonics,12);
@@ -1146,7 +1294,28 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
     await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
     const longWave=await (await page.$("#wave")).boundingBox();
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true);
     await page.mouse.click(longWave.x+longWave.width*.9,longWave.y+longWave.height/2);
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true,
+      "Waveform seek while stopped must not silently launch processed audio");
+    const pausedPosition=await page.$eval("#elapsed",el=>{
+      const [m,sec]=el.textContent.split(":").map(Number);return m*60+sec;
+    });
+    assert.ok(Math.abs(pausedPosition-540)<3,"Waveform seeks without starting: "+pausedPosition);
+    assert.equal(await page.$eval("#wave",el=>el.getAttribute("role")),"slider");
+    const initialAccessible=await page.$eval("#wave",el=>Number(el.getAttribute("aria-valuenow")));
+    assert.ok(initialAccessible>=89&&initialAccessible<=91,
+      "Accessible waveform seek should describe the actual selected position");
+    await page.focus("#wave");
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true,
+      "Keyboard seek must not silently start Wet processing");
+    const keyboardPosition=await page.$eval("#elapsed",el=>{
+      const [m,sec]=el.textContent.split(":").map(Number);return m*60+sec;
+    });
+    assert.ok(Math.abs(keyboardPosition-pausedPosition-2)<.2,"ArrowRight adds two seconds");
+    // The deliberate transport choice owns playback mode and retains seek.
+    await page.click("#play-wet");
     await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000})
       .catch(async err=>{
         const state=await page.evaluate(()=>({
@@ -1157,14 +1326,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
           crash:document.querySelector("#play-wet").disabled,
           errors:[]
         }));
-        throw Error("600-second start: "+JSON.stringify(state)+" | "+err.message);
+        throw Error("600-second deliberate playback start: "+JSON.stringify(state)+" | "+err.message);
       });
     const soughtSeconds=await page.$eval("#elapsed",el=>{
       const [m,sec]=el.textContent.split(":").map(Number);
       return m*60+sec;
     });
-    assert.ok(Math.abs(soughtSeconds-540)<3,
-      "600s waveform seek should land near 9:00, got "+soughtSeconds);
+    assert.ok(Math.abs(soughtSeconds-542)<3,
+      "Explicit Wet start uses selected 9:02 position, got "+soughtSeconds);
     await page.click("#stop");
     // A18: a genuinely unrecoverable Worklet parameter failure must not
     // leave the user hearing an untrusted partial-DSP stream or silence.

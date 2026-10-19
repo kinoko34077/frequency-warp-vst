@@ -5,13 +5,16 @@ import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
+import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
-import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls} from "./harmonics-panel.mjs";
+import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration} from "./harmonics-panel.mjs";
+import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
+import {auditionFeedbackView} from "./audition-feedback-view.mjs";
 import {axisShiftUnits,axisShiftCanonical,axisShiftView} from "./axis-shift-view.mjs";
 
 const $=id=>document.querySelector(id);
@@ -25,11 +28,11 @@ const controls={
 const dualControls={};
 let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null;
 const state={
-  ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
+  ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,exportIdentity:null,sourceGeneration:0,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",fileMeta:"音声未選択",processing:false,
   precise:Object.create(null),
-  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0,transportEpoch:0
+  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0,sourceGeneration:0,transportEpoch:0
 };
 // Continuous log bands around 20 Hz: 0..200 resolves 0.001..20 Hz,
 // 200..1000 resolves 20..20,000 Hz. Exact typed values remain independent.
@@ -103,9 +106,25 @@ function message(text,type="info"){
   if(node.textContent!==text)node.textContent=text;
   if(node.dataset.kind!==type)node.dataset.kind=type;
 }
+function syncAuditionFeedback(){
+  const node=$("#harmonic-apply-evidence");
+  if(!node)return;
+  const wetMix=state.precise.wet??Number($("#wet").value);
+  const view=auditionFeedbackView({
+    loaded:Boolean(state.dry),player:state.player,wetMix
+  });
+  if(node.textContent!==view.text)node.textContent=view.text;
+  if(node.dataset.phase!==view.phase)node.dataset.phase=view.phase;
+  const f=state.player?.feedback?.current;
+  // Diagnostic metadata is revision-specific; the visible cue intentionally
+  // stays stable during rapid slider edits and never claims audible proof.
+  node.title=f?"最新要求 #"+f.requestedRevision+" / DSP ACK #"+f.appliedRevision+
+    (f.reason?" / "+f.reason:""):"理論グラフは音源の実測スペクトルではありません";
+}
 function indicator(text){
   const node=$("#rt-indicator");
   if(node.textContent!==text)node.textContent=text;
+  syncAuditionFeedback();
 }
 function bounds(changed=""){
   const cap=state.decoded?Math.min(20000,state.decoded.sampleRate*.45):20000;
@@ -218,6 +237,153 @@ function settings(){
       mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
   }
   return value;
+}
+
+// U4 comparison: two bounded, source-scoped coherent configurations.
+// A source generation changes ONLY after successful decode/commit.
+const comparisonSlots={A:null,B:null};
+let comparisonPending=null,comparisonCurrent=null,applyingConfiguration=false;
+function comparisonMessage(text,phase="idle"){
+  const node=$("#comparison-status");
+  if(!node)return;
+  if(node.textContent!==text)node.textContent=text;
+  node.dataset.phase=phase;
+}
+function updateComparisonButtons(){
+  for(const slot of ["A","B"]){
+    $("#compare-save-"+slot.toLowerCase()).disabled=!state.dry;
+    $("#compare-load-"+slot.toLowerCase()).disabled=!state.dry||!comparisonSlots[slot];
+  }
+}
+function captureCurrentConfiguration(){
+  const p=settings(),h=captureHarmonicConfiguration();
+  const manualCrusherBits=state.precise["crusher-bits"]??Number($("#crusher-bits").value);
+  return createSoundConfiguration({
+    sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
+    harmonic:h,audio:p,
+    values:{
+      low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
+      axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
+      wet:p.wet,zeroReflectGain:p.zeroReflectGain,zeroReflectDecay:p.zeroReflectDecay,
+      aMinHz:p.aMinHz,aReverb:p.aReverb,aBandBins:p.aBandBins,aQuality:p.aQuality,
+      crusherRateHz:p.crusherRateHz,crusherBits:p.crusherBits,manualCrusherBits
+    },
+    selectors:{
+      mode:$("#mode").value,outside:$("#outside").value,quality:$("#quality").value,
+      overlap:$("#overlap").value,engine:$("#engine").value,
+      pivotLinkTarget:$("#pivot-link-target").value,harmonicCount:$("#harmonic-count").value
+    },
+    flags:{
+      engineAuto:$("#engine-auto").checked,ringEnabled:$("#ring-enabled").checked,
+      rationalEnabled:$("#rational-enabled").checked,crusherEnabled:$("#crusher-enabled").checked,
+      carrierLink:$("#carrier-link").checked,harmonicPivotLink:$("#harmonic-pivot-link").checked,
+      pivotFollowLow:$("#pivot-follow-low").checked,rationalEnabledByLink
+    }
+  });
+}
+function applyConfigurationSilently(c){
+  // Preconditions are checked before entry. No DOM events or intermediate DSP
+  // writes: the owning adapters accept exact canonical numbers first.
+  const v=c.values,s=c.selectors,t=c.flags;
+  for(const [id,value] of Object.entries({
+    mode:s.mode,outside:s.outside,quality:s.quality,overlap:s.overlap,
+    engine:s.engine,harmonicCount:s.harmonicCount,pivotLinkTarget:s.pivotLinkTarget
+  })){
+    const selectorId=id==="harmonicCount"?"harmonic-count":
+      id==="pivotLinkTarget"?"pivot-link-target":id;
+    $("#"+selectorId).value=value;
+  }
+  for(const [id,value] of Object.entries({
+    "engine-auto":t.engineAuto,"ring-enabled":t.ringEnabled,
+    "rational-enabled":t.rationalEnabled,"crusher-enabled":t.crusherEnabled,
+    "carrier-link":t.carrierLink,"harmonic-pivot-link":t.harmonicPivotLink,
+    "pivot-follow-low":t.pivotFollowLow
+  }))$("#"+id).checked=value;
+  rationalEnabledByLink=t.rationalEnabledByLink;
+  lowUnitControl.setCanonical(v.low);highUnitControl.setCanonical(v.high);
+  pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
+  aMinUnitControl.setCanonical(v.aMinHz);
+  restoreHarmonicConfiguration(c.harmonic);
+  state.precise=Object.assign(Object.create(null),{
+    curvature:v.curvature,invert:v.invert,"zero-reflect":v.zeroReflectGain,
+    "zero-decay":v.zeroReflectDecay,"axis-shift":v.axisShift,wet:v.wet,
+    "a-reverb":v.aReverb,"a-band":v.aBandBins,"a-quality":v.aQuality,
+    "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
+  });
+  for(const [id,val] of Object.entries({
+    curvature:v.curvature,invert:v.invert,
+    "zero-reflect":100*v.zeroReflectGain,"zero-decay":100*v.zeroReflectDecay,
+    "axis-shift":v.axisShift,wet:v.wet,"a-reverb":100*v.aReverb,
+    "a-band":v.aBandBins,"a-quality":v.aQuality,
+    "crusher-bits":v.manualCrusherBits,
+    "crusher-hold":sliderFromFrequency(v.crusherRateHz,state.ctx?.sampleRate||state.decoded.sampleRate)
+  }))$("#"+id).value=String(val);
+  linkFeedback("");
+}
+function switchSoundConfiguration(slot){
+  const saved=comparisonSlots[slot];
+  if(!saved)return;
+  try{
+    validateSoundConfiguration(saved,{
+      sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate
+    });
+    const preflight=prepareStreamSettings({
+      ...saved.audio,sampleRate:state.ctx?.sampleRate||state.decoded.sampleRate
+    });
+    if(!preflight.ok)throw Error(preflight.message);
+    const previous=captureCurrentConfiguration();
+    // Every sound path is evaluated as a single transaction, with a local
+    // rollback before the lone updateParams request if a mismatch is found.
+    try{
+      applyConfigurationSilently(saved);
+      const actual=settings();
+      for(const [key,value] of Object.entries(saved.audio)){
+        if(key==="sampleRate")continue;
+        if(!Object.is(actual[key],value))
+          throw Error("復帰検証失敗: "+key);
+      }
+    }catch(error){
+      applyConfigurationSilently(previous);
+      throw error;
+    }
+    applyingConfiguration=true;
+    try{
+      updateParams("comparison");updateEngineInfo();tuneWet();
+    }finally{applyingConfiguration=false;}
+    comparisonCurrent=null;
+    if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
+      const f=state.player.feedback.current;
+      comparisonPending={slot,revision:f.phase==="pending"?f.requestedRevision:null};
+      comparisonMessage("設定"+slot+"：DSP反映確認中","pending");
+    }else{
+      comparisonPending=null;
+      comparisonMessage("設定"+slot+"を復帰 · "+
+        (state.player?"原音再生中（変換未確認）":"停止中（変換未確認）"),"ready");
+    }
+  }catch(error){
+    comparisonMessage("切替不可："+error.message,"error");
+  }
+}
+for(const slot of ["A","B"]){
+  const key=slot.toLowerCase();
+  $("#compare-save-"+key).addEventListener("click",()=>{
+    if(!state.dry)return;
+    try{
+      comparisonSlots[slot]=captureCurrentConfiguration();
+      updateComparisonButtons();
+      comparisonMessage("設定"+slot+"を記録 · 別の設定を試してから復帰できます","saved");
+    }catch(error){
+      comparisonMessage("設定"+slot+"の記録失敗："+error.message,"error");
+    }
+  });
+  $("#compare-load-"+key).addEventListener("click",()=>switchSoundConfiguration(slot));
+}
+function markComparisonEdited(){
+  if(applyingConfiguration)return;
+  if(comparisonPending||comparisonCurrent){
+    comparisonPending=null;comparisonCurrent=null;
+    comparisonMessage("設定を変更しました · 記録済みA/Bは保持","edited");
+  }
 }
 function labels(id=""){
   bounds(id);
@@ -458,11 +624,18 @@ function playPosition(){
   if(!state.player||!state.ctx||!duration())return state.seek;
   return (state.player.offset+Math.max(0,state.ctx.currentTime-state.player.at))%duration();
 }
+function syncWaveSeekAccessibility(seconds){
+  const wave=$("#wave"),pct=duration()?Math.round(clamp(seconds/duration(),0,1)*100):0;
+  const value=String(pct),time=fmtTime(Math.floor(seconds));
+  if(wave.getAttribute("aria-valuenow")!==value)wave.setAttribute("aria-valuenow",value);
+  if(wave.getAttribute("aria-valuetext")!==time)wave.setAttribute("aria-valuetext",time);
+}
 function refreshPlayhead(){
   const seconds=playPosition();
   $("#elapsed").textContent=fmtTime(seconds);
   $("#duration").textContent=fmtTime(duration());
   $("#playhead").style.left=(duration()?clamp(seconds/duration(),0,1)*100:0)+"%";
+  syncWaveSeekAccessibility(seconds);
   state.raf=requestAnimationFrame(refreshPlayhead);
 }
 function playheadFromPointer(e){
@@ -470,29 +643,29 @@ function playheadFromPointer(e){
   const rect=$("#wave").getBoundingClientRect();
   const frac=clamp((e.clientX-rect.left)/rect.width,0,.999999);
   state.seek=frac*duration();
-  if(state.player){
-    seek(state.seek);
-  }else{
-    play("wet",state.seek).catch(err=>message("再生失敗: "+err.message,"error"));
-  }
+  // Choosing a timeline position must not silently choose Wet playback.
+  // Leave the source stopped until an explicit Original or Processed action.
+  if(state.player)seek(state.seek);
   refreshStatusSeek();
 }
 function refreshStatusSeek(){
   $("#elapsed").textContent=fmtTime(state.seek);
   $("#playhead").style.left=(duration()?100*state.seek/duration():0)+"%";
+  syncWaveSeekAccessibility(state.seek);
 }
 $("#wave").addEventListener("pointerdown",playheadFromPointer);
-$("#wave").addEventListener("keydown",e=>{
+$("#wave").addEventListener("keydown",event=>{
   if(!state.dry)return;
-  if(e.key==="Enter"||e.key===" "){
-    e.preventDefault();play("wet",state.seek).catch(err=>message(err.message,"error"));
-  }else if(e.key==="ArrowLeft"||e.key==="ArrowRight"){
-    e.preventDefault();const diff=e.key==="ArrowLeft"?-2:2;
-    const pos=clamp(playPosition()+diff,0,Math.max(0,duration()-.01));
-    state.seek=pos;
-    if(state.player)seek(pos);
-    refreshStatusSeek();
-  }
+  const key=event.key;
+  const arrows=["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"];
+  if(!arrows.includes(key)&&key!=="Home"&&key!=="End")return;
+  event.preventDefault();
+  const delta=key==="ArrowLeft"||key==="ArrowDown"?-2:2;
+  const pos=key==="Home"?0:key==="End"?Math.max(0,duration()-.01)
+    :clamp(playPosition()+delta,0,Math.max(0,duration()-.01));
+  state.seek=pos;
+  if(state.player)seek(pos);
+  refreshStatusSeek();
 });
 async function context(){
   try{if(navigator.audioSession)navigator.audioSession.type="playback";}catch{}
@@ -529,6 +702,10 @@ function playerMessage(node,p){
       if(p.feedback.fail(data.revision,data.message)){
         indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
         message("共通DSP: "+data.message,"error");
+        if(comparisonPending){
+          comparisonMessage("設定"+comparisonPending.slot+"のDSP反映失敗 · 保存値は保持","error");
+          comparisonPending=null;comparisonCurrent=null;
+        }
       }
       if(data.fatal&&!p.fatalDryRecovery){
         // The Worklet discarded an untrustworthy partially-mutated stream.
@@ -555,6 +732,11 @@ function playerMessage(node,p){
         // "updating..." for each slider tick.
         $("#rt-indicator").dataset.appliedRevision=String(data.revision);
         indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
+        if(comparisonPending?.revision===data.revision){
+          comparisonCurrent=comparisonPending.slot;
+          comparisonMessage("設定"+comparisonCurrent+"：DSP最新設定の受理を確認","applied");
+          comparisonPending=null;
+        }
       }
     }
     if(data.type==="stats"){
@@ -787,6 +969,15 @@ async function play(mode="wet",offset=null){
     if(state.player!==player||launchEpoch!==state.transportEpoch)return;
     player.feedback.ready();
     tuneWet();
+    // Stream-format rebuild creates a new Worklet. Require a fresh revisioned
+    // confirmation before reporting this restored slot as accepted.
+    if(comparisonPending?.revision===null&&mode==="wet"){
+      applyingConfiguration=true;
+      try{updateParams("comparison-confirm");}
+      finally{applyingConfiguration=false;}
+      comparisonPending.revision=player.feedback.current.phase==="pending"?
+        player.feedback.current.requestedRevision:null;
+    }
     controls.stop.disabled=false;
     indicator("稼働中 · Rust/WASM AudioWorklet · "+(1000*result.latencyFrames/ctx.sampleRate).toFixed(1)+" ms DSP遅延");
     message(player.notice ||
@@ -815,6 +1006,7 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
+  if(!applyingConfiguration && changed!=="comparison-confirm")markComparisonEdited();
   // L is a cutoff; P is a coordinate anchor. Keep them independent unless
   // the user explicitly enabled a minimum bound for P, preserving P=0.
   if($("#pivot-follow-low").checked){
@@ -826,7 +1018,7 @@ function updateParams(changed){
     }
   }
   labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
-  state.offline=null;controls.download.disabled=true;
+  state.offline=null;state.exportIdentity=null;controls.download.disabled=true;
   // Export runs on a separate worker with a frozen parameter snapshot. Never
   // let a completed render from old controls be presented as current output.
   if(state.offlineWorker){
@@ -885,6 +1077,7 @@ function updateParams(changed){
   }
   const revision=++state.settingsRevision;
   p.feedback.request(revision);
+  syncAuditionFeedback();
   p.worklet.port.postMessage({
     type:"params",settings:current,activeQualityIndex:p.quality,revision
   });
@@ -1013,7 +1206,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
     if(range==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
-    if(range==="wet"){labels();tuneWet();drawCurve();}
+    if(range==="wet"){markComparisonEdited();labels();tuneWet();drawCurve();}
     else {updateParams(changed);updateEngineInfo();}
   };
   field.addEventListener("focus",()=>{
@@ -1125,7 +1318,11 @@ $("#decimal-digits").addEventListener("change",()=>{
   slopeUnitControl.refresh();
   updateSineLabel();
 });
-$("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
+$("#wet").addEventListener("input",()=>{
+  markComparisonEdited();
+  delete state.precise.wet;labels();tuneWet();drawCurve();
+  syncAuditionFeedback();
+});
 $("#slope-one").addEventListener("click",()=>{
   slopeUnitControl.setCanonical(1);
   updateParams("axis-slope");updateEngineInfo();
@@ -1148,7 +1345,13 @@ for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
 
 controls.dry.addEventListener("click",()=>play("dry"));
 controls.wet.addEventListener("click",()=>play("wet"));
-controls.stop.addEventListener("click",()=>stop());
+controls.stop.addEventListener("click",()=>{
+  if(comparisonPending){
+    comparisonPending=null;
+    comparisonMessage("停止しました · 加工設定の反映は未確認","ready");
+  }
+  void stop();
+});
 window.addEventListener("resize",()=>{drawCurve();drawAudio();});
 window.addEventListener("pagehide",()=>{if(state.rebuildTimer)clearTimeout(state.rebuildTimer);stop();if(state.offlineWorker)state.offlineWorker.terminate();});
 // Cold-start audio decode on iOS can stall after the file picker closes.
@@ -1211,8 +1414,14 @@ async function load(file){
     if(token!==state.loadToken)return;
     if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
     if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
-    state.offline=null;state.decoded={sampleRate:data.sampleRate};
+    state.offline=null;state.exportIdentity=null;state.sourceGeneration++;
+    state.decoded={sampleRate:data.sampleRate};
     state.dry=dry;state.seek=0;state.lastStats=null;
+    state.sourceGeneration++;
+    comparisonSlots.A=null;comparisonSlots.B=null;
+    comparisonPending=null;comparisonCurrent=null;
+    updateComparisonButtons();
+    comparisonMessage("新しい音源です · A/Bを記録してください","idle");
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
     state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
@@ -1263,7 +1472,13 @@ controls.render.addEventListener("click",()=>{
     message("WAV書出し設定未反映: "+preflight.message,"error");
     return;
   }
-  state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
+  // Wet is the final samplewise mix performed at download, NOT a new
+  // spectral render. The accepted Web contract exports 0/50/100% Mix from
+  // one complete processed buffer without rendering the track three times.
+  const {wet:unusedMix,...spectralSettings}=renderSettings;
+  const renderIdentity=freezeExportIdentity(state.sourceGeneration,spectralSettings);
+  state.offline=null;state.exportIdentity=renderIdentity;
+  controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;
   message("WAV書出し用オフライン処理中（試聴とは独立）…"+
     (preflight.warnings.length?" "+preflight.warnings.join(" "):""),
@@ -1282,12 +1497,14 @@ controls.render.addEventListener("click",()=>{
         (preflight.warnings.length?" "+preflight.warnings.join(" "):""),
         preflight.warnings.length?"warning":"info");
     }else if(data.type==="error"){
+      state.exportIdentity=null;
       controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
       message("オフライン書出し失敗: "+data.message,"error");
     }
   };
   worker.onerror=e=>{
     if(state.offlineWorker!==worker)return;
+    state.exportIdentity=null;
     controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
     message("オフライン処理失敗: "+e.message,"error");
   };
@@ -1315,7 +1532,17 @@ function makeWav(channels,rate){
 }
 controls.download.addEventListener("click",()=>{
   if(!state.offline)return;
-  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,settings().wet));
+  const check=prepareStreamSettings({
+    ...settings(),sampleRate:state.decoded.sampleRate
+  });
+  const {wet:currentMix,...spectralNow}=check.settings||{};
+  if(!check.ok||!matchesExportIdentity(state.exportIdentity,state.sourceGeneration,spectralNow)){
+    state.offline=null;state.exportIdentity=null;
+    controls.download.disabled=true;
+    message("変更後の設定に一致するWAVではありません。再度変換してください。","warning");
+    return;
+  }
+  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,currentMix));
   const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
   const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
   document.body.append(el);el.click();el.remove();
@@ -1379,7 +1606,15 @@ function showTab(tab){
 }
 $("#tab-map").addEventListener("click",()=>showTab("map"));
 $("#tab-math").addEventListener("click",()=>showTab("math"));
-$("#mini-expand").addEventListener("click",()=>showTab("math"));
+$("#mini-expand").addEventListener("click",()=>{
+  showTab("math");
+  // The disclosure is below a square graph; leave the graph in place, but
+  // move keyboard/screen-reader focus to the content that was just revealed.
+  const heading=$("#view-math .section-header h2");
+  heading.tabIndex=-1;
+  heading.focus({preventScroll:true});
+  heading.scrollIntoView({block:"nearest",behavior:"auto"});
+});
 for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
   $(node).addEventListener("keydown",e=>{
     if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight")return;

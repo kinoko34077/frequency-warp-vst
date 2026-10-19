@@ -6,8 +6,16 @@
   const $=id=>document.querySelector(id);
   const dialog=$("#settings-dialog");
   const opener=$("#settings-open");
-  const show=()=>{
+  // A settings entry inside the workbench must return to that actual trigger,
+  // not jump to the header and lose the user's adjustment context.
+  let returnFocus=opener;
+  const restoreFocus=()=>{
+    const target=returnFocus?.isConnected?returnFocus:opener;
+    target.focus({preventScroll:true});
+  };
+  const show=event=>{
     if(dialog.open)return;
+    returnFocus=event?.currentTarget instanceof HTMLElement?event.currentTarget:opener;
     try{if(typeof dialog.showModal!=="function")throw Error("no dialog API");dialog.showModal();}
     catch{dialog.setAttribute("open","");dialog.setAttribute("role","dialog");}
   };
@@ -15,7 +23,7 @@
     if(!dialog.open)return;
     try{if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");}
     catch{dialog.removeAttribute("open");}
-    opener.focus();
+    restoreFocus();
   };
   const debug=$("#debug-mode");
   const debugKey="frequency-warp:debug-mode:v1";
@@ -68,6 +76,8 @@
   },true);
   opener.addEventListener("click",show);
   $("#settings-inline").addEventListener("click",show);
+  // Escape/native dialog.close() can bypass the explicit buttons.
+  dialog.addEventListener("close",restoreFocus);
   $("#settings-close").addEventListener("click",close);
   $("#settings-done").addEventListener("click",close);
   dialog.addEventListener("click",event=>{if(event.target===dialog)close();});
@@ -75,11 +85,25 @@
   const hud=$("#runtime-hud"),hudHead=$("#runtime-hud-head");
   const collapse=$("#runtime-hud-collapse"),hide=$("#runtime-hud-hide");
   const restore=$("#runtime-hud-restore"),brief=$("#runtime-hud-brief");
+  // A collapsed mobile badge must still disclose real warnings/failures.
+  // Hiding the detailed HUD is not permission to hide a failed audio state.
+  const status=$("#status");
   const updateBrief=()=>{
-    brief.textContent=($("#rt-indicator")?.textContent||"停止中").slice(0,55);
+    const important=["error","warning"].includes(status.dataset.kind)
+      ?status.textContent.trim():"";
+    brief.textContent=(important||$("#rt-indicator")?.textContent||"停止中").slice(0,55);
   };
-  new MutationObserver(updateBrief).observe($("#rt-indicator"),{childList:true,subtree:true,characterData:true});
+  const statusObserver=new MutationObserver(updateBrief);
+  statusObserver.observe($("#rt-indicator"),{childList:true,subtree:true,characterData:true});
+  statusObserver.observe(status,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["data-kind"]});
   updateBrief();
+  // On narrow touch screens the full floating diagnostics can obscure the
+  // right-hand square graph or linked frequency selector. Retain an explicit
+  // restore affordance and full diagnostics on demand, without reflow.
+  if(window.matchMedia("(max-width:600px)").matches){
+    hud.classList.add("is-hidden");
+    restore.hidden=false;
+  }
   collapse.addEventListener("click",()=>{
     const folded=hud.classList.toggle("is-collapsed");
     collapse.textContent=folded?"+":"−";
@@ -114,6 +138,16 @@
     if(!hud.style.left)return;
     hud.style.left=Math.max(0,Math.min(innerWidth-hud.offsetWidth,parseFloat(hud.style.left)))+"px";
     hud.style.top=Math.max(0,Math.min(innerHeight-hud.offsetHeight,parseFloat(hud.style.top)))+"px";
+  });
+  // The source-to-export handoff is available without opening Settings or
+  // requiring a layout rearrangement. A disabled render stays visibly disabled.
+  $("#export-jump").addEventListener("click",()=>{
+    const destination=$(".offline-tool"),render=$("#render");
+    if(!destination)return;
+    destination.open=true;
+    destination.scrollIntoView({block:"center",behavior:"auto"});
+    (render?.disabled?destination.querySelector("summary"):render)
+      ?.focus({preventScroll:true});
   });
   // A missing top-level import prevents app.mjs from executing *any* handler.
   // Avoid a deceptively ready UI when this happens: settings stay usable and

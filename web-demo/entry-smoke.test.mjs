@@ -62,6 +62,45 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       }
     }
     assert.ok(boot,"Public app modules did not load: "+lastError+"; "+errors.join("; "));
+    // Mobile diagnostics must not begin as a wide fixed overlay over the graph
+    // or pivot linker; the user can explicitly restore full detail.
+    assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),true);
+    const badgeWidth=await page.$eval("#runtime-hud-restore",el=>el.getBoundingClientRect().width);
+    await page.evaluate(()=>{
+      const s=document.querySelector("#status");
+      s.dataset.kind="error";
+      s.textContent="テスト用の音声エラー";
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#runtime-hud-brief").textContent.includes("テスト用の音声エラー"));
+    const warningWidth=await page.$eval("#runtime-hud-restore",el=>el.getBoundingClientRect().width);
+    assert.ok(Math.abs(badgeWidth-warningWidth)<1,
+      "Audio warnings must not resize and move the compact status button");
+    await page.evaluate(()=>{
+      const s=document.querySelector("#status");
+      s.dataset.kind="info";
+      s.textContent="音声ファイルを選択してください。";
+    });
+    await page.click("#runtime-hud-restore");
+    assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),false);
+    await page.click("#runtime-hud-hide");
+    for(const width of [320,390]){
+      await page.setViewport({width,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+      const hit=await page.$eval("#pivot-link-target",el=>{
+        el.scrollIntoView({block:"center"});
+        const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
+        const under=document.elementFromPoint(x,y);
+        const left=document.querySelector(".quick-panel").getBoundingClientRect();
+        const right=document.querySelector(".workspace-right").getBoundingClientRect();
+        const graph=document.querySelector("#curve").getBoundingClientRect();
+        return {target:under===el||el.contains(under),
+          leftRight:left.right,rightLeft:right.left,graphW:graph.width,graphH:graph.height,
+          overflow:document.documentElement.scrollWidth>innerWidth};
+      });
+      assert.ok(hit.target,"Mobile status must not intercept physical pivot link at "+width+": "+JSON.stringify(hit));
+      assert.ok(hit.leftRight<=hit.rightLeft+1&&Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
+        "Keep compact LEFT controls / RIGHT square graph at "+width+": "+JSON.stringify(hit));
+    }
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
       "Settings must open from touch-size header button");
@@ -73,6 +112,16 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       "mobile settings must scroll: "+JSON.stringify(scroll));
     await page.click("#settings-done");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),false);
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),"settings-open");
+    await page.click("#settings-inline");
+    assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
+    await page.click("#settings-close");
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),"settings-inline",
+      "Closing settings must restore the workbench trigger, not jump to header");
+    // Browser Escape is a separate native close path.
+    await page.click("#settings-inline");
+    await page.keyboard.press("Escape");
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),"settings-inline");
     const [chooser]=await Promise.all([
       page.waitForFileChooser({timeout:9000}),
       page.click("#drop")
