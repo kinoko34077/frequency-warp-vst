@@ -1146,7 +1146,28 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
     await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
     const longWave=await (await page.$("#wave")).boundingBox();
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true);
     await page.mouse.click(longWave.x+longWave.width*.9,longWave.y+longWave.height/2);
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true,
+      "Waveform seek while stopped must not silently launch processed audio");
+    const pausedPosition=await page.$eval("#elapsed",el=>{
+      const [m,sec]=el.textContent.split(":").map(Number);return m*60+sec;
+    });
+    assert.ok(Math.abs(pausedPosition-540)<3,"Waveform seeks without starting: "+pausedPosition);
+    assert.equal(await page.$eval("#wave",el=>el.getAttribute("role")),"slider");
+    const initialAccessible=await page.$eval("#wave",el=>Number(el.getAttribute("aria-valuenow")));
+    assert.ok(initialAccessible>=89&&initialAccessible<=91,
+      "Accessible waveform seek should describe the actual selected position");
+    await page.focus("#wave");
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true,
+      "Keyboard seek must not silently start Wet processing");
+    const keyboardPosition=await page.$eval("#elapsed",el=>{
+      const [m,sec]=el.textContent.split(":").map(Number);return m*60+sec;
+    });
+    assert.ok(Math.abs(keyboardPosition-pausedPosition-2)<.2,"ArrowRight adds two seconds");
+    // The deliberate transport choice owns playback mode and retains seek.
+    await page.click("#play-wet");
     await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000})
       .catch(async err=>{
         const state=await page.evaluate(()=>({
@@ -1157,14 +1178,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
           crash:document.querySelector("#play-wet").disabled,
           errors:[]
         }));
-        throw Error("600-second start: "+JSON.stringify(state)+" | "+err.message);
+        throw Error("600-second deliberate playback start: "+JSON.stringify(state)+" | "+err.message);
       });
     const soughtSeconds=await page.$eval("#elapsed",el=>{
       const [m,sec]=el.textContent.split(":").map(Number);
       return m*60+sec;
     });
-    assert.ok(Math.abs(soughtSeconds-540)<3,
-      "600s waveform seek should land near 9:00, got "+soughtSeconds);
+    assert.ok(Math.abs(soughtSeconds-542)<3,
+      "Explicit Wet start uses selected 9:02 position, got "+soughtSeconds);
     await page.click("#stop");
     // A18: a genuinely unrecoverable Worklet parameter failure must not
     // leave the user hearing an untrusted partial-DSP stream or silence.
