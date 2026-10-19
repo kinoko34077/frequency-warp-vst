@@ -181,11 +181,22 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#settings-done");
     assert.ok(Math.abs(await canonicalAReverb()-.33333)<1e-12);
     assert.equal(await page.$eval("#a-reverb",el=>Number(el.value)),33);
+    // Reflection synthesis gain stores an exact fraction, while dual-thumb
+    // movement remains constrained to whole-percent gesture positions.
+    const setReflectGain=percent=>page.$eval("#zero-reflect-value",(el,value)=>{
+      el.value=String(value);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },percent);
+    const canonicalReflectGain=()=>page.$eval("#zero-reflect-value",
+      el=>Number(el.dataset.fwCanonical));
+    await setReflectGain("37.125");
+    assert.ok(Math.abs(await canonicalReflectGain()-.37125)<1e-12);
+    assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),37);
     await page.click("#compare-save-a");
     await setWet("50");
     await page.click("#settings-open");
     await setAReverb("75");
     await page.click("#settings-done");
+    await setReflectGain("80");
     await page.click("#compare-save-b");
     await page.click("#compare-load-a");
     assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
@@ -193,9 +204,18 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.equal(await page.$eval("#wet-value",el=>el.value),"12.345");
     assert.ok(Math.abs(await canonicalAReverb()-.33333)<1e-12,
       "A/B restores reverb Float64 independently of whole-percent slider");
+    assert.ok(Math.abs(await canonicalReflectGain()-.37125)<1e-12,
+      "A/B must preserve reflection gain Float64, not the 37% dual thumb proxy");
+    assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),37);
     await page.click("#compare-load-b");
     assert.equal(await canonicalWet(),.5);
     assert.equal(await canonicalAReverb(),.75);
+    assert.equal(await canonicalReflectGain(),.8);
+    await page.$eval("#zero-reflect-value",el=>{
+      el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await canonicalReflectGain(),.8,
+      "empty reflection gain must not replace the last valid processed setting");
     await page.$eval("#a-reverb-value",el=>{
       el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -212,6 +232,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.equal(Number(await page.$eval("#wet",el=>el.value)),1);
     assert.equal(await canonicalAReverb(),0,"Reset restores reverb binding to zero");
     assert.equal(Number(await page.$eval("#a-reverb",el=>el.value)),0);
+    assert.equal(await canonicalReflectGain(),1,"reset restores full reflection gain");
+    assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),100);
     // The Rust offline renderer has ALREADY removed stream lookahead and
     // flushed the tail. The saved WAV must therefore mix Dry and processed
     // samplewise, unlike the latency-compensated *realtime* AudioWorklet.
