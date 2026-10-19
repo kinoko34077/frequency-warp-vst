@@ -665,6 +665,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await resetPage.waitForFunction(()=>!document.querySelector("#play-dry").disabled,{timeout:20000});
     await resetPage.click("#play-dry");
     await resetPage.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:12000});
+    assert.equal(await resetPage.$eval("#harmonic-apply-evidence",el=>el.dataset.phase),"dry",
+      "Original audio must not look like acknowledged processed playback near the graph");
     await resetPage.click("#settings-open");
     await resetPage.click("#settings-reset");
     assert.equal(resetErrors.length,0,
@@ -870,6 +872,24 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>
       document.querySelector("#rt-indicator").textContent.includes("稼働中")&&
       !document.querySelector("#stop").disabled,{timeout:25000});
+    assert.match(await page.$eval("#harmonic-apply-evidence",el=>el.textContent),
+      /DSP初期設定|DSPが最新設定/, "Wet entry must disclose DSP acceptance without claiming spectrum measurements");
+    await page.$eval("#wet",el=>{
+      el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>document.querySelector("#harmonic-apply-evidence")?.dataset.phase==="applied",
+      {timeout:12000});
+    const auditionAck=await page.$eval("#harmonic-apply-evidence",el=>({
+      text:el.textContent,title:el.title,height:el.getBoundingClientRect().height
+    }));
+    assert.match(auditionAck.text,/最新設定を受理.*実音の測定ではありません/);
+    assert.match(auditionAck.title,/DSP ACK #[1-9]/);
+    assert.ok(auditionAck.height<=18,"Local feedback must not reflow the graph");
+    await page.$eval("#wet",el=>{
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.waitForFunction(()=>document.querySelector("#harmonic-apply-evidence")?.dataset.phase==="applied",
+      {timeout:12000});
     assert.ok(await page.evaluate(()=>window.__dryWorkletCount)>=1,
       "a valid wet switch must initialize the real Rust/WASM AudioWorklet");
     await page.click("#stop");
