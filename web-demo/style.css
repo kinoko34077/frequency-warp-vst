@@ -697,7 +697,7 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 }
 
 /* Independent direct-F and derived-H pivot link choices share the audio stage. */
-#pivot-link-target{max-width:min(140px,37vw);min-width:76px;height:25px;padding:2px 4px;
+#pivot-link-target{max-width:min(140px,37vw);min-width:76px;min-height:40px;height:40px;padding:6px 4px;
   border:1px solid #4c7469;border-radius:4px;background:#16332f;color:#c9eee1;
   font-size:10px}
 #pivot-link-target:focus-visible{outline:2px solid #8ce6cb}
