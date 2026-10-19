@@ -11,6 +11,7 @@
 #include <wrl/client.h>
 #include <wrl/event.h>
 #include <WebView2.h>
+#include "../../src/ui_pinned_resource_router.h"
 #include <filesystem>
 #include <fstream>
 #include <cstring>
@@ -27,8 +28,8 @@
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
-static constexpr wchar_t kPinnedUrl[]=L"https://fwvst-smoke.invalid/index.html";
-static constexpr wchar_t kRejectedUrl[]=L"https://fwvst-smoke.invalid/missing.html";
+static constexpr wchar_t kPinnedUrl[]=L"https://fwvst.local/index.html";
+static constexpr wchar_t kRejectedUrl[]=L"https://fwvst.local/missing.html";
 static constexpr char kPinnedHtmlA[]="<html><body>PINNED_A</body></html>";
 static constexpr char kPinnedHtmlB[]="<html><body>PINNED_B</body></html>";
 
@@ -45,6 +46,8 @@ struct Smoke {
     unsigned phase=0; // 0: A, 1: B, 2: Back A, 3: reject missing, 4: recover A
     unsigned deniedRequests=0;
     bool resourceReady=false;
+    std::shared_ptr<const fw::ui_assets::PinnedSnapshot> snapshotA;
+    std::shared_ptr<const fw::ui_assets::PinnedSnapshot> snapshotB;
     std::filesystem::path uiRoot;
     ComPtr<ICoreWebView2Environment> env;
     ComPtr<ICoreWebView2Controller> controller;
@@ -73,9 +76,9 @@ static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
     }
     const std::wstring uiFolder=s->uiRoot.wstring();
     if(FAILED(host->SetVirtualHostNameToFolderMapping(
-        L"fwvst-smoke.invalid",uiFolder.c_str(),
+        L"fwvst.local",uiFolder.c_str(),
         COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))||
-       FAILED(host->ClearVirtualHostNameToFolderMapping(L"fwvst-smoke.invalid"))){
+       FAILED(host->ClearVirtualHostNameToFolderMapping(L"fwvst.local"))){
         s->complete(false,"WebView2 virtual host mapping clear failed");
         return false;
     }
@@ -101,18 +104,22 @@ static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
                 }
                 const std::wstring uri=name?name:L"";
                 CoTaskMemFree(name);
-                const bool pinned=uri==kPinnedUrl;
+                // Use the ACTUAL UI-5B2B strict pinned router in Chromium.
+                // This is not the former test-only "uri == kPinnedUrl".
+                const auto snapshot=owner->phase==1?owner->snapshotB:owner->snapshotA;
+                const auto result=fw::ui_assets::findPinnedResource(snapshot,
+                    std::string(uri.begin(),uri.end()));
+                const bool pinned=result.file!=nullptr;
                 if(pinned)++owner->pinnedRequests;
                 if(uri==kRejectedUrl)++owner->deniedRequests;
                 ComPtr<IStream> stream;
                 if(pinned) {
-                    const char* current=owner->phase==1?kPinnedHtmlB:kPinnedHtmlA;
-                    const auto bytes=std::strlen(current);
+                    const auto bytes=result.file->bytes.size();
                     HGLOBAL heap=GlobalAlloc(GMEM_MOVEABLE,bytes);
                     if(!heap){owner->complete(false,"response allocation failed");return E_OUTOFMEMORY;}
                     void* dest=GlobalLock(heap);
                     if(!dest){GlobalFree(heap);owner->complete(false,"response lock failed");return E_OUTOFMEMORY;}
-                    std::memcpy(dest,current,bytes);
+                    std::memcpy(dest,result.file->bytes.data(),bytes);
                     GlobalUnlock(heap);
                     if(FAILED(CreateStreamOnHGlobal(heap,TRUE,&stream))){
                         GlobalFree(heap);
@@ -169,6 +176,19 @@ int wmain() {
     ShowWindow(window,SW_SHOW);
     const auto state=std::make_shared<Smoke>();
     state->hwnd=window;
+    auto snapshotFrom=[](const char* html) {
+        auto mutableBytes=std::make_shared<fw::ui_assets::PinnedSnapshot>();
+        mutableBytes->version=1;
+        const auto count=std::strlen(html);
+        mutableBytes->files.push_back({"index.html",
+            std::vector<std::uint8_t>(html,html+count)});
+        mutableBytes->files.push_back({"host-bridge.mjs",
+            {'e','x','p','o','r','t',' ','{','}'}});
+        return std::shared_ptr<const fw::ui_assets::PinnedSnapshot>(
+            std::move(mutableBytes));
+    };
+    state->snapshotA=snapshotFrom(kPinnedHtmlA);
+    state->snapshotB=snapshotFrom(kPinnedHtmlB);
     LPWSTR version=nullptr;
     const HRESULT available=GetAvailableCoreWebView2BrowserVersionString(nullptr,&version);
     if(FAILED(available)||!version||!*version) {
@@ -343,7 +363,7 @@ int wmain() {
                                                                 checked->complete(false,"version-specific live DOM / storage-isolation mismatch");
                                                                 return S_OK;
                                                             }
-                                                            std::cout<<"PASS stage "<<stage<<" live immutable DOM + storage"<<std::endl;
+                                                            std::cout<<"PASS stage "<<stage<<" live production-routed immutable DOM + storage"<<std::endl;
                                                             if(stage==4){
                                                                 checked->complete(checked->clears==5&&
                                                                     checked->deniedRequests>=1,
