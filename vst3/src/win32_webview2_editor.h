@@ -43,6 +43,8 @@ inline Steinberg::ViewRect kWebUiEditorRect{0,0,1100,760};
 class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     struct Shared {
         HWND child=nullptr;
+        HWND uiSelectButton=nullptr;
+        HWND uiBackButton=nullptr;
         bool alive=true;
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> view;
@@ -346,13 +348,18 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                   hash.data(),hash.size()))return;
         std::wostringstream fingerprint;
         fingerprint<<std::hex<<std::setfill(L'0');
-        for(std::size_t i=0;i<8;i++)
+        for(std::size_t i=0;i<hash.size();i++)
             fingerprint<<std::setw(2)<<static_cast<unsigned>(hash[i]);
-        const auto prompt=L"Activate this explicitly selected UI manifest?\n"+
-            file.filename().wstring()+
-            L"\nSHA-256 prefix: "+fingerprint.str()+
-            L"\nManifest identifies file content, not publisher signature."+
-            L"\nNo retains the existing UI.";
+        std::uintmax_t totalBytes=0;
+        for(const auto& item:manifest.files)totalBytes+=item.bytes;
+        const std::wstring prompt=
+            L"Activate this local UI?\nFolder: "+(file.parent_path()/L"ui").wstring()+
+            L"\nManifest: "+file.wstring()+
+            L"\nAssets: "+std::to_wstring(manifest.files.size())+
+            L" files, "+std::to_wstring(totalBytes)+L" bytes"+
+            L"\nManifest SHA-256: "+fingerprint.str()+
+            L"\nUnsigned: hashes verify content, NOT the publisher."+
+            L"\nNo retains the current UI.";
         int consent=IDNO;
         {
             ModalGuard modal(state);
@@ -397,8 +404,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // *no* DOM gesture, binding or hello can edit the DAW state.
         if(state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
             return;
-        if(msg->kind==UiWireKind::UiSelect){selectApprovedUi(state);return;}
-        if(msg->kind==UiWireKind::UiBack){selectPreviousUi(state);return;}
+        // Web content must NOT open native dialogs or switch UI.
+        // The permanent Win32 toolbar below owns these actions.
+        if(msg->kind==UiWireKind::UiSelect||
+           msg->kind==UiWireKind::UiBack)return;
         if(msg->kind==UiWireKind::Hello){
             state.uiReady=true;
             state.displayedBindingPhase.clear();
@@ -445,6 +454,17 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     static LRESULT CALLBACK browserWindowProc(HWND hwnd,UINT message,
                                                WPARAM w,LPARAM l,
                                                UINT_PTR,DWORD_PTR ref) {
+        if(message==WM_COMMAND) {
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state && state->alive && HIWORD(w)==BN_CLICKED) {
+                if(reinterpret_cast<HWND>(l)==state->uiSelectButton) {
+                    selectApprovedUi(*state);return 0;
+                }
+                if(reinterpret_cast<HWND>(l)==state->uiBackButton) {
+                    selectPreviousUi(*state);return 0;
+                }
+            }
+        }
         if(message==WM_KILLFOCUS) {
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state) {state->hasFocus=false;endAllEdits(*state);}
@@ -555,6 +575,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                     showError(target,L"WebView2 browser creation failed.");return S_OK;
                                 }
                                 RECT bounds{};GetClientRect(target->child,&bounds);
+                                bounds.top=44; // dedicated native UI recovery toolbar
                                 ctrl->put_Bounds(bounds);
                                 ComPtr<ICoreWebView2Settings> settings;
                                 if(SUCCEEDED(target->view->get_Settings(&settings))&&settings) {
@@ -787,6 +808,22 @@ public:
             DestroyWindow(state_->child);state_->child=nullptr;systemWindow=nullptr;
             CoUninitialize();ownsCom_=false;return Steinberg::kResultFalse;
         }
+        state_->uiSelectButton=CreateWindowExW(0,L"BUTTON",L"Select verified UI...",
+            WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,8,6,170,32,state_->child,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(1001)),
+            GetModuleHandleW(nullptr),nullptr);
+        state_->uiBackButton=CreateWindowExW(0,L"BUTTON",L"Back to previous UI",
+            WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,186,6,175,32,state_->child,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(1002)),
+            GetModuleHandleW(nullptr),nullptr);
+        if(!state_->uiSelectButton||!state_->uiBackButton){
+            if(state_->uiSelectButton)DestroyWindow(state_->uiSelectButton);
+            if(state_->uiBackButton)DestroyWindow(state_->uiBackButton);
+            RemoveWindowSubclass(state_->child,browserWindowProc,
+                reinterpret_cast<UINT_PTR>(this));
+            DestroyWindow(state_->child);state_->child=nullptr;systemWindow=nullptr;
+            CoUninitialize();ownsCom_=false;return Steinberg::kResultFalse;
+        }
         SetTimer(state_->child,1,250,nullptr);
         attachedToParent();
         createBrowser(state_);
@@ -813,6 +850,7 @@ public:
         state_->servedIndexGeneration=0;
         state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
         DestroyWindow(state_->child);
+        state_->uiSelectButton=nullptr;state_->uiBackButton=nullptr;
         state_->child=nullptr;
         systemWindow=nullptr;
         removedFromParent();
@@ -827,6 +865,7 @@ public:
                 rect->bottom-rect->top,SWP_NOZORDER|SWP_NOACTIVATE);
             if(state_->controller){
                 RECT bounds{};GetClientRect(state_->child,&bounds);
+                bounds.top=44;
                 state_->controller->put_Bounds(bounds);
             }
         }
