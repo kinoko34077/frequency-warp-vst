@@ -862,8 +862,17 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             if(SUCCEEDED(args->get_Uri(&uri))) {
                                                 const std::wstring url=uri?uri:L"";
                                                 CoTaskMemFree(uri);
-                                                if(url.rfind(L"https://fwvst.local/",0)!=0)
-                                                    args->put_Cancel(TRUE);
+                                                const auto stage=liveNav->switchStage;
+                                                const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
+                                                    stage==Shared::SwitchStage::BlankRecovery;
+                                                const bool loading=stage==Shared::SwitchStage::LoadCandidate||
+                                                    stage==Shared::SwitchStage::LoadRecovery;
+                                                // Permit the native intermediary blank document.
+                                                // Reject all other navigations during cleanup.
+                                                const bool allow=(url==L"about:blank"&&blanking)||
+                                                    (url.rfind(L"https://fwvst.local/",0)==0 &&
+                                                     (stage==Shared::SwitchStage::Idle||loading));
+                                                if(!allow)args->put_Cancel(TRUE);
                                             }
                                             endAllEdits(*liveNav);
                                             liveNav->uiReady=false;
@@ -879,9 +888,66 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             const auto liveNav=nav.lock();
                                             if(!liveNav||!liveNav->alive)return S_OK;
                                             BOOL ok=FALSE;
+                                            const auto stage=liveNav->switchStage;
+                                            const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
+                                                stage==Shared::SwitchStage::BlankRecovery;
+                                            const bool recovering=stage==Shared::SwitchStage::BlankRecovery||
+                                                stage==Shared::SwitchStage::ClearRecovery||
+                                                stage==Shared::SwitchStage::LoadRecovery;
+                                            if(blanking) {
+                                                LPWSTR source=nullptr;
+                                                const bool blankOk=
+                                                    SUCCEEDED(args->get_IsSuccess(&ok))&&ok&&
+                                                    SUCCEEDED(browser->get_Source(&source))&&
+                                                    source&&std::wcscmp(source,L"about:blank")==0;
+                                                CoTaskMemFree(source);
+                                                if(!blankOk||!liveNav->isolatedProfile) {
+                                                    if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                                    else rollbackUi(*liveNav);
+                                                    return S_OK;
+                                                }
+                                                liveNav->switchStage=recovering
+                                                    ?Shared::SwitchStage::ClearRecovery
+                                                    :Shared::SwitchStage::ClearCandidate;
+                                                const auto epoch=liveNav->switchEpoch;
+                                                const auto generation=liveNav->uiActivation.pendingGeneration();
+                                                const std::weak_ptr<Shared> weakClear=liveNav;
+                                                const HRESULT clear=liveNav->isolatedProfile->ClearBrowsingDataAll(
+                                                    Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+                                                        [weakClear,epoch,generation,recovering](HRESULT hr)->HRESULT {
+                                                            const auto owner=weakClear.lock();
+                                                            if(!owner||!owner->alive||owner->switchEpoch!=epoch)return S_OK;
+                                                            if(owner->switchStage!=(recovering
+                                                                ?Shared::SwitchStage::ClearRecovery
+                                                                :Shared::SwitchStage::ClearCandidate))return S_OK;
+                                                            if(!recovering && owner->uiActivation.pendingGeneration()!=generation)
+                                                                return S_OK;
+                                                            const bool legacy=recovering&&!owner->uiActivation.active();
+                                                            if(FAILED(hr)||!mapLegacyBundledUi(*owner,legacy)||!owner->view) {
+                                                                if(recovering)PostMessageW(owner->child,WM_APP+42,0,0);
+                                                                else rollbackUi(*owner);
+                                                                return S_OK;
+                                                            }
+                                                            owner->switchStage=recovering
+                                                                ?Shared::SwitchStage::LoadRecovery
+                                                                :Shared::SwitchStage::LoadCandidate;
+                                                            if(FAILED(owner->view->Navigate(L"https://fwvst.local/index.html"))) {
+                                                                if(recovering)PostMessageW(owner->child,WM_APP+42,0,0);
+                                                                else rollbackUi(*owner);
+                                                            }
+                                                            return S_OK;
+                                                        }).Get());
+                                                if(FAILED(clear)) {
+                                                    if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                                    else rollbackUi(*liveNav);
+                                                }
+                                                return S_OK;
+                                            }
                                             if(FAILED(args->get_IsSuccess(&ok))||!ok){
                                                 if(liveNav->uiActivation.pendingGeneration())
                                                     rollbackUi(*liveNav);
+                                                else if(recovering)
+                                                    PostMessageW(liveNav->child,WM_APP+42,0,0);
                                                 else showError(liveNav,L"Frequency Warp local website load failed.");
                                                 return S_OK;
                                             }
@@ -892,12 +958,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             if(currentUri!=L"https://fwvst.local/index.html") {
                                                 if(liveNav->uiActivation.pendingGeneration())
                                                     rollbackUi(*liveNav);
+                                                else if(recovering)
+                                                    PostMessageW(liveNav->child,WM_APP+42,0,0);
                                                 return S_OK;
                                             }
                                             liveNav->navigationLoaded=true;
                                             // Keep the web player in DOM for existing JS handlers,
                                             // but hide its file-preview panel inside the DAW.
                                             const auto pending=liveNav->uiActivation.pendingGeneration();
+                                            const auto evaluatedEpoch=liveNav->switchEpoch;
                                             // A web message (even with a generation) is
                                             // page-forgeable. The host itself now waits
                                             // for Chromium to evaluate and *await* import
@@ -909,9 +978,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             const HRESULT started=browser->CallDevToolsProtocolMethod(
                                                 L"Runtime.evaluate",params,
                                                 Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                                                    [nav,pending](HRESULT hr,LPCWSTR result)->HRESULT {
+                                                    [nav,pending,evaluatedEpoch](HRESULT hr,LPCWSTR result)->HRESULT {
                                                         const auto owner=nav.lock();
-                                                        if(!owner||!owner->alive)return S_OK;
+                                                        if(!owner||!owner->alive||owner->switchEpoch!=evaluatedEpoch)return S_OK;
                                                         const std::wstring_view response=result?result:L"";
                                                         const bool verified=SUCCEEDED(hr) &&
                                                             response.find(L"\"type\":\"boolean\"")!=std::wstring_view::npos &&
@@ -937,17 +1006,25 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                                owner->uiActivation.accept(
                                                                    pending,1,true,verified)) {
                                                                 owner->activationStarted=0;
+                                                                owner->switchStage=Shared::SwitchStage::Idle;
                                                                 owner->uiReady=true;
                                                                 owner->displayedBindingPhase.clear();
                                                                 sendSnapshot(*owner);
                                                             }
-                                                        } else if(owner->uiActivation.pendingGeneration()==0) {
+                                                        } else if(owner->uiActivation.pendingGeneration()==0 &&
+                                                                 owner->switchStage!=Shared::SwitchStage::BlankRecovery &&
+                                                                 owner->switchStage!=Shared::SwitchStage::ClearRecovery) {
+                                                            owner->switchStage=Shared::SwitchStage::Idle;
+                                                            owner->activationStarted=0;
                                                             owner->uiReady=true;
                                                             sendSnapshot(*owner);
                                                         }
                                                         return S_OK;
                                                     }).Get());
-                                            if(FAILED(started) && pending)rollbackUi(*liveNav);
+                                            if(FAILED(started)) {
+                                                 if(pending)rollbackUi(*liveNav);
+                                                 else if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                             }
                                             return S_OK;
                                         }).Get(),&loadToken);
                                 target->browserReady=true;
