@@ -13,6 +13,9 @@
 #include <iostream>
 #include <chrono>
 #include <string>
+#include <string_view>
+#include <exception>
+#include <system_error>
 #include <cstdint>
 
 using Microsoft::WRL::Callback;
