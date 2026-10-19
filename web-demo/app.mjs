@@ -12,6 +12,7 @@ import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
+import {auditionFeedbackView} from "./audition-feedback-view.mjs";
 import {axisShiftUnits,axisShiftCanonical,axisShiftView} from "./axis-shift-view.mjs";
 
 const $=id=>document.querySelector(id);
@@ -103,9 +104,25 @@ function message(text,type="info"){
   if(node.textContent!==text)node.textContent=text;
   if(node.dataset.kind!==type)node.dataset.kind=type;
 }
+function syncAuditionFeedback(){
+  const node=$("#harmonic-apply-evidence");
+  if(!node)return;
+  const wetMix=state.precise.wet??Number($("#wet").value);
+  const view=auditionFeedbackView({
+    loaded:Boolean(state.dry),player:state.player,wetMix
+  });
+  if(node.textContent!==view.text)node.textContent=view.text;
+  if(node.dataset.phase!==view.phase)node.dataset.phase=view.phase;
+  const f=state.player?.feedback?.current;
+  // Diagnostic metadata is revision-specific; the visible cue intentionally
+  // stays stable during rapid slider edits and never claims audible proof.
+  node.title=f?"最新要求 #"+f.requestedRevision+" / DSP ACK #"+f.appliedRevision+
+    (f.reason?" / "+f.reason:""):"理論グラフは音源の実測スペクトルではありません";
+}
 function indicator(text){
   const node=$("#rt-indicator");
   if(node.textContent!==text)node.textContent=text;
+  syncAuditionFeedback();
 }
 function bounds(changed=""){
   const cap=state.decoded?Math.min(20000,state.decoded.sampleRate*.45):20000;
@@ -885,6 +902,7 @@ function updateParams(changed){
   }
   const revision=++state.settingsRevision;
   p.feedback.request(revision);
+  syncAuditionFeedback();
   p.worklet.port.postMessage({
     type:"params",settings:current,activeQualityIndex:p.quality,revision
   });
