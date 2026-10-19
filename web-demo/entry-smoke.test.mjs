@@ -100,6 +100,13 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       assert.ok(hit.target,"Mobile status must not intercept physical pivot link at "+width+": "+JSON.stringify(hit));
       assert.ok(hit.leftRight<=hit.rightLeft+1&&Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
         "Keep compact LEFT controls / RIGHT square graph at "+width+": "+JSON.stringify(hit));
+      const exportTarget=await page.$eval("#export-jump",el=>{
+        el.scrollIntoView({block:"center"});
+        const r=el.getBoundingClientRect(),under=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+        return {height:r.height,width:r.width,reachable:under===el||el.contains(under)};
+      });
+      assert.ok(exportTarget.height>=40&&exportTarget.reachable,
+        "Mobile "+width+"px WAV shortcut must have a reachable 40px hit target: "+JSON.stringify(exportTarget));
     }
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
