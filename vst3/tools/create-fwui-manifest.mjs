@@ -20,9 +20,14 @@ async function visit(directory){
     if(stat.isDirectory()){await visit(path);continue;}
     const name=relative(root,path).split(sep).join("/");
     const parts=name.split("/");
-    if(!parts.every(p=>/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(p) &&
-        !p.endsWith(".")&&!p.includes("~")&&p!=="."&&p!==".."))
-      throw new Error("Non-portable asset name: "+name);
+    if(!parts.every(p=>{
+      if(!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(p) ||
+         p.endsWith(".")||p.includes("~")||p==="."||p==="..")return false;
+      const stem=p.split(".")[0].toUpperCase();
+      if(["CON","PRN","AUX","NUL"].includes(stem) ||
+         /^(COM|LPT)[1-9]$/.test(stem))return false;
+      return true;
+    }))throw new Error("Non-portable Windows asset name: "+name);
     const ext=name.slice(name.lastIndexOf(".")).toLowerCase();
     if(!allowed.has(ext))throw new Error("Unsupported asset extension: "+name);
     if(!Number.isSafeInteger(stat.size)||stat.size>8*1024*1024||
