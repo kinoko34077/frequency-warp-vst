@@ -158,6 +158,36 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       timeout:30000
     });
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
+    // #79 M3 exact single-source Wet: typed %, coarse range, A/B and reset.
+    const setWet=percent=>page.$eval("#wet-value",(el,value)=>{
+      el.value=value;el.dispatchEvent(new Event("input",{bubbles:true}));
+    },String(percent));
+    const canonicalWet=()=>page.$eval("#wet-value",el=>Number(el.dataset.fwCanonical));
+    await setWet("12.345");
+    assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
+      "typed 12.345% must not be quantized to the coarse slider step");
+    assert.equal(await page.$eval("#wet-value",el=>el.value),"12.345");
+    const railProxy=Number(await page.$eval("#wet",el=>el.value));
+    assert.ok(Math.abs(railProxy-.125)<1e-9,
+      "range is only a 0.005-spaced gesture/view proxy");
+    await page.click("#compare-save-a");
+    await setWet("50");
+    await page.click("#compare-save-b");
+    await page.click("#compare-load-a");
+    assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
+      "A/B restore must retain Float64, not slider proxy");
+    assert.equal(await page.$eval("#wet-value",el=>el.value),"12.345");
+    await page.click("#compare-load-b");
+    assert.equal(await canonicalWet(),.5);
+    await page.$eval("#wet-value",el=>{
+      el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await canonicalWet(),.5,"empty typed edit must preserve last accepted Mix");
+    await page.click("#settings-open");
+    await page.click("#settings-reset");
+    await page.click("#settings-done");
+    assert.equal(await canonicalWet(),1,"Reset must restore the single binding, not stale precise state");
+    assert.equal(Number(await page.$eval("#wet",el=>el.value)),1);
     // The Rust offline renderer has ALREADY removed stream lookahead and
     // flushed the tail. The saved WAV must therefore mix Dry and processed
     // samplewise, unlike the latency-compensated *realtime* AudioWorklet.
