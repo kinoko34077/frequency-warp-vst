@@ -762,6 +762,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                 if(FAILED(target->view->get_Settings(&settings))||!settings||
                                    FAILED(settings->put_AreDefaultContextMenusEnabled(FALSE))||
                                    FAILED(settings->put_AreDevToolsEnabled(FALSE))||
+                                   FAILED(settings->put_AreDefaultScriptDialogsEnabled(FALSE))||
                                    FAILED(settings->put_IsStatusBarEnabled(FALSE))) {
                                     abandonUnreadyBrowser(*target);
                                     showError(target,L"Required WebView2 security settings unavailable.");
@@ -772,6 +773,27 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                 }
                                 // A user-selected UI is locally trusted only for its
                                 // approved bytes, NOT for external browser/system effects.
+                                // A candidate must never stall recovery via beforeunload
+                                // or a modal JavaScript alert/confirm/prompt.
+                                // Never display browser-owned OS dialogs. Accept ONLY
+                                // beforeunload to permit native blank/rollback; reject
+                                // page prompts/confirmations by leaving them unaccepted.
+                                EventRegistrationToken scriptDialogToken{};
+                                if(FAILED(target->view->add_ScriptDialogOpening(
+                                    Callback<ICoreWebView2ScriptDialogOpeningEventHandler>(
+                                        [](ICoreWebView2*,
+                                           ICoreWebView2ScriptDialogOpeningEventArgs* args)->HRESULT {
+                                            if(!args)return S_OK;
+                                            COREWEBVIEW2_SCRIPT_DIALOG_KIND kind{};
+                                            if(SUCCEEDED(args->get_Kind(&kind)) &&
+                                               kind==COREWEBVIEW2_SCRIPT_DIALOG_KIND_BEFOREUNLOAD)
+                                                args->Accept();
+                                            return S_OK;
+                                        }).Get(),&scriptDialogToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Script dialog protection unavailable.");
+                                    return S_OK;
+                                }
                                 EventRegistrationToken popupToken{};
                                 if(FAILED(target->view->add_NewWindowRequested(
                                     Callback<ICoreWebView2NewWindowRequestedEventHandler>(
