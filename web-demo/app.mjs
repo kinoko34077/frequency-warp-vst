@@ -1143,7 +1143,12 @@ $("#decimal-digits").addEventListener("change",()=>{
   slopeUnitControl.refresh();
   updateSineLabel();
 });
-$("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
+$("#wet").addEventListener("input",()=>{
+  delete state.precise.wet;labels();tuneWet();drawCurve();
+  // Wet is a local gain, not a DSP parameter revision; zero becomes
+  // original-only without inventing a nonexistent AudioWorklet ACK.
+  syncAuditionFeedback();
+});
 $("#slope-one").addEventListener("click",()=>{
   slopeUnitControl.setCanonical(1);
   updateParams("axis-slope");updateEngineInfo();
