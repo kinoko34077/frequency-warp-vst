@@ -28,7 +28,7 @@
           <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" aria-label="音声ファイルを選ぶ">
         </label>
         <p id="file-meta" class="meta">音声未選択</p>
-        <div class="wave-wrap"><canvas id="wave" role="button" tabindex="0" aria-label="波形を押すとその位置から再生"></canvas><div id="playhead" class="playhead"></div></div>
+        <div class="wave-wrap"><canvas id="wave" role="slider" tabindex="0" aria-label="再生位置。左右キーで2秒ずつ移動" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0:00.0"></canvas><div id="playhead" class="playhead"></div></div>
         <div class="transport"><span id="elapsed">0:00.0</span><span>波形を押して移動</span><span id="duration">0:00.0</span></div>
         <div class="actions">
           <button id="play-wet" class="primary" disabled>▶ 変換して再生</button>
