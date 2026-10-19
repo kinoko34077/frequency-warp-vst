@@ -28,13 +28,24 @@
           <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" aria-label="音声ファイルを選ぶ">
         </label>
         <p id="file-meta" class="meta">音声未選択</p>
-        <div class="wave-wrap"><canvas id="wave" role="button" tabindex="0" aria-label="波形を押すとその位置から再生"></canvas><div id="playhead" class="playhead"></div></div>
+        <div class="wave-wrap"><canvas id="wave" role="slider" tabindex="0" aria-label="再生位置。左右キーで2秒ずつ移動" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0:00.0"></canvas><div id="playhead" class="playhead"></div></div>
         <div class="transport"><span id="elapsed">0:00.0</span><span>波形を押して移動</span><span id="duration">0:00.0</span></div>
         <div class="actions">
           <button id="play-wet" class="primary" disabled>▶ 変換して再生</button>
           <button id="play-dry" disabled>原音</button>
           <button id="stop" disabled>■ 停止</button>
         </div>
+        <div class="comparison-tools" role="group" aria-label="加工設定A/Bの比較・復帰">
+          <span class="comparison-title">加工設定 A / B</span>
+          <div class="comparison-actions">
+            <button id="compare-save-a" type="button" disabled>Aを記録</button>
+            <button id="compare-load-a" type="button" disabled>Aへ戻す</button>
+            <button id="compare-save-b" type="button" disabled>Bを記録</button>
+            <button id="compare-load-b" type="button" disabled>Bへ戻す</button>
+          </div>
+          <small id="comparison-status" role="status" aria-live="polite">設定を記録してから比較できます</small>
+        </div>
+        <button id="export-jump" type="button" class="text-button">WAV書き出し ↗</button>
         <audio id="background-output" playsinline preload="none" aria-hidden="true" hidden></audio>
       </section>
 
@@ -158,7 +169,7 @@
         
         <div id="listening-guide" class="listening-guide" role="status" aria-live="polite"></div>
         <div id="signal-diagnostic" class="signal-diagnostic" aria-live="off">音声処理の直近出力：再生後に測定</div>
-        <div class="harmonic-mini" aria-live="polite"><div class="mini-heading"><strong>仮想基音</strong><label class="harmonic-pivot-link" title="選択した元基音Fまたは仮想基音Hを物理起点Pに連動し、音声変換へ適用"><input type="checkbox" id="harmonic-pivot-link" aria-label="選択したFまたはHと起点Pを双方向連動し、有理数シフトを音声へ適用"><span aria-hidden="true">🔗</span><span>連動＋音声適用</span></label><select id="pivot-link-target" class="inline-unit" aria-label="連動させる周波数"><option value="H">H↔P（仮想基音）</option><option value="F">F↔P（元基音）</option></select><span id="mini-fundamental">H = 87.5 Hz</span></div><div id="harmonic-audio-status" class="harmonic-audio-status" role="status">理論表示のみ（有理数シフトOFF）</div><small id="harmonic-pivot-link-note" role="status" hidden></small><div id="mini-harmonics" class="mini-harmonics">第1〜3倍音を表示</div><button id="mini-expand" type="button" class="text-button">倍音を詳しく ↗</button></div>
+        <div class="harmonic-mini" aria-live="polite"><div class="mini-heading"><strong>仮想基音</strong><label class="harmonic-pivot-link" title="選択した元基音Fまたは仮想基音Hを物理起点Pに連動し、音声変換へ適用"><input type="checkbox" id="harmonic-pivot-link" aria-label="選択したFまたはHと起点Pを双方向連動し、有理数シフトを音声へ適用"><span aria-hidden="true">🔗</span><span>連動＋音声適用</span></label><select id="pivot-link-target" class="inline-unit" aria-label="連動させる周波数"><option value="H">H↔P（仮想基音）</option><option value="F">F↔P（元基音）</option></select><span id="mini-fundamental">H = 87.5 Hz</span></div><div id="harmonic-audio-status" class="harmonic-audio-status" role="status">理論表示のみ（有理数シフトOFF）</div><small id="harmonic-apply-evidence" class="harmonic-apply-evidence" role="status" aria-live="polite">音源未選択 · グラフは理論値</small><small id="harmonic-pivot-link-note" role="status" hidden></small><div id="mini-harmonics" class="mini-harmonics">第1〜3倍音を表示</div><button id="mini-expand" type="button" class="text-button">倍音を詳しく ↗</button></div>
       </div>
       <div id="view-math" role="tabpanel" aria-labelledby="tab-math" hidden>
         <div class="section-header"><h2>仮想基音と倍音</h2></div>
