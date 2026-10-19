@@ -6,8 +6,16 @@
   const $=id=>document.querySelector(id);
   const dialog=$("#settings-dialog");
   const opener=$("#settings-open");
-  const show=()=>{
+  // A settings entry inside the workbench must return to that actual trigger,
+  // not jump to the header and lose the user's adjustment context.
+  let returnFocus=opener;
+  const restoreFocus=()=>{
+    const target=returnFocus?.isConnected?returnFocus:opener;
+    target.focus({preventScroll:true});
+  };
+  const show=event=>{
     if(dialog.open)return;
+    returnFocus=event?.currentTarget instanceof HTMLElement?event.currentTarget:opener;
     try{if(typeof dialog.showModal!=="function")throw Error("no dialog API");dialog.showModal();}
     catch{dialog.setAttribute("open","");dialog.setAttribute("role","dialog");}
   };
@@ -15,7 +23,7 @@
     if(!dialog.open)return;
     try{if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");}
     catch{dialog.removeAttribute("open");}
-    opener.focus();
+    restoreFocus();
   };
   const debug=$("#debug-mode");
   const debugKey="frequency-warp:debug-mode:v1";
@@ -68,6 +76,8 @@
   },true);
   opener.addEventListener("click",show);
   $("#settings-inline").addEventListener("click",show);
+  // Escape/native dialog.close() can bypass the explicit buttons.
+  dialog.addEventListener("close",restoreFocus);
   $("#settings-close").addEventListener("click",close);
   $("#settings-done").addEventListener("click",close);
   dialog.addEventListener("click",event=>{if(event.target===dialog)close();});
@@ -80,6 +90,13 @@
   };
   new MutationObserver(updateBrief).observe($("#rt-indicator"),{childList:true,subtree:true,characterData:true});
   updateBrief();
+  // On narrow touch screens the full floating diagnostics can obscure the
+  // right-hand square graph or linked frequency selector. Retain an explicit
+  // restore affordance and full diagnostics on demand, without reflow.
+  if(window.matchMedia("(max-width:600px)").matches){
+    hud.classList.add("is-hidden");
+    restore.hidden=false;
+  }
   collapse.addEventListener("click",()=>{
     const folded=hud.classList.toggle("is-collapsed");
     collapse.textContent=folded?"+":"−";
