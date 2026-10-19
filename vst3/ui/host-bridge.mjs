@@ -45,6 +45,18 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   const genericNodes = new Map();
   let genericPanel = null, genericKey = "";
   let bindingPanel = null, bindingStatus = null, bindingConfirm = null;
+  let uiPanel = null;
+  function createUiPanel() {
+    if (typeof document.createElement !== "function" ||
+        typeof document.body?.appendChild !== "function") return;
+    // Page-controlled buttons must never invoke native OS pickers.
+    // Native Select/Back toolbar lives outside the WebView child bounds.
+    uiPanel = document.createElement("section");
+    uiPanel.id = "fw-vst-ui-reload";
+    uiPanel.style.cssText = "padding:6px;background:#1c1e24;color:#fff;font:12px system-ui";
+    uiPanel.textContent = "UI Select / Back: use the native toolbar above this page";
+    document.body.appendChild(uiPanel);
+  }
   function createBindingPanel() {
     if (typeof document.createElement !== "function" ||
         typeof document.body?.appendChild !== "function") return;
@@ -224,6 +236,7 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   }
   bindAll(bindings);
   createBindingPanel();
+  createUiPanel();
   listen(document.defaultView, "blur", endAllGestures);
   listen(document, "visibilitychange", () => {
     if (document.hidden) endAllGestures();
@@ -250,6 +263,7 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
       genericPanel = null; genericKey = "";
       bindingPanel?.remove(); bindingPanel = null;
       bindingStatus = null; bindingConfirm = null;
+      uiPanel?.remove(); uiPanel = null;
     }
   };
 }
