@@ -912,6 +912,31 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       throw Error("AudioWorklet startup: "+JSON.stringify(snapshot)+"; page errors: "+errors.join("; ")+"; "+e.message);
     }
+    // U4 live contract: A/B compare is not marked reflected until the
+    // current real AudioWorklet acknowledges the newest complete snapshot.
+    await page.click("#compare-save-a");
+    const savedMove=await page.$eval("#axis-shift",el=>el.value);
+    await page.$eval("#axis-shift",el=>{
+      el.value=el.value===".55"?".65":".55";
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.click("#compare-save-b");
+    await page.click("#compare-load-a");
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
+      {timeout:15000});
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定A.*DSP最新設定の受理/);
+    assert.ok(Math.abs(Number(await page.$eval("#axis-shift-value",el=>el.value))-Number(savedMove))<.06);
+    await page.click("#compare-load-b");
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
+      {timeout:15000});
+    assert.ok(Math.abs(Number(await page.$eval("#axis-shift-value",el=>el.value))-.55)<.11||
+      Math.abs(Number(await page.$eval("#axis-shift-value",el=>el.value))-.65)<.11);
+    await page.click("#compare-load-a");
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
+      {timeout:15000});
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false,
+      "Live comparison must retain the chosen source and transport mode");
+
     // A19: 0.001 Hz theoretical F is allowed to coexist with a 1 Hz
     // effective Rust transform reference. It must not stop audible playback.
     // Floating HUD changes also must NOT move the player buttons.
