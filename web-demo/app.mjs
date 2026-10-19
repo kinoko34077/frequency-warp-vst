@@ -515,6 +515,17 @@ function makeBuffer(){
   state.dry.forEach((ch,i)=>audio.copyToChannel(ch,i));
   return audio;
 }
+function invalidateExportOnMix(){
+  const had=Boolean(state.offline||state.offlineWorker);
+  state.offline=null;state.exportIdentity=null;
+  controls.download.disabled=true;
+  if(state.offlineWorker){
+    state.offlineWorker.terminate();state.offlineWorker=null;
+    controls.render.disabled=!state.dry;
+    $("#progress").value=0;
+  }
+  if(had)message("Mixが変更されたため、WAVは再変換してください。","warning");
+}
 function tuneWet(){
   const p=state.player;
   // A direct original-audio transport must never derive its level from DSP.
@@ -1014,7 +1025,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
     if(range==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
-    if(range==="wet"){labels();tuneWet();drawCurve();}
+    if(range==="wet"){invalidateExportOnMix();labels();tuneWet();drawCurve();}
     else {updateParams(changed);updateEngineInfo();}
   };
   field.addEventListener("focus",()=>{
@@ -1126,7 +1137,9 @@ $("#decimal-digits").addEventListener("change",()=>{
   slopeUnitControl.refresh();
   updateSineLabel();
 });
-$("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
+$("#wet").addEventListener("input",()=>{
+  delete state.precise.wet;invalidateExportOnMix();labels();tuneWet();drawCurve();
+});
 $("#slope-one").addEventListener("click",()=>{
   slopeUnitControl.setCanonical(1);
   updateParams("axis-slope");updateEngineInfo();
