@@ -524,6 +524,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                 state->view.Reset();
                 state->controller.Reset();
                 state->environment.Reset();
+                state->isolatedProfile.Reset();
+                state->emergencyDeny.Reset();
                 state->legacyFolderMapped=false;
                 // The request remains blocked until the browser is closed.
                 // Releasing failed deferrals is safe only AFTER Close.
@@ -552,12 +554,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     static HRESULT failResourceClosed(
         Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args,
         ComPtr<ICoreWebView2Deferral>& gate) noexcept {
-        if(state.environment && args) {
+        if(args) {
             ComPtr<ICoreWebView2WebResourceResponse> deny;
-            if(SUCCEEDED(state.environment->CreateWebResourceResponse(
-                nullptr,503,L"Unavailable",
-                L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
-                &deny))&&deny&&SUCCEEDED(args->put_Response(deny.Get()))) {
+            if(state.environment)
+                state.environment->CreateWebResourceResponse(
+                    nullptr,503,L"Unavailable",
+                    L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
+                    &deny);
+            const auto fallback=deny?deny:state.emergencyDeny;
+            if(fallback&&SUCCEEDED(args->put_Response(fallback.Get()))) {
                 if(gate)gate->Complete();
                 if(state.uiActivation.pendingGeneration()&&state.child)
                     PostMessageW(state.child,WM_APP+41,0,0);
@@ -569,6 +574,14 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(gate && state.blockedResourceCount <
            state.blockedResourceDeferrals.size()) {
             state.blockedResourceDeferrals[state.blockedResourceCount++]=gate;
+        } else if(gate) {
+            // The bounded parking pool is exhausted. Do not let a dropped
+            // uncompleted deferral accidentally unblock a network request.
+            if(args&&state.emergencyDeny&&
+               SUCCEEDED(args->put_Response(state.emergencyDeny.Get())))
+                gate->Complete();
+            else if(state.view)
+                state.view->Stop();
         }
         if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
         return S_OK;
@@ -579,8 +592,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // guarantees a deferred resource does not continue until Complete().
         ComPtr<ICoreWebView2Deferral> gate;
         if(!args||FAILED(args->GetDeferral(&gate))||!gate) {
+            // Prebuilt fail-closed response does not need allocations or
+            // the optional asynchronous deferral path.
+            const bool denied=args&&state.emergencyDeny&&
+                SUCCEEDED(args->put_Response(state.emergencyDeny.Get()));
             if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
-            return E_ABORT;
+            if(!denied&&state.view)state.view->Stop();
+            return denied?S_OK:E_ABORT;
         }
         if(!state.environment)return failResourceClosed(state,args,gate);
         ComPtr<ICoreWebView2WebResourceRequest> request;
