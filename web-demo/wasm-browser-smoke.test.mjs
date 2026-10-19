@@ -1021,12 +1021,22 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "periodic real worklet stats must not overwrite a rejected edit");
     assert.match(await page.$eval("#status",el=>el.textContent),/音声処理へ未反映/,
       "unapplied setting remains explicit until a newer valid ACK");
+    // The unsupported *theoretical* configuration may be saved, but cannot
+    // later displace a valid live Wet stream when selected for playback.
+    await page.click("#compare-save-b");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Bを記録/);
     await page.$eval("#fundamental",el=>{
       el.value="350";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.waitForFunction(()=>
       document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
+    await page.click("#compare-load-b");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/切替不可/);
+    assert.equal(await page.$eval("#fundamental",el=>Number(el.dataset.fwCanonical)),350,
+      "Rejected B must not rewrite current full-precision canonical F");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),false,
+      "Rejected B must preserve existing original audio and Wet stream");
     await page.$eval("#rational-enabled",el=>{
       el.checked=true;el.dispatchEvent(new Event("input",{bubbles:true}));
     });
