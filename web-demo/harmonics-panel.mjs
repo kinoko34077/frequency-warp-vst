@@ -55,6 +55,41 @@ export function resetHarmonicControls(){
     $("#"+id+"-range").value=String(value);
   }
 }
+/** U4: canonical harmonic state, never rounded UI strings or slider proxies.
+ * Silent restore is owned here to avoid competing with #79 binding owners.
+ */
+export function captureHarmonicConfiguration(){
+  return Object.freeze({
+    F:read("fundamental"),m:read("denominator"),n:read("numerator"),
+    q:read("harmonic-index"),r:read("pitch-ratio"),carrier:read("carrier")
+  });
+}
+export function validateHarmonicConfiguration(v){
+  if(!v||typeof v!=="object")throw Error("Missing harmonic configuration");
+  for(const [key,min,max,integer] of [
+    ["F",.001,5_120_000,false],["m",1,64,true],
+    ["n",-128,128,true],["q",1,32,true],
+    ["r",.25,4,false],["carrier",0,20000,false]
+  ]){
+    const n=v[key];
+    if(typeof n!=="number"||!Number.isFinite(n)||n<min||n>max||
+      (integer&&!Number.isInteger(n)))
+      throw Error("Invalid harmonic "+key);
+  }
+  return v;
+}
+export function restoreHarmonicConfiguration(v){
+  validateHarmonicConfiguration(v);
+  fundamentalUnitControl.setCanonical(v.F);
+  carrierUnitControl.setCanonical(v.carrier);
+  ratioUnitControl.setCanonical(v.r);
+  for(const [id,value] of [["denominator",v.m],["numerator",v.n],["harmonic-index",v.q]]){
+    preciseFields.set(id,value);
+    $("#"+id).value=String(value);
+    syncPair(id);
+  }
+  // Deliberately no synthetic DOM event: outer app dispatches one transaction.
+}
 // Kept as a compatibility export for standalone ratio reset consumers.
 export function resetRatioUnit(){ratioUnitControl?.reset();}
 export function linkedCarrierRequested(){
