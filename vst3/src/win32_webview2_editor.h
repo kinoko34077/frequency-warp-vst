@@ -50,6 +50,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2> view;
         ComPtr<ICoreWebView2Environment> environment;
         bool legacyFolderMapped=false;
+        // Keep an uncompleted failed request blocked until async browser teardown.
+        std::array<ComPtr<ICoreWebView2Deferral>,128> blockedResourceDeferrals{};
+        std::size_t blockedResourceCount=0;
         ui_assets::UiActivationTransaction uiActivation{};
         std::uint64_t activationStarted=0;
         std::uint64_t lastUiDialog=0;
@@ -494,6 +497,28 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             if(state&&state->alive)rollbackUi(*state);
             return 0;
         }
+        if(message==WM_APP+42){
+            // Never Close a controller re-entrantly from WebResourceRequested:
+            // the event handler has already returned when this runs.
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state&&state->alive) {
+                state->uiReady=false;
+                state->uiActivation.cancel();
+                state->activationStarted=0;
+                if(state->view)state->view->Stop();
+                if(state->controller)state->controller->Close();
+                state->view.Reset();
+                state->controller.Reset();
+                state->environment.Reset();
+                state->legacyFolderMapped=false;
+                // The request remains blocked until the browser is closed.
+                // Releasing failed deferrals is safe only AFTER Close.
+                for(auto& pending:state->blockedResourceDeferrals)
+                    pending.Reset();
+                state->blockedResourceCount=0;
+            }
+            return 0;
+        }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state) {
@@ -506,45 +531,50 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         }
         return DefSubclassProc(hwnd,message,w,l);
     }
-    // Serve only immutable, digest-verified snapshot bytes when the native
-    // activation transaction has a candidate or active image. A 404 / 403
-    // response MUST be explicitly set; otherwise WebView2 falls through to
-    // mutable virtual-host folder mapping or the network.
-    // A resource handler that does not set Response falls through to the
-    // actual network or mutable virtual-host mapping. Error handling itself
-    // must set a non-success HTTP response; if the native environment cannot
-    // construct one, terminate this WebView rather than continuing.
+    // WebView2 requests proceed to network unless Response is installed.
+    // Hold a deferral on each request, completing it ONLY after put_Response.
+    // If even HTTP 503 cannot be installed, keep it blocked and close the
+    // controller AFTER returning to the Win32 message loop (no re-entrancy).
     static HRESULT failResourceClosed(
-        Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
+        Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args,
+        ComPtr<ICoreWebView2Deferral>& gate) noexcept {
         if(state.environment && args) {
             ComPtr<ICoreWebView2WebResourceResponse> deny;
             if(SUCCEEDED(state.environment->CreateWebResourceResponse(
                 nullptr,503,L"Unavailable",
                 L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
                 &deny))&&deny&&SUCCEEDED(args->put_Response(deny.Get()))) {
-                if(state.uiActivation.pendingGeneration())
+                if(gate)gate->Complete();
+                if(state.uiActivation.pendingGeneration()&&state.child)
                     PostMessageW(state.child,WM_APP+41,0,0);
                 return S_OK;
             }
         }
         state.uiReady=false;
-        if(state.view)state.view->Stop();
-        if(state.controller)state.controller->Close();
-        state.view.Reset();state.controller.Reset();
-        if(state.uiActivation.pendingGeneration())
-            state.uiActivation.cancel();
-        state.activationStarted=0;
-        return E_ABORT;
+        // The request cannot proceed while its deferral is held uncompleted.
+        if(gate && state.blockedResourceCount <
+           state.blockedResourceDeferrals.size()) {
+            state.blockedResourceDeferrals[state.blockedResourceCount++]=gate;
+        }
+        if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
+        return S_OK;
     }
     static HRESULT pinnedResourceResponse(
         Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
-        if(!args||!state.environment)return failResourceClosed(state,args);
+        // Obtain a deferral before any operation that could fail; WebView2
+        // guarantees a deferred resource does not continue until Complete().
+        ComPtr<ICoreWebView2Deferral> gate;
+        if(!args||FAILED(args->GetDeferral(&gate))||!gate) {
+            if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
+            return E_ABORT;
+        }
+        if(!state.environment)return failResourceClosed(state,args,gate);
         ComPtr<ICoreWebView2WebResourceRequest> request;
         if(FAILED(args->get_Request(&request))||!request)
-            return failResourceClosed(state,args);
+            return failResourceClosed(state,args,gate);
         LPWSTR raw=nullptr;
         if(FAILED(request->get_Uri(&raw)))
-            return failResourceClosed(state,args);
+            return failResourceClosed(state,args,gate);
         const std::wstring uri=raw?raw:L"";
         CoTaskMemFree(raw);
         std::string ascii;
@@ -558,8 +588,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const auto pinned=tx.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake
             ?tx.pending():tx.active();
         const bool local=isAscii && ascii.rfind("https://fwvst.local/",0)==0;
-        if(!pinned&&local&&state.legacyFolderMapped)
-            return S_OK; // only the installed default uses folder mapping
+        if(!pinned&&local&&state.legacyFolderMapped) {
+            gate->Complete();
+            return S_OK; // installed bundled UI mapping only
+        }
         const auto found=local?ui_assets::findPinnedResource(pinned,ascii)
                               :ui_assets::RoutedResource{};
         const int status=found.file?200:(local?404:403);
@@ -578,13 +610,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(found.file) {
             const auto& bytes=found.file->bytes;
             HGLOBAL owned=GlobalAlloc(GMEM_MOVEABLE,bytes.empty()?1:bytes.size());
-            if(!owned)return failResourceClosed(state,args);
+            if(!owned)return failResourceClosed(state,args,gate);
             void* address=GlobalLock(owned);
-            if(!address){GlobalFree(owned);return failResourceClosed(state,args);}
+            if(!address){GlobalFree(owned);return failResourceClosed(state,args,gate);}
             if(!bytes.empty())std::memcpy(address,bytes.data(),bytes.size());
             GlobalUnlock(owned);
             if(FAILED(CreateStreamOnHGlobal(owned,TRUE,&stream))){
-                GlobalFree(owned);return failResourceClosed(state,args);
+                GlobalFree(owned);return failResourceClosed(state,args,gate);
             }
         }
         std::wstring mimeHeaders=L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff";
@@ -598,9 +630,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const auto ok=state.environment->CreateWebResourceResponse(
             stream.Get(),status,status==200?L"OK":L"Denied",
             mimeHeaders.c_str(),&response);
-        if(FAILED(ok)||!response)return failResourceClosed(state,args);
+        if(FAILED(ok)||!response)return failResourceClosed(state,args,gate);
         if(FAILED(args->put_Response(response.Get())))
-            return failResourceClosed(state,args);
+            return failResourceClosed(state,args,gate);
+        gate->Complete();
         return S_OK;
     }
     static void createBrowser(const std::shared_ptr<Shared>& state) {
