@@ -159,3 +159,25 @@ test("Wet M3 fraction: typed precision, invalid retention, coarse proxy and sile
   assert.equal(wet.value,1);
   assert.equal(events.length,0,"silent A/B and reset cause no second DSP callback");
 });
+
+test("A reverb M3: 0.001% typed step independent of 1% gesture proxy",()=>{
+  const descriptor=defineParameter({id:"a-reverb",min:0,max:1,defaultValue:0,
+    units:["percent"],rail:lineRail(0,1),digits:3});
+  const notifications=[];
+  const p=createParameterBinding(descriptor,{onChange:event=>notifications.push(event)});
+  p.setView("33.333",{unit:"percent",notify:false});
+  assert.ok(Math.abs(p.value-.33333)<1e-12);
+  assert.equal(p.display(),33.333);
+  assert.equal(Math.round(p.value*100),33,"coarse slider is only a projection");
+  for(const bad of ["","bad","NaN"]){
+    assert.throws(()=>p.setView(bad,{notify:false}),RangeError);
+    assert.ok(Math.abs(p.value-.33333)<1e-12);
+  }
+  p.setPosition(.75,{notify:false,snap:false});
+  assert.equal(p.value,.75);
+  p.setCanonical(.33333,{notify:false}); // frozen A/B direct owner restore
+  assert.equal(p.display(),33.333);
+  p.reset({notify:false});
+  assert.equal(p.value,0);
+  assert.deepEqual(notifications,[]);
+});
