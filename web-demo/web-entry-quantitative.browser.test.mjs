@@ -81,6 +81,22 @@ test("W1: three independent entry modes × four widths, quantified reachability 
             squareErrorPx:Math.abs(curve.width-curve.height),extraIds,hits,editorVisible};
         },{name:mode.name,width,host:mode.host});
         metrics.bootMs=Date.now()-start;
+        if(mode.name==="legacy"){
+          const state=await page.evaluate(()=>{
+            const host=document.querySelector("#fw-layout-inspector");
+            const pick=host.shadowRoot.querySelector("[data-action=pick]");
+            const b=pick.getBoundingClientRect();
+            return {preview:host.classList.contains("previewing"),height:b.height,
+              visible:getComputedStyle(pick).display!=="none",x:b.x+b.width/2,y:b.y+b.height/2};
+          });
+          assert.ok(state.preview&&state.visible&&state.height>20,
+            "Legacy preview must retain an edit re-entry affordance: "+JSON.stringify(state));
+          await page.mouse.click(state.x,state.y);
+          assert.equal(await page.$eval("#fw-layout-inspector",el=>el.classList.contains("previewing")),false,
+            "User can leave preview via real mouse/touch hit on the return control");
+          await page.evaluate(()=>document.querySelector("#fw-layout-inspector").shadowRoot
+            .querySelector("[data-action=preview]").click());
+        }
         await page.click("#settings-open");
         assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
           mode.name+"/"+width+" settings unavailable");
