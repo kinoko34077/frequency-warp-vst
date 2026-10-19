@@ -42,6 +42,11 @@ const zeroReflectBinding=createParameterBinding(defineParameter({
   id:"zero-reflect",min:0,max:1,defaultValue:1,units:["percent"],
   rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
 }));
+// #79 M3 decay fraction: preserve full precision even with 1% dual thumb.
+const zeroDecayBinding=createParameterBinding(defineParameter({
+  id:"zero-decay",min:0,max:1,defaultValue:0,units:["percent"],
+  rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
+}));
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,exportIdentity:null,sourceGeneration:0,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -106,6 +111,13 @@ function refreshZeroReflectView(force=false){
   if(force||document.activeElement!==field)
     field.value=String(zeroReflectBinding.display(Math.min(3,displayDigits())));
 }
+function refreshZeroDecayView(force=false){
+  const field=$("#zero-decay-value"),rail=$("#zero-decay");
+  rail.value=String(Math.round(zeroDecayBinding.value*100));
+  field.dataset.fwCanonical=String(zeroDecayBinding.value);
+  if(force||document.activeElement!==field)
+    field.value=String(zeroDecayBinding.display(Math.min(3,displayDigits())));
+}
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
@@ -113,7 +125,8 @@ const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:
   name==="wet"?wetBinding.value:
   name==="a-reverb"?aReverbBinding.value:
-  name==="zero-reflect"?zeroReflectBinding.value:(state.precise[name]??fallback());
+  name==="zero-reflect"?zeroReflectBinding.value:
+  name==="zero-decay"?zeroDecayBinding.value:(state.precise[name]??fallback());
 function refreshAxisShiftView(p,force=false){
   const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
   const allowed=axisShiftUnits(p.curvature);
@@ -137,6 +150,7 @@ function showNumber(id,value){
   if(id==="wet-value"){refreshWetView();return;}
   if(id==="a-reverb-value"){refreshAReverbView();return;}
   if(id==="zero-reflect-value"){refreshZeroReflectView();return;}
+  if(id==="zero-decay-value"){refreshZeroDecayView();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -350,15 +364,15 @@ function applyConfigurationSilently(c){
   wetBinding.setCanonical(v.wet,{notify:false});
   aReverbBinding.setCanonical(v.aReverb,{notify:false});
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
+  zeroDecayBinding.setCanonical(v.zeroReflectDecay,{notify:false});
   state.precise=Object.assign(Object.create(null),{
     curvature:v.curvature,invert:v.invert,
-    "zero-decay":v.zeroReflectDecay,"axis-shift":v.axisShift,
+    "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
   });
   for(const [id,val] of Object.entries({
     curvature:v.curvature,invert:v.invert,
-    "zero-decay":100*v.zeroReflectDecay,
     "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,
@@ -367,6 +381,7 @@ function applyConfigurationSilently(c){
   refreshWetView(true);
   refreshAReverbView(true);
   refreshZeroReflectView(true);
+  refreshZeroDecayView(true);
   linkFeedback("");
 }
 function switchSoundConfiguration(slot){
@@ -1226,7 +1241,6 @@ const inline={
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "invert-value":["invert",v=>v/100,"invert",0,100],
-  "zero-decay-value":["zero-decay",v=>v,"zero-decay",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
@@ -1240,7 +1254,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
   };
-  const toDsp=value=>range==="invert"||range==="zero-decay"?
+  const toDsp=value=>range==="invert"?
     value/100:normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
@@ -1257,7 +1271,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   field.addEventListener("focus",()=>{
     if(state.precise[range]!==undefined){
       const number=state.precise[range];
-      const typed=range==="invert"||range==="zero-decay"?
+      const typed=range==="invert"?
         number*100:number;
       field.value=String(round3(typed));
     }
@@ -1269,7 +1283,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     apply();
     // The interface rounds to 2 decimals, but the DSP value remains 3-decimal exact.
     const native=state.precise[range];
-    const human=range==="invert"||range==="zero-decay"?native*100:native;
+    const human=range==="invert"?native*100:native;
     if(Number.isFinite(human))showNumber(id,human);
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
@@ -1356,6 +1370,33 @@ zeroReflectField.addEventListener("blur",()=>{
 zeroReflectField.addEventListener("keydown",event=>{
   if(event.key==="Enter")zeroReflectField.blur();
 });
+// Reflect decay is a second independent revisioned DSP parameter.
+const zeroDecayField=$("#zero-decay-value");
+const commitZeroDecayTyped=()=>{
+  const previous=zeroDecayBinding.value;
+  try{
+    zeroDecayBinding.setView(zeroDecayField.value,{unit:"percent",origin:"typed",
+      overflow:"clamp",notify:false});
+    delete zeroDecayField.dataset.invalid;
+  }catch{
+    zeroDecayField.dataset.invalid="true";return;
+  }
+  refreshZeroDecayView();
+  if(!Object.is(previous,zeroDecayBinding.value)){
+    updateParams("zero-decay");updateEngineInfo();
+  }
+};
+zeroDecayField.addEventListener("focus",()=>{
+  zeroDecayField.value=String(zeroDecayBinding.display(3));zeroDecayField.select();
+});
+zeroDecayField.addEventListener("input",commitZeroDecayTyped);
+zeroDecayField.addEventListener("change",commitZeroDecayTyped);
+zeroDecayField.addEventListener("blur",()=>{
+  commitZeroDecayTyped();refreshZeroDecayView(true);delete zeroDecayField.dataset.invalid;
+});
+zeroDecayField.addEventListener("keydown",event=>{
+  if(event.key==="Enter")zeroDecayField.blur();
+});
 // The move slider stores canonical u. Notation is conditional on curvature p,
  // and only a valid inverse conversion may update the DSP control.
  const moveField=$("#axis-shift-value"),moveUnit=$("#axis-shift-unit");
@@ -1422,6 +1463,10 @@ for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay"
     if(name==="zero-reflect"){
       zeroReflectBinding.setPosition(Number($("#zero-reflect").value)/100,{snap:false,notify:false});
       refreshZeroReflectView();updateParams(name);updateEngineInfo();return;
+    }
+    if(name==="zero-decay"){
+      zeroDecayBinding.setPosition(Number($("#zero-decay").value)/100,{snap:false,notify:false});
+      refreshZeroDecayView();updateParams(name);updateEngineInfo();return;
     }
     delete state.precise[name];
     if(name==="rational-enabled"&&!$("#rational-enabled").checked&&isHarmonicPivotLinked()){
@@ -1696,6 +1741,7 @@ $("#settings-reset").addEventListener("click",()=>{
   wetBinding.reset({notify:false});
   aReverbBinding.reset({notify:false});
   zeroReflectBinding.reset({notify:false});
+  zeroDecayBinding.reset({notify:false});
   lowUnitControl.reset();
   highUnitControl.reset();
   pivotUnitControl.reset();
@@ -1724,6 +1770,7 @@ $("#settings-reset").addEventListener("click",()=>{
   refreshWetView(true);
   refreshAReverbView(true);
   refreshZeroReflectView(true);
+  refreshZeroDecayView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.
