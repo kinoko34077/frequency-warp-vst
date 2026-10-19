@@ -636,7 +636,10 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .runtime-hud-buttons button:focus-visible,#runtime-hud-restore:focus-visible{outline:2px solid #ffe0a1}
 .runtime-hud-body{display:grid;gap:5px;min-width:0}
 .runtime-hud.is-collapsed .runtime-hud-body{display:none}
-.runtime-hud.is-hidden{width:max-content;max-width:calc(100vw - 16px);padding:5px 8px}
+/* Badge width must not follow rapidly changing audio text and shift its hit area. */
+.runtime-hud.is-hidden{width:min(164px,calc(100vw - 16px));padding:5px 8px}
+.runtime-hud.is-hidden #runtime-hud-restore{width:100%;min-width:0;justify-content:flex-start}
+.runtime-hud.is-hidden #runtime-hud-brief{flex:1;min-width:0;max-width:none}
 .runtime-hud.is-hidden .runtime-hud-head,.runtime-hud.is-hidden .runtime-hud-body{display:none}
 .runtime-hud.is-hidden #runtime-hud-restore{display:flex;gap:6px;align-items:center}
 #runtime-hud-restore[hidden]{display:none!important}
