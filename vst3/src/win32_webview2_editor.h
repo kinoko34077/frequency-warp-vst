@@ -49,6 +49,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> view;
         ComPtr<ICoreWebView2Environment> environment;
+        ComPtr<ICoreWebView2Profile2> isolatedProfile;
+        ComPtr<ICoreWebView2WebResourceResponse> emergencyDeny;
+        std::weak_ptr<Shared> weakSelf;
         bool legacyFolderMapped=false;
         // Keep an uncompleted failed request blocked until async browser teardown.
         std::array<ComPtr<ICoreWebView2Deferral>,128> blockedResourceDeferrals{};
@@ -650,7 +653,24 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                         showError(live,L"WebView2 environment failed. Restart without experimental UI.");return S_OK;
                     }
                     std::weak_ptr<Shared> sub=live;
-                    const HRESULT started=env->CreateCoreWebView2Controller(live->child,
+                    ComPtr<ICoreWebView2Environment10> profileEnvironment;
+                    ComPtr<ICoreWebView2ControllerOptions> options;
+                    if(FAILED(env->QueryInterface(IID_PPV_ARGS(&profileEnvironment)))||
+                       !profileEnvironment||
+                       FAILED(profileEnvironment->CreateCoreWebView2ControllerOptions(&options))||
+                       !options||FAILED(options->put_IsInPrivateModeEnabled(TRUE))) {
+                        showError(live,L"Private-profile WebView2 requires a newer runtime.");
+                        return S_OK;
+                    }
+                    const std::wstring profileName=L"FWUI_"+
+                        std::to_wstring(GetCurrentProcessId())+L"_"+
+                        std::to_wstring(reinterpret_cast<std::uintptr_t>(live->child));
+                    if(FAILED(options->put_ProfileName(profileName.c_str()))) {
+                        showError(live,L"Unable to create isolated WebView2 profile.");
+                        return S_OK;
+                    }
+                    const HRESULT started=profileEnvironment->CreateCoreWebView2ControllerWithOptions(
+                        live->child,options.Get(),
                         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                             [sub,ownEnv=ComPtr<ICoreWebView2Environment>(env)](HRESULT status,ICoreWebView2Controller* ctrl)->HRESULT {
                                 auto target=sub.lock();
@@ -660,8 +680,27 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                 }
                                 target->controller=ctrl;
                                 target->environment=ownEnv;
+                                ComPtr<ICoreWebView2_13> profiledView;
                                 if(FAILED(ctrl->get_CoreWebView2(&target->view))||!target->view) {
                                     showError(target,L"WebView2 browser creation failed.");return S_OK;
+                                }
+                                ComPtr<ICoreWebView2Profile> privateProfile;
+                                if(FAILED(target->view.As(&profiledView))||!profiledView||
+                                   FAILED(profiledView->get_Profile(&privateProfile))||!privateProfile||
+                                   FAILED(privateProfile.As(&target->isolatedProfile))||
+                                   !target->isolatedProfile) {
+                                    showError(target,L"Isolated WebView2 profile unavailable.");return S_OK;
+                                }
+                                BOOL verifiedPrivate=FALSE;
+                                if(FAILED(privateProfile->get_IsInPrivateModeEnabled(&verifiedPrivate))||
+                                   !verifiedPrivate) {
+                                    showError(target,L"WebView2 private profile check failed.");return S_OK;
+                                }
+                                if(FAILED(target->environment->CreateWebResourceResponse(
+                                    nullptr,503,L"Blocked",
+                                    L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
+                                    &target->emergencyDeny))||!target->emergencyDeny) {
+                                    showError(target,L"WebView2 deny response setup failed.");return S_OK;
                                 }
                                 RECT bounds{};GetClientRect(target->child,&bounds);
                                 bounds.top=44; // dedicated native UI recovery toolbar
@@ -878,6 +917,7 @@ public:
         std::function<bool(std::uint64_t)> commitBinding={},
         std::function<NewBindingStatus()> pollBinding={})
         :EditorView(controller,&kWebUiEditorRect),editController_(controller){
+        state_->weakSelf=state_;
         state_->verifiedGenericMask=std::move(verifiedGenericMask);
         state_->prepareBinding=std::move(prepareBinding);
         state_->commitBinding=std::move(commitBinding);
@@ -960,6 +1000,7 @@ public:
         state_->activationStarted=0;state_->navigationLoaded=false;
         state_->servedIndexGeneration=0;
         state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
+        state_->isolatedProfile.Reset();state_->emergencyDeny.Reset();
         state_->legacyFolderMapped=false;
         DestroyWindow(state_->child);
         state_->uiSelectButton=nullptr;state_->uiBackButton=nullptr;
