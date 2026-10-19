@@ -211,3 +211,28 @@ test("reflection synthesis gain M3: 0.001% typing, whole-percent thumb, A/B and 
   assert.equal(p.value,1);
   assert.deepEqual(changes,[],"silent restore must not duplicate DSP notifications");
 });
+
+test("reflection decay M3: precise percent, whole-percent thumb, A/B and zero reset",()=>{
+  const events=[];
+  const p=createParameterBinding(defineParameter({
+    id:"zero-decay",min:0,max:1,defaultValue:0,units:["percent"],
+    rail:lineRail(0,1),digits:3
+  }),{onChange:e=>events.push(e)});
+  p.setView("12.345",{unit:"percent",notify:false});
+  assert.ok(Math.abs(p.value-.12345)<1e-12);
+  assert.equal(p.display(),12.345);
+  assert.equal(Math.round(p.value*100),12);
+  const a=p.value;
+  for(const bad of ["","NaN","bad"]){
+    assert.throws(()=>p.setView(bad,{notify:false}),RangeError);
+    assert.equal(p.value,a);
+  }
+  p.setCanonical(.8,{notify:false});
+  const b=p.value;
+  p.setCanonical(a,{notify:false});assert.equal(p.value,.12345);
+  p.setCanonical(b,{notify:false});assert.equal(p.value,.8);
+  p.setPosition(0,{snap:false,notify:false});assert.equal(p.value,0);
+  p.setPosition(1,{snap:false,notify:false});assert.equal(p.value,1);
+  p.reset({notify:false});assert.equal(p.value,0);
+  assert.deepEqual(events,[],"silent A/B and reset must not duplicate DSP callbacks");
+});
