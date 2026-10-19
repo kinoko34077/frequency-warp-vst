@@ -346,6 +346,27 @@ function switchSoundConfiguration(slot){
     comparisonMessage("切替不可："+error.message,"error");
   }
 }
+for(const slot of ["A","B"]){
+  const key=slot.toLowerCase();
+  $("#compare-save-"+key).addEventListener("click",()=>{
+    if(!state.dry)return;
+    try{
+      comparisonSlots[slot]=captureCurrentConfiguration();
+      updateComparisonButtons();
+      comparisonMessage("設定"+slot+"を記録 · 別の設定を試してから復帰できます","saved");
+    }catch(error){
+      comparisonMessage("設定"+slot+"の記録失敗："+error.message,"error");
+    }
+  });
+  $("#compare-load-"+key).addEventListener("click",()=>switchSoundConfiguration(slot));
+}
+function markComparisonEdited(){
+  if(applyingConfiguration)return;
+  if(comparisonPending||comparisonCurrent){
+    comparisonPending=null;comparisonCurrent=null;
+    comparisonMessage("設定を変更しました · 記録済みA/Bは保持","edited");
+  }
+}
 function labels(id=""){
   bounds(id);
   const p=settings();
