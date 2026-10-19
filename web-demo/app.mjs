@@ -32,6 +32,10 @@ const wetBinding=createParameterBinding(defineParameter({
   id:"wet",min:0,max:1,defaultValue:1,units:["percent"],
   rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
 }));
+const aReverbBinding=createParameterBinding(defineParameter({
+  id:"a-reverb",min:0,max:1,defaultValue:0,units:["percent"],
+  rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
+}));
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,exportIdentity:null,sourceGeneration:0,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -82,12 +86,20 @@ function refreshWetView(force=false){
   if(force||document.activeElement!==field)
     field.value=String(wetBinding.display(Math.min(3,displayDigits())));
 }
+function refreshAReverbView(force=false){
+  const field=$("#a-reverb-value"),rail=$("#a-reverb");
+  rail.value=String(Math.round(aReverbBinding.value*100));
+  field.dataset.fwCanonical=String(aReverbBinding.value);
+  if(force||document.activeElement!==field)
+    field.value=String(aReverbBinding.display(Math.min(3,displayDigits())));
+}
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
   name==="a-min"&&aMinUnitControl?aMinUnitControl.value:
   name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:
-  name==="wet"?wetBinding.value:(state.precise[name]??fallback());
+  name==="wet"?wetBinding.value:
+  name==="a-reverb"?aReverbBinding.value:(state.precise[name]??fallback());
 function refreshAxisShiftView(p,force=false){
   const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
   const allowed=axisShiftUnits(p.curvature);
@@ -109,6 +121,7 @@ function showNumber(id,value){
   if(id==="axis-slope-value"&&slopeUnitControl){slopeUnitControl.refresh();return;}
   if(id==="sine-hz"&&sineUnitControl){sineUnitControl.refresh();return;}
   if(id==="wet-value"){refreshWetView();return;}
+  if(id==="a-reverb-value"){refreshAReverbView();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -320,21 +333,23 @@ function applyConfigurationSilently(c){
   aMinUnitControl.setCanonical(v.aMinHz);
   restoreHarmonicConfiguration(c.harmonic);
   wetBinding.setCanonical(v.wet,{notify:false});
+  aReverbBinding.setCanonical(v.aReverb,{notify:false});
   state.precise=Object.assign(Object.create(null),{
     curvature:v.curvature,invert:v.invert,"zero-reflect":v.zeroReflectGain,
     "zero-decay":v.zeroReflectDecay,"axis-shift":v.axisShift,
-    "a-reverb":v.aReverb,"a-band":v.aBandBins,"a-quality":v.aQuality,
+    "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
   });
   for(const [id,val] of Object.entries({
     curvature:v.curvature,invert:v.invert,
     "zero-reflect":100*v.zeroReflectGain,"zero-decay":100*v.zeroReflectDecay,
-    "axis-shift":v.axisShift,"a-reverb":100*v.aReverb,
+    "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,
     "crusher-hold":sliderFromFrequency(v.crusherRateHz,state.ctx?.sampleRate||state.decoded.sampleRate)
   }))$("#"+id).value=String(val);
   refreshWetView(true);
+  refreshAReverbView(true);
   linkFeedback("");
 }
 function switchSoundConfiguration(slot){
@@ -1193,7 +1208,6 @@ slopeUnitControl=mountParameterUnitField({
 const inline={
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
-  "a-reverb-value":["a-reverb",v=>v,"a-reverb",0,100],
   "invert-value":["invert",v=>v/100,"invert",0,100],
   "zero-reflect-value":["zero-reflect",v=>v,"zero-reflect",0,100],
   "zero-decay-value":["zero-decay",v=>v,"zero-decay",0,100],
@@ -1210,7 +1224,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
   };
-  const toDsp=value=>range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="a-reverb"?
+  const toDsp=value=>range==="invert"||range==="zero-reflect"||range==="zero-decay"?
     value/100:normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
@@ -1227,7 +1241,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   field.addEventListener("focus",()=>{
     if(state.precise[range]!==undefined){
       const number=state.precise[range];
-      const typed=range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="a-reverb"?
+      const typed=range==="invert"||range==="zero-reflect"||range==="zero-decay"?
         number*100:number;
       field.value=String(round3(typed));
     }
@@ -1239,7 +1253,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     apply();
     // The interface rounds to 2 decimals, but the DSP value remains 3-decimal exact.
     const native=state.precise[range];
-    const human=range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="a-reverb"?native*100:native;
+    const human=range==="invert"||range==="zero-reflect"||range==="zero-decay"?native*100:native;
     if(Number.isFinite(human))showNumber(id,human);
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
@@ -1272,6 +1286,31 @@ wetField.addEventListener("blur",()=>{
   delete wetField.dataset.invalid;
 });
 wetField.addEventListener("keydown",event=>{if(event.key==="Enter")wetField.blur();});
+// A Reverb remains a revisioned DSP parameter, unlike the local Wet gain.
+const aReverbField=$("#a-reverb-value");
+const commitAReverbTyped=()=>{
+  const previous=aReverbBinding.value;
+  try{
+    aReverbBinding.setView(aReverbField.value,{unit:"percent",origin:"typed",
+      overflow:"clamp",notify:false});
+    delete aReverbField.dataset.invalid;
+  }catch{
+    aReverbField.dataset.invalid="true";return;
+  }
+  refreshAReverbView();
+  if(!Object.is(previous,aReverbBinding.value)){
+    updateParams("a-reverb");updateEngineInfo();
+  }
+};
+aReverbField.addEventListener("focus",()=>{
+  aReverbField.value=String(aReverbBinding.display(3));aReverbField.select();
+});
+aReverbField.addEventListener("input",commitAReverbTyped);
+aReverbField.addEventListener("change",commitAReverbTyped);
+aReverbField.addEventListener("blur",()=>{
+  commitAReverbTyped();refreshAReverbView(true);delete aReverbField.dataset.invalid;
+});
+aReverbField.addEventListener("keydown",event=>{if(event.key==="Enter")aReverbField.blur();});
 // The move slider stores canonical u. Notation is conditional on curvature p,
  // and only a valid inverse conversion may update the DSP control.
  const moveField=$("#axis-shift-value"),moveUnit=$("#axis-shift-unit");
@@ -1331,6 +1370,10 @@ for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay"
     if(name==="axis-pivot"){pivotUnitControl.fromSlider();return;}
     if(name==="a-min"){aMinUnitControl.fromSlider();return;}
     if(name==="axis-slope"){slopeUnitControl.fromSlider();return;}
+    if(name==="a-reverb"){
+      aReverbBinding.setPosition(Number($("#a-reverb").value)/100,{snap:false,notify:false});
+      refreshAReverbView();updateParams(name);updateEngineInfo();return;
+    }
     delete state.precise[name];
     if(name==="rational-enabled"&&!$("#rational-enabled").checked&&isHarmonicPivotLinked()){
       $("#harmonic-pivot-link").checked=false;
@@ -1602,6 +1645,7 @@ $("#settings-reset").addEventListener("click",()=>{
   };
   state.precise=Object.create(null);
   wetBinding.reset({notify:false});
+  aReverbBinding.reset({notify:false});
   lowUnitControl.reset();
   highUnitControl.reset();
   pivotUnitControl.reset();
@@ -1628,6 +1672,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#crusher-bits-value").value="8";
   $("#crusher-hold-value").value="12000";
   refreshWetView(true);
+  refreshAReverbView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.
