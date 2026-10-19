@@ -469,6 +469,11 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state) {state->hasFocus=false;endAllEdits(*state);}
         }
+        if(message==WM_APP+41){
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state&&state->alive)rollbackUi(*state);
+            return 0;
+        }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state) {
@@ -485,13 +490,41 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     // activation transaction has a candidate or active image. A 404 / 403
     // response MUST be explicitly set; otherwise WebView2 falls through to
     // mutable virtual-host folder mapping or the network.
+    // A resource handler that does not set Response falls through to the
+    // actual network or mutable virtual-host mapping. Error handling itself
+    // must set a non-success HTTP response; if the native environment cannot
+    // construct one, terminate this WebView rather than continuing.
+    static HRESULT failResourceClosed(
+        Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
+        if(state.environment && args) {
+            ComPtr<ICoreWebView2WebResourceResponse> deny;
+            if(SUCCEEDED(state.environment->CreateWebResourceResponse(
+                nullptr,503,L"Unavailable",
+                L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
+                &deny))&&deny&&SUCCEEDED(args->put_Response(deny.Get()))) {
+                if(state.uiActivation.pendingGeneration())
+                    PostMessageW(state.child,WM_APP+41,0,0);
+                return S_OK;
+            }
+        }
+        state.uiReady=false;
+        if(state.view)state.view->Stop();
+        if(state.controller)state.controller->Close();
+        state.view.Reset();state.controller.Reset();
+        if(state.uiActivation.pendingGeneration())
+            state.uiActivation.cancel();
+        state.activationStarted=0;
+        return E_ABORT;
+    }
     static HRESULT pinnedResourceResponse(
         Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
-        if(!args||!state.environment)return E_INVALIDARG;
+        if(!args||!state.environment)return failResourceClosed(state,args);
         ComPtr<ICoreWebView2WebResourceRequest> request;
-        if(FAILED(args->get_Request(&request))||!request)return E_FAIL;
+        if(FAILED(args->get_Request(&request))||!request)
+            return failResourceClosed(state,args);
         LPWSTR raw=nullptr;
-        if(FAILED(request->get_Uri(&raw)))return E_FAIL;
+        if(FAILED(request->get_Uri(&raw)))
+            return failResourceClosed(state,args);
         const std::wstring uri=raw?raw:L"";
         CoTaskMemFree(raw);
         std::string ascii;
@@ -524,13 +557,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(found.file) {
             const auto& bytes=found.file->bytes;
             HGLOBAL owned=GlobalAlloc(GMEM_MOVEABLE,bytes.empty()?1:bytes.size());
-            if(!owned)return E_OUTOFMEMORY;
+            if(!owned)return failResourceClosed(state,args);
             void* address=GlobalLock(owned);
-            if(!address){GlobalFree(owned);return E_OUTOFMEMORY;}
+            if(!address){GlobalFree(owned);return failResourceClosed(state,args);}
             if(!bytes.empty())std::memcpy(address,bytes.data(),bytes.size());
             GlobalUnlock(owned);
             if(FAILED(CreateStreamOnHGlobal(owned,TRUE,&stream))){
-                GlobalFree(owned);return E_FAIL;
+                GlobalFree(owned);return failResourceClosed(state,args);
             }
         }
         std::wstring mimeHeaders=L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff";
@@ -544,8 +577,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const auto ok=state.environment->CreateWebResourceResponse(
             stream.Get(),status,status==200?L"OK":L"Denied",
             mimeHeaders.c_str(),&response);
-        if(FAILED(ok)||!response)return E_FAIL;
-        return args->put_Response(response.Get());
+        if(FAILED(ok)||!response)return failResourceClosed(state,args);
+        if(FAILED(args->put_Response(response.Get())))
+            return failResourceClosed(state,args);
+        return S_OK;
     }
     static void createBrowser(const std::shared_ptr<Shared>& state) {
         std::weak_ptr<Shared> weak=state;
