@@ -238,3 +238,16 @@ test("window blur and document visibility loss end active edits without duplicat
   x.document.fire("visibilitychange");
   assert.equal(x.posted.length, count);
 });
+
+test("UI selection and Back cannot trigger native dialogs from webpage JS", () => {
+  const x = fixture();
+  const bridge = createHostUiBridge(x);
+  const panel = x.nodes.get("#fw-vst-ui-reload");
+  assert.equal(panel?.children.length, 0);
+  assert.match(panel.textContent, /native toolbar/);
+  const count = x.posted.length;
+  panel.fire("click");
+  assert.equal(x.posted.length, count);
+  bridge.dispose();
+  assert.equal(x.posted.length, count);
+});
