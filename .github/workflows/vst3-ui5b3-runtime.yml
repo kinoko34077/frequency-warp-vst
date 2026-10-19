@@ -28,7 +28,7 @@ jobs:
       - name: Execute real WebView2 InPrivate/navigation/storage probe
         shell: pwsh
         run: |
-          ctest --test-dir _build/webview2-runtime -C Release --output-on-failure --timeout 55
+          ctest --test-dir _build/webview2-runtime -C Release --verbose --output-on-failure --timeout 55
       - name: Runtime acceptance limitation
         if: always()
         shell: pwsh
