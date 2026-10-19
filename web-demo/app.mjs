@@ -47,6 +47,11 @@ const zeroDecayBinding=createParameterBinding(defineParameter({
   id:"zero-decay",min:0,max:1,defaultValue:0,units:["percent"],
   rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
 }));
+// #79 M3 shape inversion fraction: exact canonical and coarse .005 dual thumb.
+const invertBinding=createParameterBinding(defineParameter({
+  id:"invert",min:0,max:1,defaultValue:0,units:["percent"],
+  rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
+}));
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,exportIdentity:null,sourceGeneration:0,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -118,6 +123,14 @@ function refreshZeroDecayView(force=false){
   if(force||document.activeElement!==field)
     field.value=String(zeroDecayBinding.display(Math.min(3,displayDigits())));
 }
+function refreshInvertView(force=false){
+  const field=$("#invert-value"),rail=$("#invert"),step=Number(rail.step)||.005;
+  rail.value=String(Math.min(1,Math.max(0,Number(
+    (Math.round(invertBinding.value/step)*step).toFixed(9)))));
+  field.dataset.fwCanonical=String(invertBinding.value);
+  if(force||document.activeElement!==field)
+    field.value=String(invertBinding.display(Math.min(3,displayDigits())));
+}
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
@@ -126,7 +139,8 @@ const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="wet"?wetBinding.value:
   name==="a-reverb"?aReverbBinding.value:
   name==="zero-reflect"?zeroReflectBinding.value:
-  name==="zero-decay"?zeroDecayBinding.value:(state.precise[name]??fallback());
+  name==="zero-decay"?zeroDecayBinding.value:
+  name==="invert"?invertBinding.value:(state.precise[name]??fallback());
 function refreshAxisShiftView(p,force=false){
   const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
   const allowed=axisShiftUnits(p.curvature);
@@ -151,6 +165,7 @@ function showNumber(id,value){
   if(id==="a-reverb-value"){refreshAReverbView();return;}
   if(id==="zero-reflect-value"){refreshZeroReflectView();return;}
   if(id==="zero-decay-value"){refreshZeroDecayView();return;}
+  if(id==="invert-value"){refreshInvertView();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -365,14 +380,15 @@ function applyConfigurationSilently(c){
   aReverbBinding.setCanonical(v.aReverb,{notify:false});
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
   zeroDecayBinding.setCanonical(v.zeroReflectDecay,{notify:false});
+  invertBinding.setCanonical(v.invert,{notify:false});
   state.precise=Object.assign(Object.create(null),{
-    curvature:v.curvature,invert:v.invert,
+    curvature:v.curvature,
     "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
   });
   for(const [id,val] of Object.entries({
-    curvature:v.curvature,invert:v.invert,
+    curvature:v.curvature,
     "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,
@@ -382,6 +398,7 @@ function applyConfigurationSilently(c){
   refreshAReverbView(true);
   refreshZeroReflectView(true);
   refreshZeroDecayView(true);
+  refreshInvertView(true);
   linkFeedback("");
 }
 function switchSoundConfiguration(slot){
@@ -1240,7 +1257,6 @@ slopeUnitControl=mountParameterUnitField({
 const inline={
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
-  "invert-value":["invert",v=>v/100,"invert",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
@@ -1254,8 +1270,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
   };
-  const toDsp=value=>range==="invert"?
-    value/100:normalized(value);
+  const toDsp=value=>normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
     const raw=Number(field.value);
@@ -1271,8 +1286,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   field.addEventListener("focus",()=>{
     if(state.precise[range]!==undefined){
       const number=state.precise[range];
-      const typed=range==="invert"?
-        number*100:number;
+      const typed=number;
       field.value=String(round3(typed));
     }
     field.select();
@@ -1283,7 +1297,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     apply();
     // The interface rounds to 2 decimals, but the DSP value remains 3-decimal exact.
     const native=state.precise[range];
-    const human=range==="invert"?native*100:native;
+    const human=native;
     if(Number.isFinite(human))showNumber(id,human);
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
@@ -1397,6 +1411,34 @@ zeroDecayField.addEventListener("blur",()=>{
 zeroDecayField.addEventListener("keydown",event=>{
   if(event.key==="Enter")zeroDecayField.blur();
 });
+// Inversion affects the DSP curve and auto-engine selection; never silently
+// round a typed value through the dual-thumb's coarse 0.005 gesture rail.
+const invertField=$("#invert-value");
+const commitInvertTyped=()=>{
+  const previous=invertBinding.value;
+  try{
+    invertBinding.setView(invertField.value,{unit:"percent",origin:"typed",
+      overflow:"clamp",notify:false});
+    delete invertField.dataset.invalid;
+  }catch{
+    invertField.dataset.invalid="true";return;
+  }
+  refreshInvertView();
+  if(!Object.is(previous,invertBinding.value)){
+    updateParams("invert");updateEngineInfo();
+  }
+};
+invertField.addEventListener("focus",()=>{
+  invertField.value=String(invertBinding.display(3));invertField.select();
+});
+invertField.addEventListener("input",commitInvertTyped);
+invertField.addEventListener("change",commitInvertTyped);
+invertField.addEventListener("blur",()=>{
+  commitInvertTyped();refreshInvertView(true);delete invertField.dataset.invalid;
+});
+invertField.addEventListener("keydown",event=>{
+  if(event.key==="Enter")invertField.blur();
+});
 // The move slider stores canonical u. Notation is conditional on curvature p,
  // and only a valid inverse conversion may update the DSP control.
  const moveField=$("#axis-shift-value"),moveUnit=$("#axis-shift-unit");
@@ -1467,6 +1509,10 @@ for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay"
     if(name==="zero-decay"){
       zeroDecayBinding.setPosition(Number($("#zero-decay").value)/100,{snap:false,notify:false});
       refreshZeroDecayView();updateParams(name);updateEngineInfo();return;
+    }
+    if(name==="invert"){
+      invertBinding.setPosition(Number($("#invert").value),{snap:false,notify:false});
+      refreshInvertView();updateParams(name);updateEngineInfo();return;
     }
     delete state.precise[name];
     if(name==="rational-enabled"&&!$("#rational-enabled").checked&&isHarmonicPivotLinked()){
@@ -1742,6 +1788,7 @@ $("#settings-reset").addEventListener("click",()=>{
   aReverbBinding.reset({notify:false});
   zeroReflectBinding.reset({notify:false});
   zeroDecayBinding.reset({notify:false});
+  invertBinding.reset({notify:false});
   lowUnitControl.reset();
   highUnitControl.reset();
   pivotUnitControl.reset();
@@ -1771,6 +1818,7 @@ $("#settings-reset").addEventListener("click",()=>{
   refreshAReverbView(true);
   refreshZeroReflectView(true);
   refreshZeroDecayView(true);
+  refreshInvertView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.

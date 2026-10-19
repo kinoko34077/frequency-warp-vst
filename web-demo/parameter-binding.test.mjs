@@ -236,3 +236,26 @@ test("reflection decay M3: precise percent, whole-percent thumb, A/B and zero re
   p.reset({notify:false});assert.equal(p.value,0);
   assert.deepEqual(events,[],"silent A/B and reset must not duplicate DSP callbacks");
 });
+
+test("inversion M3 fraction: typed precision, .005 shape rail, A/B and zero reset",()=>{
+  const changes=[];
+  const p=createParameterBinding(defineParameter({
+    id:"invert",min:0,max:1,defaultValue:0,units:["percent"],
+    rail:lineRail(0,1),digits:3
+  }),{onChange:e=>changes.push(e)});
+  p.setView("34.567",{unit:"percent",notify:false});
+  assert.ok(Math.abs(p.value-.34567)<1e-12);
+  assert.equal(p.display(),34.567);
+  assert.ok(Math.abs(Math.round(p.value/.005)*.005-.345)<1e-12);
+  const a=p.value;
+  for(const bad of ["","NaN","bad"]){
+    assert.throws(()=>p.setView(bad,{notify:false}),RangeError);
+    assert.equal(p.value,a);
+  }
+  p.setCanonical(.7,{notify:false});
+  p.setCanonical(a,{notify:false});assert.equal(p.value,a);
+  p.setPosition(0,{snap:false,notify:false});assert.equal(p.value,0);
+  p.setPosition(1,{snap:false,notify:false});assert.equal(p.value,1);
+  p.reset({notify:false});assert.equal(p.value,0);
+  assert.deepEqual(changes,[],"silent A/B and reset must not duplicate DSP callbacks");
+});
