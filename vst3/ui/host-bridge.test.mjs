@@ -239,20 +239,15 @@ test("window blur and document visibility loss end active edits without duplicat
   assert.equal(x.posted.length, count);
 });
 
-test("UI selection and Back are native-only intents with no path or trust claim", () => {
+test("UI selection and Back cannot trigger native dialogs from webpage JS", () => {
   const x = fixture();
   const bridge = createHostUiBridge(x);
   const panel = x.nodes.get("#fw-vst-ui-reload");
-  assert.equal(panel?.children.length, 2);
-  const [select, back] = panel.children;
-  select.fire("click");
-  back.fire("click");
-  assert.deepEqual(x.posted.slice(1), [
-    { protocol: PROTOCOL, kind: "ui-select" },
-    { protocol: PROTOCOL, kind: "ui-back" }
-  ]);
+  assert.equal(panel?.children.length, 0);
+  assert.match(panel.textContent, /native toolbar/);
   const count = x.posted.length;
+  panel.fire("click");
+  assert.equal(x.posted.length, count);
   bridge.dispose();
-  select.fire("click"); back.fire("click");
   assert.equal(x.posted.length, count);
 });
