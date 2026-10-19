@@ -9,9 +9,10 @@ const numeric={
   axisPivot:[0,20000],axisSlope:[-4,4],axisShift:[-2,2],
   wet:[0,1],zeroReflectGain:[0,1],zeroReflectDecay:[0,1],
   aMinHz:[.001,20000],aReverb:[0,1],aBandBins:[1,8],
-  aQuality:[0,100],crusherRateHz:[0,192000],crusherBits:[0,16]
+  aQuality:[0,100],crusherRateHz:[0,192000],crusherBits:[0,16],
+  manualCrusherBits:[2,16]
 };
-const integers=new Set(["aBandBins","aQuality","crusherBits"]);
+const integers=new Set(["aBandBins","aQuality","crusherBits","manualCrusherBits"]);
 const enumValues={
   mode:["reciprocal","blend","fold-l","fold-h"],
   outside:["pass","kill"],
@@ -51,6 +52,10 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
   }
   if(c.values.crusherBits!==0&&c.values.crusherBits<2)
     throw Error("Invalid crusher bit count");
+  if(c.flags.crusherEnabled && c.values.crusherBits!==c.values.manualCrusherBits)
+    throw Error("Inconsistent crusher enablement");
+  if(!c.flags.crusherEnabled && c.values.crusherBits!==0)
+    throw Error("Disabled crusher unexpectedly active");
   if(c.flags.rationalEnabledByLink &&
     (!c.flags.harmonicPivotLink||!c.flags.rationalEnabled))
     throw Error("Inconsistent automatic rational link");
