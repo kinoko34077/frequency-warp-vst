@@ -68,13 +68,23 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#runtime-hud-restore");
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),false);
     await page.click("#runtime-hud-hide");
-    const hit=await page.$eval("#pivot-link-target",el=>{
-      el.scrollIntoView({block:"center"});
-      const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
-      const under=document.elementFromPoint(x,y);
-      return {target:under===el||el.contains(under),width:b.width,height:b.height};
-    });
-    assert.ok(hit.target,"Mobile status must not intercept the physical pivot link: "+JSON.stringify(hit));
+    for(const width of [320,390]){
+      await page.setViewport({width,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+      const hit=await page.$eval("#pivot-link-target",el=>{
+        el.scrollIntoView({block:"center"});
+        const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
+        const under=document.elementFromPoint(x,y);
+        const left=document.querySelector(".quick-panel").getBoundingClientRect();
+        const right=document.querySelector(".workspace-right").getBoundingClientRect();
+        const graph=document.querySelector("#curve").getBoundingClientRect();
+        return {target:under===el||el.contains(under),
+          leftRight:left.right,rightLeft:right.left,graphW:graph.width,graphH:graph.height,
+          overflow:document.documentElement.scrollWidth>innerWidth};
+      });
+      assert.ok(hit.target,"Mobile status must not intercept physical pivot link at "+width+": "+JSON.stringify(hit));
+      assert.ok(hit.leftRight<=hit.rightLeft+1&&Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
+        "Keep compact LEFT controls / RIGHT square graph at "+width+": "+JSON.stringify(hit));
+    }
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
       "Settings must open from touch-size header button");
