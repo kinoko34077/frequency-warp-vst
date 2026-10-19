@@ -35,6 +35,16 @@
           <button id="play-dry" disabled>原音</button>
           <button id="stop" disabled>■ 停止</button>
         </div>
+        <div class="comparison-tools" role="group" aria-label="加工設定A/Bの比較・復帰">
+          <span class="comparison-title">加工設定 A / B</span>
+          <div class="comparison-actions">
+            <button id="compare-save-a" type="button" disabled>Aを記録</button>
+            <button id="compare-load-a" type="button" disabled>Aへ戻す</button>
+            <button id="compare-save-b" type="button" disabled>Bを記録</button>
+            <button id="compare-load-b" type="button" disabled>Bへ戻す</button>
+          </div>
+          <small id="comparison-status" role="status" aria-live="polite">設定を記録してから比較できます</small>
+        </div>
         <audio id="background-output" playsinline preload="none" aria-hidden="true" hidden></audio>
       </section>
 
