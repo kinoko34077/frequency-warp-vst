@@ -54,6 +54,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         std::weak_ptr<Shared> weakSelf;
         bool legacyFolderMapped=false;
         bool browserReady=false;
+        enum class SwitchStage { Idle, BlankCandidate, ClearCandidate, LoadCandidate,
+                                 BlankRecovery, ClearRecovery, LoadRecovery };
+        SwitchStage switchStage=SwitchStage::Idle;
+        std::uint64_t switchEpoch=0;
         // Keep an uncompleted failed request blocked until async browser teardown.
         std::array<ComPtr<ICoreWebView2Deferral>,128> blockedResourceDeferrals{};
         std::size_t blockedResourceCount=0;
@@ -297,6 +301,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.uiReady=false;
         endAllEdits(state);
         state.uiActivation.cancel();
+        state.switchStage=Shared::SwitchStage::Idle;
+        ++state.switchEpoch;
         if(state.view)state.view->Stop();
         if(state.controller)state.controller->Close();
         state.view.Reset();
@@ -329,45 +335,31 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         endAllEdits(state);state.uiReady=false;
         state.navigationLoaded=false;
         state.servedIndexGeneration=0;
-        state.activationStarted=0;
-        // For a previously accepted pinned UI, keep the folder mapping OFF.
-        // The initial fallback may restore its installed bundle mapping, but
-        // failure to do so must never navigate to the real network origin.
-        if(state.alive&&state.view) {
-            const bool useLegacy=!state.uiActivation.active();
-            if(mapLegacyBundledUi(state,useLegacy))
-                state.view->Navigate(L"https://fwvst.local/index.html");
-            else {
-                state.uiReady=false;
-                PostMessageW(state.child,WM_APP+42,0,0);
-            }
-        }
+        // A failed candidate is still an untrusted running page. FIRST move
+        // to an opaque blank document, THEN clear private origin storage.
+        // Re-serving the last known good bytes without clearing would leak
+        // the rejected candidate's localStorage/cookies.
+        state.switchStage=Shared::SwitchStage::BlankRecovery;
+        ++state.switchEpoch;
+        state.activationStarted=GetTickCount64();
+        if(!state.alive||!state.view||
+           FAILED(state.view->Navigate(L"about:blank")))
+            if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
     }
     static bool startUiNavigation(Shared& state) {
+        if(!state.browserReady||!state.view||!state.isolatedProfile)return false;
         const auto gen=state.uiActivation.begin(true);
-        if(!gen||!state.browserReady||!state.view)return false;
+        if(!gen)return false;
         endAllEdits(state);state.uiReady=false;
         state.navigationLoaded=false;
         state.servedIndexGeneration=0;
+        state.switchStage=Shared::SwitchStage::BlankCandidate;
+        ++state.switchEpoch;
         state.activationStarted=GetTickCount64();
-        // The exact origin is shared by successive approved UIs. Clear all
-        // storage, cookies, worker registrations and caches BEFORE navigation
-        // or an earlier approved bundle could control the next one.
-        if(!state.isolatedProfile){rollbackUi(state);return false;}
-        const std::weak_ptr<Shared> weak=state.weakSelf;
-        const HRESULT clear=state.isolatedProfile->ClearBrowsingDataAll(
-            Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
-                [weak,gen](HRESULT result)->HRESULT {
-                    auto owner=weak.lock();
-                    if(!owner||!owner->alive||
-                       owner->uiActivation.pendingGeneration()!=gen)return S_OK;
-                    if(FAILED(result)||!mapLegacyBundledUi(*owner,false)||
-                       !owner->view||
-                       FAILED(owner->view->Navigate(L"https://fwvst.local/index.html")))
-                        rollbackUi(*owner);
-                    return S_OK;
-                }).Get());
-        if(FAILED(clear)){rollbackUi(state);return false;}
+        if(FAILED(state.view->Navigate(L"about:blank"))) {
+            rollbackUi(state);
+            return false;
+        }
         return true;
     }
     static void selectApprovedUi(Shared& state) {
@@ -452,7 +444,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!startUiNavigation(state))state.uiActivation.cancel();
     }
     static void receive(Shared& state,std::wstring_view raw) {
-        if(!state.alive||!state.browserReady||!state.host||state.modalOpen)return;
+        if(!state.alive||!state.browserReady||!state.host||state.modalOpen||
+           state.switchStage!=Shared::SwitchStage::Idle)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
         // Only native Chromium evaluation may accept a UI generation.
@@ -559,8 +552,12 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state) {
                 if(state->activationStarted &&
-                   GetTickCount64()-state->activationStarted>8000)
-                    rollbackUi(*state);
+                   GetTickCount64()-state->activationStarted>8000) {
+                    if(state->uiActivation.pendingGeneration())
+                        rollbackUi(*state);
+                    else if(state->switchStage!=Shared::SwitchStage::Idle)
+                        PostMessageW(state->child,WM_APP+42,0,0);
+                }
                 sendSnapshot(*state);
             }
             return 0;
@@ -637,7 +634,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
             ascii.push_back(static_cast<char>(c));
         }
         const auto& tx=state.uiActivation;
-        const auto pinned=tx.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake
+        // Never expose pending candidate bytes to the outgoing page while
+        // the outgoing document is blanking or its storage is being cleared.
+        const auto pinned=state.switchStage==Shared::SwitchStage::LoadCandidate
             ?tx.pending():tx.active();
         const bool local=isAscii && ascii.rfind("https://fwvst.local/",0)==0;
         if(!pinned&&local&&state.legacyFolderMapped) {
