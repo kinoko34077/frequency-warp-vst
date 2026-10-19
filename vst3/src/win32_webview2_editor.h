@@ -49,6 +49,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> view;
         ComPtr<ICoreWebView2Environment> environment;
+        bool legacyFolderMapped=false;
         ui_assets::UiActivationTransaction uiActivation{};
         std::uint64_t activationStarted=0;
         std::uint64_t lastUiDialog=0;
@@ -282,6 +283,23 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const std::wstring message(ascii.begin(),ascii.end());
         state.view->PostWebMessageAsJson(message.c_str());
     }
+    // Microsoft WebView2 explicitly bypasses WebResourceRequested for
+    // SetVirtualHostNameToFolderMapping. To serve pinned immutable bytes the
+    // legacy folder mapping MUST be removed before native navigation.
+    static bool mapLegacyBundledUi(Shared& state,bool enable) {
+        if(!state.view)return false;
+        if(state.legacyFolderMapped==enable)return true;
+        ComPtr<ICoreWebView2_3> host;
+        if(FAILED(state.view.As(&host))||!host)return false;
+        const HRESULT result=enable
+            ?host->SetVirtualHostNameToFolderMapping(
+                L"fwvst.local",state.siteRoot.c_str(),
+                COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS)
+            :host->ClearVirtualHostNameToFolderMapping(L"fwvst.local");
+        if(FAILED(result))return false;
+        state.legacyFolderMapped=enable;
+        return true;
+    }
     static void rollbackUi(Shared& state) {
         const auto pending=state.uiActivation.pendingGeneration();
         if(!pending||!state.uiActivation.fail(pending))return;
@@ -289,10 +307,18 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.navigationLoaded=false;
         state.servedIndexGeneration=0;
         state.activationStarted=0;
-        // Keep last-known-good approved snapshot. The bundled website remains
-        // available as the initial legacy fallback if no snapshot was active.
-        if(state.alive&&state.view)
-            state.view->Navigate(L"https://fwvst.local/index.html");
+        // For a previously accepted pinned UI, keep the folder mapping OFF.
+        // The initial fallback may restore its installed bundle mapping, but
+        // failure to do so must never navigate to the real network origin.
+        if(state.alive&&state.view) {
+            const bool useLegacy=!state.uiActivation.active();
+            if(mapLegacyBundledUi(state,useLegacy))
+                state.view->Navigate(L"https://fwvst.local/index.html");
+            else {
+                state.uiReady=false;
+                PostMessageW(state.child,WM_APP+42,0,0);
+            }
+        }
     }
     static bool startUiNavigation(Shared& state) {
         const auto gen=state.uiActivation.begin(true);
@@ -301,6 +327,10 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.navigationLoaded=false;
         state.servedIndexGeneration=0;
         state.activationStarted=GetTickCount64();
+        if(!mapLegacyBundledUi(state,false)){
+            rollbackUi(state);
+            return false;
+        }
         if(FAILED(state.view->Navigate(L"https://fwvst.local/index.html"))) {
             rollbackUi(state);return false;
         }
@@ -528,7 +558,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const auto pinned=tx.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake
             ?tx.pending():tx.active();
         const bool local=isAscii && ascii.rfind("https://fwvst.local/",0)==0;
-        if(!pinned&&local)return S_OK; // existing bundled offline mode only
+        if(!pinned&&local&&state.legacyFolderMapped)
+            return S_OK; // only the installed default uses folder mapping
         const auto found=local?ui_assets::findPinnedResource(pinned,ascii)
                               :ui_assets::RoutedResource{};
         const int status=found.file?200:(local?404:403);
@@ -608,11 +639,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                     settings->put_AreDevToolsEnabled(FALSE);
                                     settings->put_IsStatusBarEnabled(FALSE);
                                 }
-                                ComPtr<ICoreWebView2_3> virtualHost;
-                                if(FAILED(target->view.As(&virtualHost))||!virtualHost||
-                                   FAILED(virtualHost->SetVirtualHostNameToFolderMapping(
-                                      L"fwvst.local",target->siteRoot.c_str(),
-                                      COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
+                                if(!mapLegacyBundledUi(*target,true)) {
                                     showError(target,L"Local Web UI mapping unsupported.");return S_OK;
                                 }
                                 // A user-selected UI is locally trusted only for its
@@ -900,6 +927,7 @@ public:
         state_->activationStarted=0;state_->navigationLoaded=false;
         state_->servedIndexGeneration=0;
         state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
+        state_->legacyFolderMapped=false;
         DestroyWindow(state_->child);
         state_->uiSelectButton=nullptr;state_->uiBackButton=nullptr;
         state_->child=nullptr;
