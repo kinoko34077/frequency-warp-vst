@@ -181,3 +181,33 @@ test("A reverb M3: 0.001% typed step independent of 1% gesture proxy",()=>{
   assert.equal(p.value,0);
   assert.deepEqual(notifications,[]);
 });
+
+test("reflection synthesis gain M3: 0.001% typing, whole-percent thumb, A/B and reset",()=>{
+  const changes=[];
+  const p=createParameterBinding(defineParameter({
+    id:"zero-reflect",min:0,max:1,defaultValue:1,units:["percent"],
+    rail:lineRail(0,1),digits:3
+  }),{onChange:e=>changes.push(e)});
+  p.setView("37.125",{unit:"percent",notify:false});
+  assert.ok(Math.abs(p.value-.37125)<1e-12);
+  assert.equal(p.display(),37.125);
+  assert.equal(Math.round(p.value*100),37,"dual thumb is a coarse display proxy only");
+  const accepted=p.value;
+  for(const invalid of ["","oops","NaN"]){
+    assert.throws(()=>p.setView(invalid,{unit:"percent",notify:false}),RangeError);
+    assert.equal(p.value,accepted);
+  }
+  p.setCanonical(.75,{notify:false});
+  const b=p.value;
+  p.setCanonical(accepted,{notify:false});
+  assert.equal(p.value,accepted);
+  p.setCanonical(b,{notify:false});
+  assert.equal(p.value,.75);
+  p.setPosition(0,{snap:false,notify:false});
+  assert.equal(p.value,0);
+  p.setPosition(1,{snap:false,notify:false});
+  assert.equal(p.value,1);
+  p.reset({notify:false});
+  assert.equal(p.value,1);
+  assert.deepEqual(changes,[],"silent restore must not duplicate DSP notifications");
+});
