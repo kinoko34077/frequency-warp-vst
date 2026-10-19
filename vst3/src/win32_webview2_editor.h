@@ -389,17 +389,9 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!state.alive||!state.host||state.modalOpen)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
-        if(msg->kind==UiWireKind::UiActivationReady){
-            if(state.navigationLoaded &&
-               state.servedIndexGeneration==msg->generation &&
-               state.uiActivation.accept(msg->generation,1,true,true)) {
-                state.activationStarted=0;
-                state.uiReady=true;
-                state.displayedBindingPhase.clear();
-                sendSnapshot(state);
-            }
-            return;
-        }
+        // Webpage messages cannot signal UI activation success.
+        // Only the native Chromium Runtime.evaluate completion is eligible.
+        if(msg->kind==UiWireKind::UiActivationReady)return;
         // Until the current native-snapshot/bridge handshake is verified,
         // *no* DOM gesture, binding or hello can edit the DAW state.
         if(state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
@@ -760,30 +752,56 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             // Keep the web player in DOM for existing JS handlers,
                                             // but hide its file-preview panel inside the DAW.
                                             const auto pending=liveNav->uiActivation.pendingGeneration();
-                                            const auto generation=pending &&
-                                                liveNav->servedIndexGeneration==pending?pending:0;
-                                            std::wstring injected=LR"JS((()=>{
-                                                  const style=document.createElement('style');
-                                                  style.textContent='.player{display:none!important}';
-                                                  document.head.appendChild(style);
-                                                  const note=document.createElement('div');
-                                                  note.textContent='VST3 — generic edits need native verified binding';
-                                                  note.style.cssText='padding:8px;background:#462f15;color:#fff;font:14px system-ui';
-                                                  document.body.prepend(note);
-                                                  import('./host-bridge.mjs').then(m=>{
-                                                    window.__fwVstHostBridge=m.createHostUiBridge({
-                                                      webview:window.chrome.webview,document
-                                                    });
-                                                    const generation=)JS";
-                                            injected+=std::to_wstring(generation);
-                                            injected+=LR"JS(;
-                                                    if(generation>0)window.chrome.webview.postMessage({
-                                                      protocol:'frequency-warp.host-ui.v1',
-                                                      kind:'ui-activation-ready',generation,version:1
-                                                    });
-                                                  }).catch(()=>{});
-                                                })())JS";
-                                            browser->ExecuteScript(injected.c_str(),nullptr);
+                                            // A web message (even with a generation) is
+                                            // page-forgeable. The host itself now waits
+                                            // for Chromium to evaluate and *await* import
+                                            // of the approved, pinned bridge module.
+                                            // The result is checked in this native-only
+                                            // asynchronous CDP completion callback.
+                                            static constexpr wchar_t params[]=
+                                                LR"FW({"expression":"import('./host-bridge.mjs').then(m=>{if(typeof m.createHostUiBridge!=='function')return false;const old=window.__fwVstHostBridge;if(old&&typeof old.dispose==='function')old.dispose();const bridge=m.createHostUiBridge({webview:window.chrome.webview,document});if(!bridge||typeof bridge.dispose!=='function')return false;window.__fwVstHostBridge=bridge;return true;}).catch(()=>false)","awaitPromise":true,"returnByValue":true})FW";
+                                            const HRESULT started=browser->CallDevToolsProtocolMethod(
+                                                L"Runtime.evaluate",params,
+                                                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                                    [nav,pending](HRESULT hr,LPCWSTR result)->HRESULT {
+                                                        const auto owner=nav.lock();
+                                                        if(!owner||!owner->alive)return S_OK;
+                                                        const std::wstring_view response=result?result:L"";
+                                                        const bool verified=SUCCEEDED(hr) &&
+                                                            response.find(L"\"type\":\"boolean\"")!=std::wstring_view::npos &&
+                                                            response.find(L"\"value\":true")!=std::wstring_view::npos &&
+                                                            response.find(L"exceptionDetails")==std::wstring_view::npos;
+                                                        if(!verified) {
+                                                            if(pending && owner->uiActivation.pendingGeneration()==pending)
+                                                                rollbackUi(*owner);
+                                                            return S_OK;
+                                                        }
+                                                        // Asynchronous completions from earlier
+                                                        // pages cannot accept a newer candidate.
+                                                        LPWSTR source=nullptr;
+                                                        if(!owner->view||FAILED(owner->view->get_Source(&source)))
+                                                            return S_OK;
+                                                        const std::wstring uri=source?source:L"";
+                                                        CoTaskMemFree(source);
+                                                        if(uri!=L"https://fwvst.local/index.html")
+                                                            return S_OK;
+                                                        if(pending) {
+                                                            if(owner->navigationLoaded &&
+                                                               owner->servedIndexGeneration==pending &&
+                                                               owner->uiActivation.accept(
+                                                                   pending,1,true,verified)) {
+                                                                owner->activationStarted=0;
+                                                                owner->uiReady=true;
+                                                                owner->displayedBindingPhase.clear();
+                                                                sendSnapshot(*owner);
+                                                            }
+                                                        } else if(owner->uiActivation.pendingGeneration()==0) {
+                                                            owner->uiReady=true;
+                                                            sendSnapshot(*owner);
+                                                        }
+                                                        return S_OK;
+                                                    }).Get());
+                                            if(FAILED(started) && pending)rollbackUi(*liveNav);
                                             return S_OK;
                                         }).Get(),&loadToken);
                                 target->view->Navigate(L"https://fwvst.local/index.html");
