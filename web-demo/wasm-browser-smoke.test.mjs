@@ -654,6 +654,31 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
+    // U4: compare whole canonical configurations, not rounded input strings.
+    assert.equal(await page.$eval("#compare-save-a",el=>el.disabled),false);
+    await page.click("#compare-save-a");
+    const savedA=await page.evaluate(()=>({
+      low:document.querySelector("#low-value").dataset.fwCanonical,
+      fundamental:document.querySelector("#fundamental").dataset.fwCanonical,
+      move:document.querySelector("#axis-shift").value
+    }));
+    await page.$eval("#axis-shift-value",el=>{
+      el.value=".123";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    await page.click("#compare-save-b");
+    assert.equal(await page.$eval("#compare-load-a",el=>el.disabled),false);
+    await page.click("#compare-load-a");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Aを復帰/);
+    assert.equal(await page.$eval("#low-value",el=>el.dataset.fwCanonical),savedA.low);
+    assert.equal(await page.$eval("#fundamental",el=>el.dataset.fwCanonical),savedA.fundamental);
+    await page.click("#compare-load-b");
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.123);
+    await page.click("#compare-load-a");
+    assert.ok(Math.abs(await page.$eval("#axis-shift",el=>Number(el.value))-
+      Number(savedA.move))<.051,"restoration leaves one consistent saved processing position");
+    assert.equal(await page.$eval("#stop",el=>el.disabled),true,
+      "A/B restores while stopped must never silently launch audio");
+
     // AUD-05: the independent original player has no DSP feedback tracker.
     // Reset must neither throw TypeError nor interrupt original transport.
     const resetPage=await browser.newPage();
