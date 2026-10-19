@@ -170,15 +170,37 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     const railProxy=Number(await page.$eval("#wet",el=>el.value));
     assert.ok(Math.abs(railProxy-.125)<1e-9,
       "range is only a 0.005-spaced gesture/view proxy");
+    // #79 second fraction: A reverb 33.333% retains exact .33333 even
+    // though its native slider is one whole percentage per gesture.
+    const setAReverb=percent=>page.$eval("#a-reverb-value",(el,value)=>{
+      el.value=String(value);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },percent);
+    const canonicalAReverb=()=>page.$eval("#a-reverb-value",el=>Number(el.dataset.fwCanonical));
+    await page.click("#settings-open");
+    await setAReverb("33.333");
+    await page.click("#settings-done");
+    assert.ok(Math.abs(await canonicalAReverb()-.33333)<1e-12);
+    assert.equal(await page.$eval("#a-reverb",el=>Number(el.value)),33);
     await page.click("#compare-save-a");
     await setWet("50");
+    await page.click("#settings-open");
+    await setAReverb("75");
+    await page.click("#settings-done");
     await page.click("#compare-save-b");
     await page.click("#compare-load-a");
     assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
       "A/B restore must retain Float64, not slider proxy");
     assert.equal(await page.$eval("#wet-value",el=>el.value),"12.345");
+    assert.ok(Math.abs(await canonicalAReverb()-.33333)<1e-12,
+      "A/B restores reverb Float64 independently of whole-percent slider");
     await page.click("#compare-load-b");
     assert.equal(await canonicalWet(),.5);
+    assert.equal(await canonicalAReverb(),.75);
+    await page.$eval("#a-reverb-value",el=>{
+      el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await canonicalAReverb(),.75,
+      "empty typed reverb must preserve last accepted DSP value");
     await page.$eval("#wet-value",el=>{
       el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -188,6 +210,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#settings-done");
     assert.equal(await canonicalWet(),1,"Reset must restore the single binding, not stale precise state");
     assert.equal(Number(await page.$eval("#wet",el=>el.value)),1);
+    assert.equal(await canonicalAReverb(),0,"Reset restores reverb binding to zero");
+    assert.equal(Number(await page.$eval("#a-reverb",el=>el.value)),0);
     // The Rust offline renderer has ALREADY removed stream lookahead and
     // flushed the tail. The saved WAV must therefore mix Dry and processed
     // samplewise, unlike the latency-compensated *realtime* AudioWorklet.
