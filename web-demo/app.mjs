@@ -677,6 +677,10 @@ function playerMessage(node,p){
       if(p.feedback.fail(data.revision,data.message)){
         indicator("DSP設定反映失敗"+(data.revision!==undefined?" · "+data.revision:""));
         message("共通DSP: "+data.message,"error");
+        if(comparisonPending){
+          comparisonMessage("設定"+comparisonPending.slot+"のDSP反映失敗 · 保存値は保持","error");
+          comparisonPending=null;comparisonCurrent=null;
+        }
       }
       if(data.fatal&&!p.fatalDryRecovery){
         // The Worklet discarded an untrustworthy partially-mutated stream.
@@ -703,6 +707,11 @@ function playerMessage(node,p){
         // "updating..." for each slider tick.
         $("#rt-indicator").dataset.appliedRevision=String(data.revision);
         indicator("稼働中 · Rust/WASM 128 samples/block · 操作反映済み");
+        if(comparisonPending?.revision===data.revision){
+          comparisonCurrent=comparisonPending.slot;
+          comparisonMessage("設定"+comparisonCurrent+"：DSP最新設定の受理を確認","applied");
+          comparisonPending=null;
+        }
       }
     }
     if(data.type==="stats"){
@@ -935,6 +944,15 @@ async function play(mode="wet",offset=null){
     if(state.player!==player||launchEpoch!==state.transportEpoch)return;
     player.feedback.ready();
     tuneWet();
+    // Stream-format rebuild creates a new Worklet. Require a fresh revisioned
+    // confirmation before reporting this restored slot as accepted.
+    if(comparisonPending?.revision===null&&mode==="wet"){
+      applyingConfiguration=true;
+      try{updateParams("comparison-confirm");}
+      finally{applyingConfiguration=false;}
+      comparisonPending.revision=player.feedback.current.phase==="pending"?
+        player.feedback.current.requestedRevision:null;
+    }
     controls.stop.disabled=false;
     indicator("稼働中 · Rust/WASM AudioWorklet · "+(1000*result.latencyFrames/ctx.sampleRate).toFixed(1)+" ms DSP遅延");
     message(player.notice ||
@@ -963,6 +981,7 @@ async function play(mode="wet",offset=null){
   }
 }
 function updateParams(changed){
+  if(!applyingConfiguration && changed!=="comparison-confirm")markComparisonEdited();
   // L is a cutoff; P is a coordinate anchor. Keep them independent unless
   // the user explicitly enabled a minimum bound for P, preserving P=0.
   if($("#pivot-follow-low").checked){
@@ -1161,7 +1180,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
     if(range==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
-    if(range==="wet"){labels();tuneWet();drawCurve();}
+    if(range==="wet"){markComparisonEdited();labels();tuneWet();drawCurve();}
     else {updateParams(changed);updateEngineInfo();}
   };
   field.addEventListener("focus",()=>{
@@ -1273,7 +1292,10 @@ $("#decimal-digits").addEventListener("change",()=>{
   slopeUnitControl.refresh();
   updateSineLabel();
 });
-$("#wet").addEventListener("input",()=>{delete state.precise.wet;labels();tuneWet();drawCurve();});
+$("#wet").addEventListener("input",()=>{
+  markComparisonEdited();
+  delete state.precise.wet;labels();tuneWet();drawCurve();
+});
 $("#slope-one").addEventListener("click",()=>{
   slopeUnitControl.setCanonical(1);
   updateParams("axis-slope");updateEngineInfo();
@@ -1296,7 +1318,13 @@ for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
 
 controls.dry.addEventListener("click",()=>play("dry"));
 controls.wet.addEventListener("click",()=>play("wet"));
-controls.stop.addEventListener("click",()=>stop());
+controls.stop.addEventListener("click",()=>{
+  if(comparisonPending){
+    comparisonPending=null;
+    comparisonMessage("停止しました · 加工設定の反映は未確認","ready");
+  }
+  void stop();
+});
 window.addEventListener("resize",()=>{drawCurve();drawAudio();});
 window.addEventListener("pagehide",()=>{if(state.rebuildTimer)clearTimeout(state.rebuildTimer);stop();if(state.offlineWorker)state.offlineWorker.terminate();});
 // Cold-start audio decode on iOS can stall after the file picker closes.
@@ -1361,6 +1389,11 @@ async function load(file){
     if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
     state.offline=null;state.decoded={sampleRate:data.sampleRate};
     state.dry=dry;state.seek=0;state.lastStats=null;
+    state.sourceGeneration++;
+    comparisonSlots.A=null;comparisonSlots.B=null;
+    comparisonPending=null;comparisonCurrent=null;
+    updateComparisonButtons();
+    comparisonMessage("新しい音源です · A/Bを記録してください","idle");
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
     state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
