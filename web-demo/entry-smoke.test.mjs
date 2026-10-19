@@ -65,6 +65,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     // Mobile diagnostics must not begin as a wide fixed overlay over the graph
     // or pivot linker; the user can explicitly restore full detail.
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),true);
+    const badgeWidth=await page.$eval("#runtime-hud-restore",el=>el.getBoundingClientRect().width);
     await page.evaluate(()=>{
       const s=document.querySelector("#status");
       s.dataset.kind="error";
@@ -72,6 +73,9 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     });
     await page.waitForFunction(()=>
       document.querySelector("#runtime-hud-brief").textContent.includes("テスト用の音声エラー"));
+    const warningWidth=await page.$eval("#runtime-hud-restore",el=>el.getBoundingClientRect().width);
+    assert.ok(Math.abs(badgeWidth-warningWidth)<1,
+      "Audio warnings must not resize and move the compact status button");
     await page.evaluate(()=>{
       const s=document.querySelector("#status");
       s.dataset.kind="info";
