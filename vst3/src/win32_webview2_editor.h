@@ -26,6 +26,10 @@
 #include <iomanip>
 #include "web_ui_message.h"
 #include "native_binding_flow.h"
+#include "ui_activation_transaction.h"
+#include "ui_pinned_resource_router.h"
+#include "ui_manifest_approval.h"
+#include "native_engine_abi.h"
 #include <memory>
 #include <functional>
 #include <string>
@@ -39,9 +43,30 @@ inline Steinberg::ViewRect kWebUiEditorRect{0,0,1100,760};
 class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     struct Shared {
         HWND child=nullptr;
+        HWND uiSelectButton=nullptr;
+        HWND uiBackButton=nullptr;
         bool alive=true;
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> view;
+        ComPtr<ICoreWebView2Environment> environment;
+        ComPtr<ICoreWebView2Profile2> isolatedProfile;
+        ComPtr<ICoreWebView2WebResourceResponse> emergencyDeny;
+        std::weak_ptr<Shared> weakSelf;
+        bool legacyFolderMapped=false;
+        bool browserReady=false;
+        enum class SwitchStage { Idle, BlankCandidate, ClearCandidate, LoadCandidate,
+                                 BlankRecovery, ClearRecovery, LoadRecovery };
+        SwitchStage switchStage=SwitchStage::Idle;
+        std::uint64_t switchEpoch=0;
+        std::uint64_t expectedNavigationId=0; // WebView2 unrelated completions may overlap
+        // Keep an uncompleted failed request blocked until async browser teardown.
+        std::array<ComPtr<ICoreWebView2Deferral>,128> blockedResourceDeferrals{};
+        std::size_t blockedResourceCount=0;
+        ui_assets::UiActivationTransaction uiActivation{};
+        std::uint64_t activationStarted=0;
+        std::uint64_t lastUiDialog=0;
+        bool navigationLoaded=false;
+        std::uint64_t servedIndexGeneration=0;
         std::filesystem::path siteRoot;
         Steinberg::Vst::EditController* host=nullptr;
         // Invoked on GUI STA. Native Controller queries the Processor and
@@ -270,10 +295,172 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const std::wstring message(ascii.begin(),ascii.end());
         state.view->PostWebMessageAsJson(message.c_str());
     }
+    // If setup partially fails, never leave a navigable, unprotected
+    // WebView available to the permanent native Select/Back buttons.
+    static void abandonUnreadyBrowser(Shared& state) {
+        state.browserReady=false;
+        state.uiReady=false;
+        endAllEdits(state);
+        state.uiActivation.cancel();
+        state.switchStage=Shared::SwitchStage::Idle;
+        ++state.switchEpoch;
+        state.expectedNavigationId=0;
+        if(state.view)state.view->Stop();
+        if(state.controller)state.controller->Close();
+        state.view.Reset();
+        state.controller.Reset();
+        state.environment.Reset();
+        state.isolatedProfile.Reset();
+        state.emergencyDeny.Reset();
+        state.legacyFolderMapped=false;
+    }
+    // Microsoft WebView2 explicitly bypasses WebResourceRequested for
+    // SetVirtualHostNameToFolderMapping. To serve pinned immutable bytes the
+    // legacy folder mapping MUST be removed before native navigation.
+    static bool mapLegacyBundledUi(Shared& state,bool enable) {
+        if(!state.view)return false;
+        if(state.legacyFolderMapped==enable)return true;
+        ComPtr<ICoreWebView2_3> host;
+        if(FAILED(state.view.As(&host))||!host)return false;
+        const HRESULT result=enable
+            ?host->SetVirtualHostNameToFolderMapping(
+                L"fwvst.local",state.siteRoot.c_str(),
+                COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS)
+            :host->ClearVirtualHostNameToFolderMapping(L"fwvst.local");
+        if(FAILED(result))return false;
+        state.legacyFolderMapped=enable;
+        return true;
+    }
+    static void rollbackUi(Shared& state) {
+        const auto pending=state.uiActivation.pendingGeneration();
+        if(!pending||!state.uiActivation.fail(pending))return;
+        endAllEdits(state);state.uiReady=false;
+        state.navigationLoaded=false;
+        state.servedIndexGeneration=0;
+        // A failed candidate is still an untrusted running page. FIRST move
+        // to an opaque blank document, THEN clear private origin storage.
+        // Re-serving the last known good bytes without clearing would leak
+        // the rejected candidate's localStorage/cookies.
+        state.switchStage=Shared::SwitchStage::BlankRecovery;
+        ++state.switchEpoch;
+        state.expectedNavigationId=0;
+        state.activationStarted=GetTickCount64();
+        if(!state.alive||!state.view||
+           FAILED(state.view->Navigate(L"about:blank")))
+            if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
+    }
+    static bool startUiNavigation(Shared& state) {
+        if(!state.browserReady||!state.view||!state.isolatedProfile)return false;
+        const auto gen=state.uiActivation.begin(true);
+        if(!gen)return false;
+        endAllEdits(state);state.uiReady=false;
+        state.navigationLoaded=false;
+        state.servedIndexGeneration=0;
+        state.switchStage=Shared::SwitchStage::BlankCandidate;
+        ++state.switchEpoch;
+        state.expectedNavigationId=0;
+        state.activationStarted=GetTickCount64();
+        if(FAILED(state.view->Navigate(L"about:blank"))) {
+            rollbackUi(state);
+            return false;
+        }
+        return true;
+    }
+    static void selectApprovedUi(Shared& state) {
+        if(state.modalOpen||!state.alive||!state.browserReady||
+           !state.child||!state.view||
+           state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
+            return;
+        const auto tick=GetTickCount64();
+        if(tick-state.lastUiDialog<1000)return;
+        state.lastUiDialog=tick;
+        std::vector<wchar_t> name(32768,L'\0');
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize=sizeof(dialog);dialog.hwndOwner=state.child;
+        dialog.lpstrFile=name.data();dialog.nMaxFile=static_cast<DWORD>(name.size());
+        dialog.lpstrFilter=L"Approved FWUI manifest (*.fwui)\0*.fwui\0\0";
+        dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+        bool chosen=false;
+        {
+            ModalGuard modal(state);
+            chosen=GetOpenFileNameW(&dialog)!=FALSE;
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||!chosen)return;
+        const auto file=std::filesystem::path(name.data());
+        if(file.extension()!=L".fwui"||
+           file.native().rfind(L"\\\\",0)==0||
+           ui_assets::hasUnsafeReparsePoint(file))return;
+        std::ifstream input(file,std::ios::binary|std::ios::ate);
+        if(!input)return;
+        const auto size=input.tellg();
+        if(size<=0||size>1024*1024)return;
+        input.seekg(0);
+        std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+        if(!input.read(reinterpret_cast<char*>(bytes.data()),size))return;
+        ui_assets::TrustedManifest manifest;
+        if(!ui_assets::parseApprovedManifest(
+            std::string_view(reinterpret_cast<const char*>(bytes.data()),
+                             bytes.size()),manifest))return;
+        std::shared_ptr<const ui_assets::PinnedSnapshot> snapshot;
+        if(!ui_assets::stagePinnedCandidate(file.parent_path()/L"ui",
+             manifest,fw_native_sha256_bytes,snapshot))return;
+        std::array<std::uint8_t,32> hash{};
+        if(!fw_native_sha256_bytes(bytes.data(),bytes.size(),
+                                  hash.data(),hash.size()))return;
+        std::wostringstream fingerprint;
+        fingerprint<<std::hex<<std::setfill(L'0');
+        for(std::size_t i=0;i<hash.size();i++)
+            fingerprint<<std::setw(2)<<static_cast<unsigned>(hash[i]);
+        std::uintmax_t totalBytes=0;
+        for(const auto& item:manifest.files)totalBytes+=item.bytes;
+        const std::wstring prompt=
+            L"Activate this local UI?\nFolder: "+(file.parent_path()/L"ui").wstring()+
+            L"\nManifest: "+file.wstring()+
+            L"\nAssets: "+std::to_wstring(manifest.files.size())+
+            L" files, "+std::to_wstring(totalBytes)+L" bytes"+
+            L"\nManifest SHA-256: "+fingerprint.str()+
+            L"\nUnsigned: hashes verify content, NOT the publisher."+
+            L"\nNo retains the current UI.";
+        int consent=IDNO;
+        {
+            ModalGuard modal(state);
+            consent=MessageBoxW(state.child,prompt.c_str(),
+                L"Confirm local UI activation",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||consent!=IDYES)return;
+        if(!state.uiActivation.prepare(snapshot))return;
+        if(!startUiNavigation(state))state.uiActivation.cancel();
+    }
+    static void selectPreviousUi(Shared& state) {
+        if(!state.alive||!state.browserReady||!state.child||
+           !state.view||state.modalOpen)return;
+        if(state.uiActivation.phase()!=ui_assets::UiActivationTransaction::Phase::Idle||
+           !state.uiActivation.previous())return;
+        int consent=IDNO;
+        {
+            ModalGuard modal(state);
+            consent=MessageBoxW(state.child,
+                L"Restore the previous verified UI snapshot?\nAudio and DAW state remain unchanged.",
+                L"Back to previous UI",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2);
+        }
+        if(!state.alive||!state.child||!IsWindow(state.child)||consent!=IDYES)return;
+        if(!state.uiActivation.prepareBack())return;
+        if(!startUiNavigation(state))state.uiActivation.cancel();
+    }
     static void receive(Shared& state,std::wstring_view raw) {
-        if(!state.alive||!state.host||state.modalOpen)return;
+        if(!state.alive||!state.browserReady||!state.host||state.modalOpen||
+           state.switchStage!=Shared::SwitchStage::Idle)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
+        // Only native Chromium evaluation may accept a UI generation.
+        // Until the current native-snapshot/bridge handshake is verified,
+        // *no* DOM gesture, binding or hello can edit the DAW state.
+        if(state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
+            return;
+        // Web content must NOT open native dialogs or switch UI.
+        // The permanent Win32 toolbar below owns these actions.
+        if(msg->kind==UiWireKind::UiSelect||
+           msg->kind==UiWireKind::UiBack)return;
         if(msg->kind==UiWireKind::Hello){
             state.uiReady=true;
             state.displayedBindingPhase.clear();
@@ -320,16 +507,190 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     static LRESULT CALLBACK browserWindowProc(HWND hwnd,UINT message,
                                                WPARAM w,LPARAM l,
                                                UINT_PTR,DWORD_PTR ref) {
+        if(message==WM_COMMAND) {
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state && state->alive && HIWORD(w)==BN_CLICKED) {
+                if(reinterpret_cast<HWND>(l)==state->uiSelectButton) {
+                    selectApprovedUi(*state);return 0;
+                }
+                if(reinterpret_cast<HWND>(l)==state->uiBackButton) {
+                    selectPreviousUi(*state);return 0;
+                }
+            }
+        }
         if(message==WM_KILLFOCUS) {
             auto* state=reinterpret_cast<Shared*>(ref);
             if(state) {state->hasFocus=false;endAllEdits(*state);}
         }
+        if(message==WM_APP+41){
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state&&state->alive)rollbackUi(*state);
+            return 0;
+        }
+        if(message==WM_APP+42){
+            // Never Close a controller re-entrantly from WebResourceRequested:
+            // the event handler has already returned when this runs.
+            auto* state=reinterpret_cast<Shared*>(ref);
+            if(state&&state->alive) {
+                state->uiReady=false;
+                state->uiActivation.cancel();
+                state->activationStarted=0;
+                if(state->view)state->view->Stop();
+                if(state->controller)state->controller->Close();
+                state->view.Reset();
+                state->controller.Reset();
+                state->environment.Reset();
+                state->isolatedProfile.Reset();
+                state->emergencyDeny.Reset();
+                state->legacyFolderMapped=false;
+                state->browserReady=false;
+                // The request remains blocked until the browser is closed.
+                // Releasing failed deferrals is safe only AFTER Close.
+                for(auto& pending:state->blockedResourceDeferrals)
+                    pending.Reset();
+                state->blockedResourceCount=0;
+            }
+            return 0;
+        }
         if(message==WM_TIMER && w==1){
             auto* state=reinterpret_cast<Shared*>(ref);
-            if(state)sendSnapshot(*state);
+            if(state) {
+                if(state->activationStarted &&
+                   GetTickCount64()-state->activationStarted>8000) {
+                    if(state->uiActivation.pendingGeneration())
+                        rollbackUi(*state);
+                    else if(state->switchStage!=Shared::SwitchStage::Idle)
+                        PostMessageW(state->child,WM_APP+42,0,0);
+                }
+                sendSnapshot(*state);
+            }
             return 0;
         }
         return DefSubclassProc(hwnd,message,w,l);
+    }
+    // WebView2 requests proceed to network unless Response is installed.
+    // Hold a deferral on each request, completing it ONLY after put_Response.
+    // If even HTTP 503 cannot be installed, keep it blocked and close the
+    // controller AFTER returning to the Win32 message loop (no re-entrancy).
+    static HRESULT failResourceClosed(
+        Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args,
+        ComPtr<ICoreWebView2Deferral>& gate) noexcept {
+        if(args) {
+            ComPtr<ICoreWebView2WebResourceResponse> deny;
+            if(state.environment)
+                state.environment->CreateWebResourceResponse(
+                    nullptr,503,L"Unavailable",
+                    L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
+                    &deny);
+            const auto fallback=deny?deny:state.emergencyDeny;
+            if(fallback&&SUCCEEDED(args->put_Response(fallback.Get()))) {
+                if(gate)gate->Complete();
+                if(state.uiActivation.pendingGeneration()&&state.child)
+                    PostMessageW(state.child,WM_APP+41,0,0);
+                return S_OK;
+            }
+        }
+        state.uiReady=false;
+        // The request cannot proceed while its deferral is held uncompleted.
+        if(gate && state.blockedResourceCount <
+           state.blockedResourceDeferrals.size()) {
+            state.blockedResourceDeferrals[state.blockedResourceCount++]=gate;
+        } else if(gate) {
+            // The bounded parking pool is exhausted. Do not let a dropped
+            // uncompleted deferral accidentally unblock a network request.
+            if(args&&state.emergencyDeny&&
+               SUCCEEDED(args->put_Response(state.emergencyDeny.Get())))
+                gate->Complete();
+            else if(state.view)
+                state.view->Stop();
+        }
+        if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
+        return S_OK;
+    }
+    static HRESULT pinnedResourceResponse(
+        Shared& state,ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
+        // Obtain a deferral before any operation that could fail; WebView2
+        // guarantees a deferred resource does not continue until Complete().
+        ComPtr<ICoreWebView2Deferral> gate;
+        if(!args||FAILED(args->GetDeferral(&gate))||!gate) {
+            // Prebuilt fail-closed response does not need allocations or
+            // the optional asynchronous deferral path.
+            const bool denied=args&&state.emergencyDeny&&
+                SUCCEEDED(args->put_Response(state.emergencyDeny.Get()));
+            if(state.child)PostMessageW(state.child,WM_APP+42,0,0);
+            if(!denied&&state.view)state.view->Stop();
+            return denied?S_OK:E_ABORT;
+        }
+        if(!state.environment)return failResourceClosed(state,args,gate);
+        ComPtr<ICoreWebView2WebResourceRequest> request;
+        if(FAILED(args->get_Request(&request))||!request)
+            return failResourceClosed(state,args,gate);
+        LPWSTR raw=nullptr;
+        if(FAILED(request->get_Uri(&raw)))
+            return failResourceClosed(state,args,gate);
+        const std::wstring uri=raw?raw:L"";
+        CoTaskMemFree(raw);
+        std::string ascii;
+        ascii.reserve(uri.size());
+        bool isAscii=true;
+        for(const wchar_t c:uri){
+            if(c<0x21||c>0x7e){isAscii=false;break;}
+            ascii.push_back(static_cast<char>(c));
+        }
+        const auto& tx=state.uiActivation;
+        // Never expose pending candidate bytes to the outgoing page while
+        // the outgoing document is blanking or its storage is being cleared.
+        const auto pinned=state.switchStage==Shared::SwitchStage::LoadCandidate
+            ?tx.pending():tx.active();
+        const bool local=isAscii && ascii.rfind("https://fwvst.local/",0)==0;
+        if(!pinned&&local&&state.legacyFolderMapped) {
+            gate->Complete();
+            return S_OK; // installed bundled UI mapping only
+        }
+        const auto found=local?ui_assets::findPinnedResource(pinned,ascii)
+                              :ui_assets::RoutedResource{};
+        const int status=found.file?200:(local?404:403);
+        // A versioned JS hello never proves the new page came from pinned
+        // bytes. Record that the native router actually served the index
+        // from the exact pending immutable generation.
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT context=
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+        const bool isTopLevelDocument=
+            SUCCEEDED(args->get_ResourceContext(&context)) &&
+            context==COREWEBVIEW2_WEB_RESOURCE_CONTEXT_DOCUMENT;
+        if(found.file&&found.file->path=="index.html" &&
+           isTopLevelDocument&&tx.pendingGeneration()!=0)
+            state.servedIndexGeneration=tx.pendingGeneration();
+        ComPtr<IStream> stream;
+        if(found.file) {
+            const auto& bytes=found.file->bytes;
+            HGLOBAL owned=GlobalAlloc(GMEM_MOVEABLE,bytes.empty()?1:bytes.size());
+            if(!owned)return failResourceClosed(state,args,gate);
+            void* address=GlobalLock(owned);
+            if(!address){GlobalFree(owned);return failResourceClosed(state,args,gate);}
+            if(!bytes.empty())std::memcpy(address,bytes.data(),bytes.size());
+            GlobalUnlock(owned);
+            if(FAILED(CreateStreamOnHGlobal(owned,TRUE,&stream))){
+                GlobalFree(owned);return failResourceClosed(state,args,gate);
+            }
+        }
+        std::wstring mimeHeaders=L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+        if(found.mime) {
+            mimeHeaders=L"Content-Type: ";
+            for(const char* p=found.mime;*p;p++)
+                mimeHeaders.push_back(static_cast<wchar_t>(*p));
+            mimeHeaders+=L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff"
+                         L"\r\nContent-Security-Policy: worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'";
+        }
+        ComPtr<ICoreWebView2WebResourceResponse> response;
+        const auto ok=state.environment->CreateWebResourceResponse(
+            stream.Get(),status,status==200?L"OK":L"Denied",
+            mimeHeaders.c_str(),&response);
+        if(FAILED(ok)||!response)return failResourceClosed(state,args,gate);
+        if(FAILED(args->put_Response(response.Get())))
+            return failResourceClosed(state,args,gate);
+        gate->Complete();
+        return S_OK;
     }
     static void createBrowser(const std::shared_ptr<Shared>& state) {
         std::weak_ptr<Shared> weak=state;
@@ -345,39 +706,139 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                         showError(live,L"WebView2 environment failed. Restart without experimental UI.");return S_OK;
                     }
                     std::weak_ptr<Shared> sub=live;
-                    const HRESULT started=env->CreateCoreWebView2Controller(live->child,
+                    ComPtr<ICoreWebView2Environment10> profileEnvironment;
+                    ComPtr<ICoreWebView2ControllerOptions> options;
+                    if(FAILED(env->QueryInterface(IID_PPV_ARGS(&profileEnvironment)))||
+                       !profileEnvironment||
+                       FAILED(profileEnvironment->CreateCoreWebView2ControllerOptions(&options))||
+                       !options||FAILED(options->put_IsInPrivateModeEnabled(TRUE))) {
+                        showError(live,L"Private-profile WebView2 requires a newer runtime.");
+                        return S_OK;
+                    }
+                    const std::wstring profileName=L"FWUI_"+
+                        std::to_wstring(GetCurrentProcessId())+L"_"+
+                        std::to_wstring(reinterpret_cast<std::uintptr_t>(live->child));
+                    if(FAILED(options->put_ProfileName(profileName.c_str()))) {
+                        showError(live,L"Unable to create isolated WebView2 profile.");
+                        return S_OK;
+                    }
+                    const HRESULT started=profileEnvironment->CreateCoreWebView2ControllerWithOptions(
+                        live->child,options.Get(),
                         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                            [sub](HRESULT status,ICoreWebView2Controller* ctrl)->HRESULT {
+                            [sub,ownEnv=ComPtr<ICoreWebView2Environment>(env)](HRESULT status,ICoreWebView2Controller* ctrl)->HRESULT {
                                 auto target=sub.lock();
                                 if(!target || !target->alive)return S_OK;
                                 if(FAILED(status)||!ctrl) {
-                                    showError(target,L"WebView2 controller failed. Native file UI remains available.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 controller failed. Native file UI remains available.");return S_OK;
                                 }
                                 target->controller=ctrl;
+                                target->environment=ownEnv;
+                                ComPtr<ICoreWebView2_13> profiledView;
                                 if(FAILED(ctrl->get_CoreWebView2(&target->view))||!target->view) {
-                                    showError(target,L"WebView2 browser creation failed.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 browser creation failed.");return S_OK;
+                                }
+                                ComPtr<ICoreWebView2Profile> privateProfile;
+                                if(FAILED(target->view.As(&profiledView))||!profiledView||
+                                   FAILED(profiledView->get_Profile(&privateProfile))||!privateProfile||
+                                   FAILED(privateProfile.As(&target->isolatedProfile))||
+                                   !target->isolatedProfile) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"Isolated WebView2 profile unavailable.");return S_OK;
+                                }
+                                BOOL verifiedPrivate=FALSE;
+                                if(FAILED(privateProfile->get_IsInPrivateModeEnabled(&verifiedPrivate))||
+                                   !verifiedPrivate) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 private profile check failed.");return S_OK;
+                                }
+                                if(FAILED(target->environment->CreateWebResourceResponse(
+                                    nullptr,503,L"Blocked",
+                                    L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
+                                    &target->emergencyDeny))||!target->emergencyDeny) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 deny response setup failed.");return S_OK;
                                 }
                                 RECT bounds{};GetClientRect(target->child,&bounds);
+                                bounds.top=44; // dedicated native UI recovery toolbar
                                 ctrl->put_Bounds(bounds);
                                 ComPtr<ICoreWebView2Settings> settings;
-                                if(SUCCEEDED(target->view->get_Settings(&settings))&&settings) {
-                                    settings->put_AreDefaultContextMenusEnabled(FALSE);
-                                    settings->put_AreDevToolsEnabled(FALSE);
-                                    settings->put_IsStatusBarEnabled(FALSE);
+                                if(FAILED(target->view->get_Settings(&settings))||!settings||
+                                   FAILED(settings->put_AreDefaultContextMenusEnabled(FALSE))||
+                                   FAILED(settings->put_AreDevToolsEnabled(FALSE))||
+                                   FAILED(settings->put_AreDefaultScriptDialogsEnabled(FALSE))||
+                                   FAILED(settings->put_IsStatusBarEnabled(FALSE))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Required WebView2 security settings unavailable.");
+                                    return S_OK;
                                 }
-                                ComPtr<ICoreWebView2_3> virtualHost;
-                                if(FAILED(target->view.As(&virtualHost))||!virtualHost||
-                                   FAILED(virtualHost->SetVirtualHostNameToFolderMapping(
-                                      L"fwvst.local",target->siteRoot.c_str(),
-                                      COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
-                                    showError(target,L"Local Web UI mapping unsupported.");return S_OK;
+                                if(!mapLegacyBundledUi(*target,true)) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"Local Web UI mapping unsupported.");return S_OK;
+                                }
+                                // A user-selected UI is locally trusted only for its
+                                // approved bytes, NOT for external browser/system effects.
+                                // A candidate must never stall recovery via beforeunload
+                                // or a modal JavaScript alert/confirm/prompt.
+                                // Never display browser-owned OS dialogs. Accept ONLY
+                                // beforeunload to permit native blank/rollback; reject
+                                // page prompts/confirmations by leaving them unaccepted.
+                                EventRegistrationToken scriptDialogToken{};
+                                if(FAILED(target->view->add_ScriptDialogOpening(
+                                    Callback<ICoreWebView2ScriptDialogOpeningEventHandler>(
+                                        [](ICoreWebView2*,
+                                           ICoreWebView2ScriptDialogOpeningEventArgs* args)->HRESULT {
+                                            if(!args)return S_OK;
+                                            COREWEBVIEW2_SCRIPT_DIALOG_KIND kind{};
+                                            if(SUCCEEDED(args->get_Kind(&kind)) &&
+                                               kind==COREWEBVIEW2_SCRIPT_DIALOG_KIND_BEFOREUNLOAD)
+                                                args->Accept();
+                                            return S_OK;
+                                        }).Get(),&scriptDialogToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Script dialog protection unavailable.");
+                                    return S_OK;
+                                }
+                                EventRegistrationToken popupToken{};
+                                if(FAILED(target->view->add_NewWindowRequested(
+                                    Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+                                        [](ICoreWebView2*,
+                                            ICoreWebView2NewWindowRequestedEventArgs* args)->HRESULT {
+                                            if(args)args->put_Handled(TRUE);
+                                            return S_OK;
+                                        }).Get(),&popupToken))) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"Popup protection unavailable.");return S_OK;
+                                }
+                                EventRegistrationToken permissionsToken{};
+                                if(FAILED(target->view->add_PermissionRequested(
+                                    Callback<ICoreWebView2PermissionRequestedEventHandler>(
+                                        [](ICoreWebView2*,
+                                            ICoreWebView2PermissionRequestedEventArgs* args)->HRESULT {
+                                            if(args)args->put_State(
+                                                COREWEBVIEW2_PERMISSION_STATE_DENY);
+                                            return S_OK;
+                                        }).Get(),&permissionsToken))) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"Web permission protection unavailable.");return S_OK;
+                                }
+                                // Intercept *all* network/resource requests before navigation.
+                                // No request may silently fall through after pinned activation.
+                                if(FAILED(target->view->AddWebResourceRequestedFilter(
+                                    L"*",COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL))) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"Resource interception unavailable.");return S_OK;
+                                }
+                                std::weak_ptr<Shared> resources=target;
+                                EventRegistrationToken resourceToken{};
+                                if(FAILED(target->view->add_WebResourceRequested(
+                                    Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+                                        [resources](ICoreWebView2*,
+                                            ICoreWebView2WebResourceRequestedEventArgs* args)->HRESULT {
+                                            const auto current=resources.lock();
+                                            if(!current||!current->alive)return E_ABORT;
+                                            return pinnedResourceResponse(*current,args);
+                                        }).Get(),&resourceToken))) {
+                                    abandonUnreadyBrowser(*target);showError(target,L"Web resource interception failed.");return S_OK;
                                 }
                                 // Accept only trusted top-level local page messages.
                                 // Slot and numeric validation additionally occur in
                                 // parseUiWireMessage + receive(), not in JavaScript.
                                 std::weak_ptr<Shared> messageTarget=target;
                                 EventRegistrationToken msgToken{};
-                                target->view->add_WebMessageReceived(
+                                if(FAILED(target->view->add_WebMessageReceived(
                                     Callback<ICoreWebView2WebMessageReceivedEventHandler>(
                                         [messageTarget](ICoreWebView2*,
                                            ICoreWebView2WebMessageReceivedEventArgs* args)->HRESULT {
@@ -396,18 +857,26 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 CoTaskMemFree(payload);
                                             }
                                             return S_OK;
-                                        }).Get(),&msgToken);
+                                        }).Get(),&msgToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Web message validation registration failed.");
+                                    return S_OK;
+                                }
                                 EventRegistrationToken gotFocusToken{};
-                                target->controller->add_GotFocus(
+                                if(FAILED(target->controller->add_GotFocus(
                                     Callback<ICoreWebView2FocusChangedEventHandler>(
                                         [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
                                             const auto owner=messageTarget.lock();
                                             if(owner && owner->alive)owner->hasFocus=true;
                                             return S_OK;
-                                        }).Get(),&gotFocusToken);
+                                        }).Get(),&gotFocusToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Host focus routing registration failed.");
+                                    return S_OK;
+                                }
                                 // Browser focus loss may not reach the parent HWND.
                                 EventRegistrationToken focusToken{};
-                                target->controller->add_LostFocus(
+                                if(FAILED(target->controller->add_LostFocus(
                                     Callback<ICoreWebView2FocusChangedEventHandler>(
                                         [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
                                             const auto owner=messageTarget.lock();
@@ -416,61 +885,234 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 endAllEdits(*owner);
                                             }
                                             return S_OK;
-                                        }).Get(),&focusToken);
+                                        }).Get(),&focusToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Focus revocation registration failed.");
+                                    return S_OK;
+                                }
                                 // Refuse navigation to external origins in the embedded UI.
                                 std::weak_ptr<Shared> nav=target;
                                 EventRegistrationToken navToken{};
-                                target->view->add_NavigationStarting(
+                                if(FAILED(target->view->add_NavigationStarting(
                                     Callback<ICoreWebView2NavigationStartingEventHandler>(
                                         [nav](ICoreWebView2*,
                                               ICoreWebView2NavigationStartingEventArgs* args)->HRESULT {
                                             const auto liveNav=nav.lock();
                                             if(!liveNav||!liveNav->alive)return S_OK;
                                             LPWSTR uri=nullptr;
-                                            if(SUCCEEDED(args->get_Uri(&uri))) {
-                                                const std::wstring url=uri?uri:L"";
+                                            UINT64 navigationId=0;
+                                            BOOL userInitiated=FALSE;
+                                            if(!args||FAILED(args->get_Uri(&uri))||
+                                               FAILED(args->get_NavigationId(&navigationId))||
+                                               !navigationId){
                                                 CoTaskMemFree(uri);
-                                                if(url.rfind(L"https://fwvst.local/",0)!=0)
-                                                    args->put_Cancel(TRUE);
+                                                if(args)args->put_Cancel(TRUE);
+                                                return S_OK;
+                                            }
+                                            const std::wstring url=uri?uri:L"";
+                                            CoTaskMemFree(uri);
+                                            const auto stage=liveNav->switchStage;
+                                            const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
+                                                stage==Shared::SwitchStage::BlankRecovery;
+                                            const bool loading=stage==Shared::SwitchStage::LoadCandidate||
+                                                stage==Shared::SwitchStage::LoadRecovery;
+                                            bool allow=false;
+                                            if(stage==Shared::SwitchStage::Idle) {
+                                                allow=url.rfind(L"https://fwvst.local/",0)==0;
+                                            } else if(blanking||loading) {
+                                                const bool exact=blanking?url==L"about:blank"
+                                                    :url==L"https://fwvst.local/index.html";
+                                                // WebView2 host Navigate() reports user initiated;
+                                                // script-driven navigations are not. Only the first
+                                                // native navigation ID can advance this stage.
+                                                if(exact&&
+                                                   SUCCEEDED(args->get_IsUserInitiated(&userInitiated))&&
+                                                   userInitiated==TRUE&&
+                                                   (!liveNav->expectedNavigationId||
+                                                    liveNav->expectedNavigationId==navigationId)){
+                                                    liveNav->expectedNavigationId=navigationId;
+                                                    allow=true;
+                                                }
+                                            }
+                                            if(!allow){
+                                                args->put_Cancel(TRUE);
+                                                return S_OK;
                                             }
                                             endAllEdits(*liveNav);
                                             liveNav->uiReady=false;
                                             liveNav->hasFocus=false;
                                             liveNav->displayedBindingPhase.clear();
                                             return S_OK;
-                                        }).Get(),&navToken);
+                                        }).Get(),&navToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Navigation authorization registration failed.");
+                                    return S_OK;
+                                }
                                 EventRegistrationToken loadToken{};
-                                target->view->add_NavigationCompleted(
+                                if(FAILED(target->view->add_NavigationCompleted(
                                     Callback<ICoreWebView2NavigationCompletedEventHandler>(
                                         [nav](ICoreWebView2* browser,
                                               ICoreWebView2NavigationCompletedEventArgs* args)->HRESULT {
                                             const auto liveNav=nav.lock();
-                                            if(!liveNav||!liveNav->alive)return S_OK;
+                                            if(!liveNav||!liveNav->alive||!args)return S_OK;
+                                            UINT64 completedId=0;
+                                            if(FAILED(args->get_NavigationId(&completedId))||!completedId)return S_OK;
+                                            // Cancelled stray navigations also emit Completed.
+                                            // Do not mistake their failure for native blank/load.
+                                            if(liveNav->switchStage!=Shared::SwitchStage::Idle&&
+                                               (!liveNav->expectedNavigationId||
+                                                completedId!=liveNav->expectedNavigationId))
+                                                return S_OK;
                                             BOOL ok=FALSE;
-                                            if(FAILED(args->get_IsSuccess(&ok))||!ok){
-                                                showError(liveNav,L"Frequency Warp local website load failed.");
+                                            const auto stage=liveNav->switchStage;
+                                            const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
+                                                stage==Shared::SwitchStage::BlankRecovery;
+                                            const bool recovering=stage==Shared::SwitchStage::BlankRecovery||
+                                                stage==Shared::SwitchStage::ClearRecovery||
+                                                stage==Shared::SwitchStage::LoadRecovery;
+                                            if(blanking) {
+                                                LPWSTR source=nullptr;
+                                                const bool blankOk=
+                                                    SUCCEEDED(args->get_IsSuccess(&ok))&&ok&&
+                                                    SUCCEEDED(browser->get_Source(&source))&&
+                                                    source&&std::wcscmp(source,L"about:blank")==0;
+                                                CoTaskMemFree(source);
+                                                if(!blankOk||!liveNav->isolatedProfile) {
+                                                    if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                                    else rollbackUi(*liveNav);
+                                                    return S_OK;
+                                                }
+                                                liveNav->switchStage=recovering
+                                                    ?Shared::SwitchStage::ClearRecovery
+                                                    :Shared::SwitchStage::ClearCandidate;
+                                                const auto epoch=liveNav->switchEpoch;
+                                                const auto generation=liveNav->uiActivation.pendingGeneration();
+                                                const std::weak_ptr<Shared> weakClear=liveNav;
+                                                const HRESULT clear=liveNav->isolatedProfile->ClearBrowsingDataAll(
+                                                    Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+                                                        [weakClear,epoch,generation,recovering](HRESULT hr)->HRESULT {
+                                                            const auto owner=weakClear.lock();
+                                                            if(!owner||!owner->alive||owner->switchEpoch!=epoch)return S_OK;
+                                                            if(owner->switchStage!=(recovering
+                                                                ?Shared::SwitchStage::ClearRecovery
+                                                                :Shared::SwitchStage::ClearCandidate))return S_OK;
+                                                            if(!recovering && owner->uiActivation.pendingGeneration()!=generation)
+                                                                return S_OK;
+                                                            const bool legacy=recovering&&!owner->uiActivation.active();
+                                                            if(FAILED(hr)||!mapLegacyBundledUi(*owner,legacy)||!owner->view) {
+                                                                if(recovering)PostMessageW(owner->child,WM_APP+42,0,0);
+                                                                else rollbackUi(*owner);
+                                                                return S_OK;
+                                                            }
+                                                            owner->switchStage=recovering
+                                                                ?Shared::SwitchStage::LoadRecovery
+                                                                :Shared::SwitchStage::LoadCandidate;
+                                                            owner->expectedNavigationId=0;
+                                                            if(FAILED(owner->view->Navigate(L"https://fwvst.local/index.html"))) {
+                                                                if(recovering)PostMessageW(owner->child,WM_APP+42,0,0);
+                                                                else rollbackUi(*owner);
+                                                            }
+                                                            return S_OK;
+                                                        }).Get());
+                                                if(FAILED(clear)) {
+                                                    if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                                    else rollbackUi(*liveNav);
+                                                }
                                                 return S_OK;
                                             }
+                                            if(FAILED(args->get_IsSuccess(&ok))||!ok){
+                                                if(liveNav->uiActivation.pendingGeneration())
+                                                    rollbackUi(*liveNav);
+                                                else if(recovering)
+                                                    PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                                else showError(liveNav,L"Frequency Warp local website load failed.");
+                                                return S_OK;
+                                            }
+                                            LPWSTR actualUri=nullptr;
+                                            if(FAILED(browser->get_Source(&actualUri)))return S_OK;
+                                            const std::wstring currentUri=actualUri?actualUri:L"";
+                                            CoTaskMemFree(actualUri);
+                                            if(currentUri!=L"https://fwvst.local/index.html") {
+                                                if(liveNav->uiActivation.pendingGeneration())
+                                                    rollbackUi(*liveNav);
+                                                else if(recovering)
+                                                    PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                                return S_OK;
+                                            }
+                                            liveNav->navigationLoaded=true;
                                             // Keep the web player in DOM for existing JS handlers,
                                             // but hide its file-preview panel inside the DAW.
-                                            browser->ExecuteScript(
-                                                LR"JS((()=>{
-                                                  const style=document.createElement('style');
-                                                  style.textContent='.player{display:none!important}';
-                                                  document.head.appendChild(style);
-                                                  const note=document.createElement('div');
-                                                  note.textContent='VST3 embedded WebView2 — generic controls appear only when native FWS3 authorization is active';
-                                                  note.style.cssText='padding:8px;background:#462f15;color:#fff;font:14px system-ui';
-                                                  document.body.prepend(note);
-                                                  import('./host-bridge.mjs').then(m=>{
-                                                    window.__fwVstHostBridge=m.createHostUiBridge({
-                                                      webview:window.chrome.webview,document
-                                                    });
-                                                  }).catch(()=>{});
-                                                })())JS",nullptr);
+                                            const auto pending=liveNav->uiActivation.pendingGeneration();
+                                            const auto evaluatedEpoch=liveNav->switchEpoch;
+                                            // A web message (even with a generation) is
+                                            // page-forgeable. The host itself now waits
+                                            // for Chromium to evaluate and *await* import
+                                            // of the approved, pinned bridge module.
+                                            // The result is checked in this native-only
+                                            // asynchronous CDP completion callback.
+                                            static constexpr wchar_t params[]=
+                                                LR"FW({"expression":"import('./host-bridge.mjs').then(m=>{if(typeof m.createHostUiBridge!=='function')return false;const old=window.__fwVstHostBridge;if(old&&typeof old.dispose==='function')old.dispose();const bridge=m.createHostUiBridge({webview:window.chrome.webview,document});if(!bridge||typeof bridge.dispose!=='function')return false;window.__fwVstHostBridge=bridge;return true;}).catch(()=>false)","awaitPromise":true,"returnByValue":true})FW";
+                                            const HRESULT started=browser->CallDevToolsProtocolMethod(
+                                                L"Runtime.evaluate",params,
+                                                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                                    [nav,pending,evaluatedEpoch](HRESULT hr,LPCWSTR result)->HRESULT {
+                                                        const auto owner=nav.lock();
+                                                        if(!owner||!owner->alive||owner->switchEpoch!=evaluatedEpoch)return S_OK;
+                                                        const std::wstring_view response=result?result:L"";
+                                                        const bool verified=SUCCEEDED(hr) &&
+                                                            response.find(L"\"type\":\"boolean\"")!=std::wstring_view::npos &&
+                                                            response.find(L"\"value\":true")!=std::wstring_view::npos &&
+                                                            response.find(L"exceptionDetails")==std::wstring_view::npos;
+                                                        if(!verified) {
+                                                            if(pending && owner->uiActivation.pendingGeneration()==pending)
+                                                                rollbackUi(*owner);
+                                                            return S_OK;
+                                                        }
+                                                        // Asynchronous completions from earlier
+                                                        // pages cannot accept a newer candidate.
+                                                        LPWSTR source=nullptr;
+                                                        if(!owner->view||FAILED(owner->view->get_Source(&source)))
+                                                            return S_OK;
+                                                        const std::wstring uri=source?source:L"";
+                                                        CoTaskMemFree(source);
+                                                        if(uri!=L"https://fwvst.local/index.html")
+                                                            return S_OK;
+                                                        if(pending) {
+                                                            if(owner->navigationLoaded &&
+                                                               owner->servedIndexGeneration==pending &&
+                                                               owner->uiActivation.accept(
+                                                                   pending,1,true,verified)) {
+                                                                owner->activationStarted=0;
+                                                                owner->switchStage=Shared::SwitchStage::Idle;
+                                                                owner->uiReady=true;
+                                                                owner->displayedBindingPhase.clear();
+                                                                sendSnapshot(*owner);
+                                                            }
+                                                        } else if(owner->uiActivation.pendingGeneration()==0 &&
+                                                                 owner->switchStage!=Shared::SwitchStage::BlankRecovery &&
+                                                                 owner->switchStage!=Shared::SwitchStage::ClearRecovery) {
+                                                            owner->switchStage=Shared::SwitchStage::Idle;
+                                                            owner->activationStarted=0;
+                                                            owner->uiReady=true;
+                                                            sendSnapshot(*owner);
+                                                        }
+                                                        return S_OK;
+                                                    }).Get());
+                                            if(FAILED(started)) {
+                                                 if(pending)rollbackUi(*liveNav);
+                                                 else if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
+                                             }
                                             return S_OK;
-                                        }).Get(),&loadToken);
-                                target->view->Navigate(L"https://fwvst.local/index.html");
+                                        }).Get(),&loadToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"UI load verification registration failed.");
+                                    return S_OK;
+                                }
+                                target->browserReady=true;
+                                if(FAILED(target->view->Navigate(L"https://fwvst.local/index.html"))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Initial UI navigation failed.");
+                                }
                                 return S_OK;
                             }).Get());
                     if(FAILED(started)) showError(live,L"WebView2 controller setup failed.");
@@ -486,6 +1128,7 @@ public:
         std::function<bool(std::uint64_t)> commitBinding={},
         std::function<NewBindingStatus()> pollBinding={})
         :EditorView(controller,&kWebUiEditorRect),editController_(controller){
+        state_->weakSelf=state_;
         state_->verifiedGenericMask=std::move(verifiedGenericMask);
         state_->prepareBinding=std::move(prepareBinding);
         state_->commitBinding=std::move(commitBinding);
@@ -527,6 +1170,22 @@ public:
             DestroyWindow(state_->child);state_->child=nullptr;systemWindow=nullptr;
             CoUninitialize();ownsCom_=false;return Steinberg::kResultFalse;
         }
+        state_->uiSelectButton=CreateWindowExW(0,L"BUTTON",L"Select verified UI...",
+            WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,8,6,170,32,state_->child,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(1001)),
+            GetModuleHandleW(nullptr),nullptr);
+        state_->uiBackButton=CreateWindowExW(0,L"BUTTON",L"Back to previous UI",
+            WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,186,6,175,32,state_->child,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(1002)),
+            GetModuleHandleW(nullptr),nullptr);
+        if(!state_->uiSelectButton||!state_->uiBackButton){
+            if(state_->uiSelectButton)DestroyWindow(state_->uiSelectButton);
+            if(state_->uiBackButton)DestroyWindow(state_->uiBackButton);
+            RemoveWindowSubclass(state_->child,browserWindowProc,
+                reinterpret_cast<UINT_PTR>(this));
+            DestroyWindow(state_->child);state_->child=nullptr;systemWindow=nullptr;
+            CoUninitialize();ownsCom_=false;return Steinberg::kResultFalse;
+        }
         SetTimer(state_->child,1,250,nullptr);
         attachedToParent();
         createBrowser(state_);
@@ -548,8 +1207,14 @@ public:
             state_->host=nullptr;
         }
         if(state_->controller)state_->controller->Close();
-        state_->view.Reset();state_->controller.Reset();
+        state_->uiActivation.editorDetached();
+        state_->activationStarted=0;state_->navigationLoaded=false;
+        state_->servedIndexGeneration=0;
+        state_->view.Reset();state_->controller.Reset();state_->environment.Reset();
+        state_->isolatedProfile.Reset();state_->emergencyDeny.Reset();
+        state_->legacyFolderMapped=false;
         DestroyWindow(state_->child);
+        state_->uiSelectButton=nullptr;state_->uiBackButton=nullptr;
         state_->child=nullptr;
         systemWindow=nullptr;
         removedFromParent();
@@ -564,6 +1229,7 @@ public:
                 rect->bottom-rect->top,SWP_NOZORDER|SWP_NOACTIVATE);
             if(state_->controller){
                 RECT bounds{};GetClientRect(state_->child,&bounds);
+                bounds.top=44;
                 state_->controller->put_Bounds(bounds);
             }
         }
