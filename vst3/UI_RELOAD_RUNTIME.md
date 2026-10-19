@@ -12,11 +12,11 @@ Owner: [#251](https://github.com/kinoko34077/frequency-warp-vst/issues/251); can
 
 The installed default Win32 editor remains the ordinary fallback; the WebView2 editor is opt-in through `FW_VST3_WEBVIEW2_PREVIEW=1` and requires the Microsoft runtime.
 
-In the embedded UI use **Select verified UI**. The native Windows file picker selects `manifest.fwui`. The native loader parses the versioned manifest, validates the sibling `ui/` tree and copies each approved byte into an immutable memory snapshot. A separate native confirmation displays the manifest file name and SHA-256 prefix (No by default). A webpage cannot directly supply a path or approve a manifest.
+Use **Select verified UI** in the permanent **native Win32 toolbar above the WebView**. Webpage content cannot trigger the OS file picker or the Back command. The native Windows file picker selects `manifest.fwui`. The native loader parses the versioned manifest, validates the sibling `ui/` tree and copies each approved byte into an immutable memory snapshot. A separate native confirmation displays the complete manifest path, approved folder path, number and total size of assets, and full manifest SHA-256 (No by default). A webpage cannot directly supply a path or approve a manifest.
 
-On Yes, the shell navigates to its existing local virtual origin, intercepts its WebView2 requests and returns only pinned bytes from the pending snapshot. Nonlocal requests, new windows and browser permission prompts are denied. The shell verifies top-level pinned `index.html` delivery, exact local source, import of the bridge and a correlated generation/version acknowledgement **before** accepting the new UI. No pending page can drive DAW edits or bindings.
+On Yes, the shell navigates to its existing local virtual origin, intercepts its WebView2 requests and returns only pinned bytes from the pending snapshot. Nonlocal requests, new windows and browser permission prompts are denied. The shell verifies top-level pinned `index.html` delivery, exact local source, a Chromium native async DevTools evaluation that awaits import of the pinned host bridge, checks its returned boolean, and matches the active native generation and source. A webpage-generated `ui-activation-ready` message is not accepted **before** accepting the new UI. No pending page can drive DAW edits or bindings.
 
-**Back to previous UI** repeats the handshake on the preceding verified snapshot after a separate native confirmation. A failed candidate, navigation failure or 8-second handshake timeout leaves the last accepted pinned UI active and reloads it. Audio and existing DAW automation/parameters are not changed by this UI operation.
+**Back to previous UI** on the permanent native toolbar repeats the handshake on the preceding verified snapshot after a separate native confirmation. A failed candidate, navigation failure or 8-second handshake timeout leaves the last accepted pinned UI active and reloads it. Audio and existing DAW automation/parameters are not changed by this UI operation.
 
 ## Boundaries / physical verification
 
@@ -25,3 +25,5 @@ On Yes, the shell navigates to its existing local virtual origin, intercepts its
 - Validation here is source-level/CI (portable tests, VST3 build and Steinberg Validator). FL Studio and a separate DAW must still prove on-screen rendering, automation, save/reopen, multi-instance, timing, audio fallback, UI failure, expired tickets and rollback. CI does not substitute for those physical tests.
 - Changing an approved UI cannot change 128 fixed ParamIDs, FWS3 binding meaning, engine ABI, DSP routing or shell binary hash. The native origin and Worker authorization remain separate from displayed metadata.
 - No installer, Pages release, update service, network download, browser file-system API or automatic publication is part of this change.
+
+The loader fails closed on resource-response construction errors: a non-success response is installed, or if that is impossible the WebView is stopped and closed rather than allowing a network/directory fallback. This behavior is compile-tested but still requires fault injection in an actual WebView runtime.
