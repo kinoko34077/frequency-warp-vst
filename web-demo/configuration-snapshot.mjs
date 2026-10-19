@@ -16,9 +16,10 @@ const enumValues={
   mode:["reciprocal","blend","fold-l","fold-h"],
   outside:["pass","kill"],
   quality:["eco","standard","high"],
-  overlap:["2","4","8","16"],
+  overlap:["4","8"],
   engine:["0","1"],
-  pivotLinkTarget:["F","H"]
+  pivotLinkTarget:["F","H"],
+  harmonicCount:["3","5","7","12","16","24","32"]
 };
 const flags=["engineAuto","ringEnabled","rationalEnabled","crusherEnabled",
   "carrierLink","harmonicPivotLink","pivotFollowLow","rationalEnabledByLink"];
@@ -37,7 +38,7 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
       (integers.has(key)&&!Number.isInteger(v)))
       throw Error("Invalid canonical "+key);
   }
-  if(c.values.low>c.values.high)throw Error("Invalid L/H bounds");
+  if(c.values.low>=c.values.high)throw Error("Invalid L/H bounds");
   if(c.values.crusherRateHz>c.sampleRate)
     throw Error("Crusher update rate exceeds sample rate");
   for(const [key,options] of Object.entries(enumValues)){
@@ -48,6 +49,8 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
     if(typeof c.flags?.[key]!=="boolean")
       throw Error("Invalid flag "+key);
   }
+  if(c.values.crusherBits!==0&&c.values.crusherBits<2)
+    throw Error("Invalid crusher bit count");
   if(c.flags.rationalEnabledByLink &&
     (!c.flags.harmonicPivotLink||!c.flags.rationalEnabled))
     throw Error("Inconsistent automatic rational link");
@@ -61,12 +64,19 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
   if(c.flags.pivotFollowLow&&c.values.axisPivot>0&&
     c.values.axisPivot<c.values.low)
     throw Error("Pivot is below enabled lower bound");
+  if(!c.audio||typeof c.audio!=="object")throw Error("Missing audio snapshot");
+  const a=c.audio,h=c.harmonic;
+  if(Math.abs(a.axisReference-h.r*h.F)>Math.max(1e-8,Math.abs(h.r*h.F)*1e-12)||
+    Math.abs(a.shiftHz-h.n*h.r*h.F/h.m)>Math.max(1e-8,Math.abs(a.shiftHz)*1e-12)||
+    a.low!==c.values.low||a.high!==c.values.high||a.axisPivot!==c.values.axisPivot||
+    a.axisSlope!==c.values.axisSlope||a.wet!==c.values.wet)
+    throw Error("DSP/harmonic canonical mismatch");
   return c;
 }
-export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags}){
+export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio}){
   const c={version:1,sourceToken,sampleRate,
-    harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags}};
+    harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags},audio:{...audio}};
   validateSoundConfiguration(c);
-  for(const value of [c.harmonic,c.values,c.selectors,c.flags])Object.freeze(value);
+  for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio])Object.freeze(value);
   return Object.freeze(c);
 }
