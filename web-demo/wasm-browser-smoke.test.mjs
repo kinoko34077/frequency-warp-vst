@@ -667,12 +667,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#wet",el=>{
       el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.equal(await page.$eval("#download",el=>el.disabled),true,
-      "Wet-only Mix change must invalidate previous completed WAV, despite no DSP revision");
-    assert.match(await page.$eval("#status",el=>el.textContent),/再変換/);
-    await page.click("#render");
-    await page.waitForFunction(()=>!document.querySelector("#download").disabled,
-      {timeout:45000});
+    assert.equal(await page.$eval("#download",el=>el.disabled),false,
+      "Mix is a download-time blend; old processed channels remain reusable");
     await page.$eval("#axis-shift",el=>{
       el.value=".15";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
