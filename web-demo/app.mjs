@@ -9,7 +9,7 @@ import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs"
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration} from "./harmonics-panel.mjs";
 import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
-import {defineParameter} from "./parameter-binding.mjs";
+import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
@@ -27,6 +27,11 @@ const controls={
 };
 const dualControls={};
 let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null;
+// #79 M3: exactly one canonical Wet scalar; slider and typed % are views.
+const wetBinding=createParameterBinding(defineParameter({
+  id:"wet",min:0,max:1,defaultValue:1,units:["percent"],
+  rail:{toPosition:value=>value,fromPosition:position=>position},digits:3
+}));
 const state={
   ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,exportIdentity:null,sourceGeneration:0,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
@@ -69,11 +74,20 @@ const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 const concise3=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
 const displayDigits=()=>Number($("#decimal-digits")?.value||3);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
+function refreshWetView(force=false){
+  const field=$("#wet-value"),rail=$("#wet");
+  const step=Number(rail.step)||.005;
+  rail.value=String(Math.min(1,Math.max(0,Number((Math.round(wetBinding.value/step)*step).toFixed(9)))));
+  field.dataset.fwCanonical=String(wetBinding.value);
+  if(force||document.activeElement!==field)
+    field.value=String(wetBinding.display(Math.min(3,displayDigits())));
+}
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
   name==="a-min"&&aMinUnitControl?aMinUnitControl.value:
-  name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:(state.precise[name]??fallback());
+  name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:
+  name==="wet"?wetBinding.value:(state.precise[name]??fallback());
 function refreshAxisShiftView(p,force=false){
   const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
   const allowed=axisShiftUnits(p.curvature);
@@ -94,6 +108,7 @@ function showNumber(id,value){
   if(id==="a-min-value"&&aMinUnitControl){aMinUnitControl.refresh();return;}
   if(id==="axis-slope-value"&&slopeUnitControl){slopeUnitControl.refresh();return;}
   if(id==="sine-hz"&&sineUnitControl){sineUnitControl.refresh();return;}
+  if(id==="wet-value"){refreshWetView();return;}
   if(document.activeElement!==field&&Number.isFinite(value))field.value=displayNumber(value);
 }
 const fmtTime=seconds=>{
@@ -109,7 +124,7 @@ function message(text,type="info"){
 function syncAuditionFeedback(){
   const node=$("#harmonic-apply-evidence");
   if(!node)return;
-  const wetMix=state.precise.wet??Number($("#wet").value);
+  const wetMix=wetBinding.value;
   const view=auditionFeedbackView({
     loaded:Boolean(state.dry),player:state.player,wetMix
   });
@@ -304,20 +319,22 @@ function applyConfigurationSilently(c){
   pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
   aMinUnitControl.setCanonical(v.aMinHz);
   restoreHarmonicConfiguration(c.harmonic);
+  wetBinding.setCanonical(v.wet,{notify:false});
   state.precise=Object.assign(Object.create(null),{
     curvature:v.curvature,invert:v.invert,"zero-reflect":v.zeroReflectGain,
-    "zero-decay":v.zeroReflectDecay,"axis-shift":v.axisShift,wet:v.wet,
+    "zero-decay":v.zeroReflectDecay,"axis-shift":v.axisShift,
     "a-reverb":v.aReverb,"a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
   });
   for(const [id,val] of Object.entries({
     curvature:v.curvature,invert:v.invert,
     "zero-reflect":100*v.zeroReflectGain,"zero-decay":100*v.zeroReflectDecay,
-    "axis-shift":v.axisShift,wet:v.wet,"a-reverb":100*v.aReverb,
+    "axis-shift":v.axisShift,"a-reverb":100*v.aReverb,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits,
     "crusher-hold":sliderFromFrequency(v.crusherRateHz,state.ctx?.sampleRate||state.decoded.sampleRate)
   }))$("#"+id).value=String(val);
+  refreshWetView(true);
   linkFeedback("");
 }
 function switchSoundConfiguration(slot){
@@ -1182,7 +1199,6 @@ const inline={
   "zero-decay-value":["zero-decay",v=>v,"zero-decay",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
-  "wet-value":["wet",v=>v/100,"wet",0,100],
   "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
   "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,192000]
 };
@@ -1194,7 +1210,7 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     const v=clamp(value,min,max);
     return integer?Math.round(v):round3(v);
   };
-  const toDsp=value=>range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="wet"||range==="a-reverb"?
+  const toDsp=value=>range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="a-reverb"?
     value/100:normalized(value);
   const apply=()=>{
     if(field.value.trim()==="")return;
@@ -1206,13 +1222,12 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     state.precise[range]=toDsp(value);
     $("#"+range).value=String(convert(value));
     if(range==="axis-pivot"&&isHarmonicPivotLinked())syncPivotToHarmonic();
-    if(range==="wet"){markComparisonEdited();labels();tuneWet();drawCurve();}
-    else {updateParams(changed);updateEngineInfo();}
+    updateParams(changed);updateEngineInfo();
   };
   field.addEventListener("focus",()=>{
     if(state.precise[range]!==undefined){
       const number=state.precise[range];
-      const typed=range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="wet"||range==="a-reverb"?
+      const typed=range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="a-reverb"?
         number*100:number;
       field.value=String(round3(typed));
     }
@@ -1224,11 +1239,39 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
     apply();
     // The interface rounds to 2 decimals, but the DSP value remains 3-decimal exact.
     const native=state.precise[range];
-    const human=range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="wet"||range==="a-reverb"?native*100:native;
+    const human=range==="invert"||range==="zero-reflect"||range==="zero-decay"||range==="a-reverb"?native*100:native;
     if(Number.isFinite(human))showNumber(id,human);
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
 }
+// Typed Wet % and coarse Wet slider must never own separate DSP values.
+const wetField=$("#wet-value");
+const commitWetTyped=()=>{
+  const previous=wetBinding.value;
+  try{
+    wetBinding.setView(wetField.value,{unit:"percent",origin:"typed",
+      overflow:"clamp",notify:false});
+    delete wetField.dataset.invalid;
+  }catch{
+    wetField.dataset.invalid="true";
+    return;
+  }
+  refreshWetView();
+  if(!Object.is(previous,wetBinding.value)){
+    markComparisonEdited();labels();tuneWet();drawCurve();syncAuditionFeedback();
+  }
+};
+wetField.addEventListener("focus",()=>{
+  wetField.value=String(wetBinding.display(3));wetField.select();
+});
+wetField.addEventListener("input",commitWetTyped);
+wetField.addEventListener("change",commitWetTyped);
+wetField.addEventListener("blur",()=>{
+  commitWetTyped();
+  refreshWetView(true);
+  delete wetField.dataset.invalid;
+});
+wetField.addEventListener("keydown",event=>{if(event.key==="Enter")wetField.blur();});
 // The move slider stores canonical u. Notation is conditional on curvature p,
  // and only a valid inverse conversion may update the DSP control.
  const moveField=$("#axis-shift-value"),moveUnit=$("#axis-shift-unit");
@@ -1319,9 +1362,9 @@ $("#decimal-digits").addEventListener("change",()=>{
   updateSineLabel();
 });
 $("#wet").addEventListener("input",()=>{
-  markComparisonEdited();
-  delete state.precise.wet;labels();tuneWet();drawCurve();
-  syncAuditionFeedback();
+  wetBinding.setPosition(Number($("#wet").value),{snap:false,notify:false});
+  refreshWetView();
+  markComparisonEdited();labels();tuneWet();drawCurve();syncAuditionFeedback();
 });
 $("#slope-one").addEventListener("click",()=>{
   slopeUnitControl.setCanonical(1);
@@ -1558,6 +1601,7 @@ $("#settings-reset").addEventListener("click",()=>{
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","decimal-digits":"3","graph-log":"0","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
+  wetBinding.reset({notify:false});
   lowUnitControl.reset();
   highUnitControl.reset();
   pivotUnitControl.reset();
@@ -1583,6 +1627,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#crusher-bits").value="8";$("#crusher-hold").value="880";
   $("#crusher-bits-value").value="8";
   $("#crusher-hold-value").value="12000";
+  refreshWetView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.

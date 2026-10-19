@@ -132,3 +132,30 @@ test("reentrant user callbacks fail rather than recursively rescheduling",()=>{
   assert.throws(()=>binding.setCanonical(442),/reentrant/);
   assert.equal(binding.value,442);
 });
+
+test("Wet M3 fraction: typed precision, invalid retention, coarse proxy and silent reset",()=>{
+  const events=[];
+  const descriptor=defineParameter({id:"wet",min:0,max:1,defaultValue:1,
+    units:["percent"],rail:lineRail(0,1),digits:3});
+  const wet=createParameterBinding(descriptor,{onChange:e=>events.push(e)});
+  wet.setView("12.345",{unit:"percent",notify:false});
+  assert.ok(Math.abs(wet.value-.12345)<1e-12);
+  assert.equal(wet.display(),12.345);
+  const before=wet.value;
+  for(const text of ["","oops","NaN"]){
+    assert.throws(()=>wet.setView(text,{unit:"percent",notify:false}));
+    assert.equal(wet.value,before);
+  }
+  assert.throws(()=>wet.setView("101",{unit:"percent",notify:false}));
+  assert.equal(wet.value,before);
+  for(const [pos,display] of [[0,0],[.5,50],[1,100]]){
+    wet.setPosition(pos,{snap:false,notify:false});
+    assert.equal(wet.value,pos);
+    assert.equal(wet.display(),display);
+  }
+  wet.setCanonical(.12345,{notify:false});
+  assert.equal(wet.value,.12345);
+  wet.reset({notify:false});
+  assert.equal(wet.value,1);
+  assert.equal(events.length,0,"silent A/B and reset cause no second DSP callback");
+});
