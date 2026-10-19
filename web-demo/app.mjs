@@ -5,6 +5,7 @@ import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
+import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls} from "./harmonics-panel.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
@@ -25,7 +26,7 @@ const controls={
 const dualControls={};
 let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null;
 const state={
-  ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,
+  ctx:null,decoded:null,dry:null,offline:null,offlineWorker:null,exportIdentity:null,sourceGeneration:0,
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",fileMeta:"音声未選択",processing:false,
   precise:Object.create(null),
@@ -826,7 +827,7 @@ function updateParams(changed){
     }
   }
   labels(changed);drawCurve();renderHarmonicPanel(foldPoint,axisMarker,settings);
-  state.offline=null;controls.download.disabled=true;
+  state.offline=null;state.exportIdentity=null;controls.download.disabled=true;
   // Export runs on a separate worker with a frozen parameter snapshot. Never
   // let a completed render from old controls be presented as current output.
   if(state.offlineWorker){
@@ -1211,7 +1212,8 @@ async function load(file){
     if(token!==state.loadToken)return;
     if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
     if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
-    state.offline=null;state.decoded={sampleRate:data.sampleRate};
+    state.offline=null;state.exportIdentity=null;state.sourceGeneration++;
+    state.decoded={sampleRate:data.sampleRate};
     state.dry=dry;state.seek=0;state.lastStats=null;
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
@@ -1263,7 +1265,11 @@ controls.render.addEventListener("click",()=>{
     message("WAV書出し設定未反映: "+preflight.message,"error");
     return;
   }
-  state.offline=null;controls.download.disabled=true;controls.render.disabled=true;
+  const renderIdentity=freezeExportIdentity(state.sourceGeneration,{
+    ...renderSettings,wet:settings().wet
+  });
+  state.offline=null;state.exportIdentity=renderIdentity;
+  controls.download.disabled=true;controls.render.disabled=true;
   $("#progress").value=0;
   message("WAV書出し用オフライン処理中（試聴とは独立）…"+
     (preflight.warnings.length?" "+preflight.warnings.join(" "):""),
@@ -1282,12 +1288,14 @@ controls.render.addEventListener("click",()=>{
         (preflight.warnings.length?" "+preflight.warnings.join(" "):""),
         preflight.warnings.length?"warning":"info");
     }else if(data.type==="error"){
+      state.exportIdentity=null;
       controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
       message("オフライン書出し失敗: "+data.message,"error");
     }
   };
   worker.onerror=e=>{
     if(state.offlineWorker!==worker)return;
+    state.exportIdentity=null;
     controls.render.disabled=false;worker.terminate();state.offlineWorker=null;
     message("オフライン処理失敗: "+e.message,"error");
   };
@@ -1315,7 +1323,18 @@ function makeWav(channels,rate){
 }
 controls.download.addEventListener("click",()=>{
   if(!state.offline)return;
-  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,settings().wet));
+  const check=prepareStreamSettings({
+    ...settings(),sampleRate:state.decoded.sampleRate
+  });
+  const now=check.settings?{...check.settings,wet:settings().wet}:null;
+  if(!check.ok||!matchesExportIdentity(state.exportIdentity,state.sourceGeneration,now)){
+    state.offline=null;state.exportIdentity=null;
+    controls.download.disabled=true;
+    message("変更後の設定に一致するWAVではありません。再度変換してください。","warning");
+    return;
+  }
+  const mixed=state.offline.map((ch,i)=>
+    mixWet(state.dry[i],ch,state.exportIdentity.settings.wet));
   const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
   const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
   document.body.append(el);el.click();el.remove();
