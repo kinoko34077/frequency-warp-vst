@@ -65,6 +65,18 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     // Mobile diagnostics must not begin as a wide fixed overlay over the graph
     // or pivot linker; the user can explicitly restore full detail.
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),true);
+    await page.evaluate(()=>{
+      const s=document.querySelector("#status");
+      s.dataset.kind="error";
+      s.textContent="テスト用の音声エラー";
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#runtime-hud-brief").textContent.includes("テスト用の音声エラー"));
+    await page.evaluate(()=>{
+      const s=document.querySelector("#status");
+      s.dataset.kind="info";
+      s.textContent="音声ファイルを選択してください。";
+    });
     await page.click("#runtime-hud-restore");
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),false);
     await page.click("#runtime-hud-hide");
