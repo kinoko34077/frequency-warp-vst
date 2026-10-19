@@ -115,6 +115,16 @@
     hud.style.left=Math.max(0,Math.min(innerWidth-hud.offsetWidth,parseFloat(hud.style.left)))+"px";
     hud.style.top=Math.max(0,Math.min(innerHeight-hud.offsetHeight,parseFloat(hud.style.top)))+"px";
   });
+  // The source-to-export handoff is available without opening Settings or
+  // requiring a layout rearrangement. A disabled render stays visibly disabled.
+  $("#export-jump").addEventListener("click",()=>{
+    const destination=$(".offline-tool"),render=$("#render");
+    if(!destination)return;
+    destination.open=true;
+    destination.scrollIntoView({block:"center",behavior:"auto"});
+    (render?.disabled?destination.querySelector("summary"):render)
+      ?.focus({preventScroll:true});
+  });
   // A missing top-level import prevents app.mjs from executing *any* handler.
   // Avoid a deceptively ready UI when this happens: settings stay usable and
   // native file chooser opens, while audio decoding reports the missing boot.
