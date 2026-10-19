@@ -27,3 +27,9 @@ On Yes, the shell navigates to its existing local virtual origin, intercepts its
 - No installer, Pages release, update service, network download, browser file-system API or automatic publication is part of this change.
 
 The loader fails closed on resource-response construction errors: a non-success response is installed, or if that is impossible the WebView is stopped and closed rather than allowing a network/directory fallback. This behavior is compile-tested but still requires fault injection in an actual WebView runtime.
+
+### WebView2 interception boundary (reviewed against Microsoft documentation)
+
+Virtual host folder mappings **bypass** WebView2 `WebResourceRequested` callbacks. Consequently, the installed bundled UI alone uses `SetVirtualHostNameToFolderMapping`. Before navigating to a newly approved pinned UI, native code explicitly calls `ClearVirtualHostNameToFolderMapping`; the pinned snapshot is then returned through intercepted responses. On a failed first switch, the installed fallback mapping is restored; on failure after a successful pinned switch, the mapping stays disabled and the last accepted immutable snapshot is served. If the mapping state cannot be changed, native code cancels the swap rather than navigating to an uncontrolled source.
+
+During resource interception, native code acquires a WebView2 deferral before touching response data. Normal results complete only after `put_Response` succeeds. When an ordinary resource response fails, the callback attempts a 503 and schedules rollback. If the 503 itself cannot be delivered, it holds the failing request's deferral and schedules controller termination through the native window message queue rather than re-entrantly calling `Close` in `WebResourceRequested`. This exceptional path must be fault-injected on a real Windows WebView2 runtime before the full physical UI acceptance gate is satisfied.
