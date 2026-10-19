@@ -53,6 +53,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         ComPtr<ICoreWebView2WebResourceResponse> emergencyDeny;
         std::weak_ptr<Shared> weakSelf;
         bool legacyFolderMapped=false;
+        bool browserReady=false;
         // Keep an uncompleted failed request blocked until async browser teardown.
         std::array<ComPtr<ICoreWebView2Deferral>,128> blockedResourceDeferrals{};
         std::size_t blockedResourceCount=0;
@@ -289,6 +290,22 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         const std::wstring message(ascii.begin(),ascii.end());
         state.view->PostWebMessageAsJson(message.c_str());
     }
+    // If setup partially fails, never leave a navigable, unprotected
+    // WebView available to the permanent native Select/Back buttons.
+    static void abandonUnreadyBrowser(Shared& state) {
+        state.browserReady=false;
+        state.uiReady=false;
+        endAllEdits(state);
+        state.uiActivation.cancel();
+        if(state.view)state.view->Stop();
+        if(state.controller)state.controller->Close();
+        state.view.Reset();
+        state.controller.Reset();
+        state.environment.Reset();
+        state.isolatedProfile.Reset();
+        state.emergencyDeny.Reset();
+        state.legacyFolderMapped=false;
+    }
     // Microsoft WebView2 explicitly bypasses WebResourceRequested for
     // SetVirtualHostNameToFolderMapping. To serve pinned immutable bytes the
     // legacy folder mapping MUST be removed before native navigation.
@@ -328,7 +345,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
     }
     static bool startUiNavigation(Shared& state) {
         const auto gen=state.uiActivation.begin(true);
-        if(!gen||!state.view)return false;
+        if(!gen||!state.browserReady||!state.view)return false;
         endAllEdits(state);state.uiReady=false;
         state.navigationLoaded=false;
         state.servedIndexGeneration=0;
@@ -354,7 +371,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         return true;
     }
     static void selectApprovedUi(Shared& state) {
-        if(state.modalOpen||!state.alive||!state.child||!state.view||
+        if(state.modalOpen||!state.alive||!state.browserReady||
+           !state.child||!state.view||
            state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
             return;
         const auto tick=GetTickCount64();
@@ -418,7 +436,8 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!startUiNavigation(state))state.uiActivation.cancel();
     }
     static void selectPreviousUi(Shared& state) {
-        if(!state.alive||!state.child||!state.view||state.modalOpen)return;
+        if(!state.alive||!state.browserReady||!state.child||
+           !state.view||state.modalOpen)return;
         if(state.uiActivation.phase()!=ui_assets::UiActivationTransaction::Phase::Idle||
            !state.uiActivation.previous())return;
         int consent=IDNO;
@@ -433,7 +452,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!startUiNavigation(state))state.uiActivation.cancel();
     }
     static void receive(Shared& state,std::wstring_view raw) {
-        if(!state.alive||!state.host||state.modalOpen)return;
+        if(!state.alive||!state.browserReady||!state.host||state.modalOpen)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
         // Only native Chromium evaluation may accept a UI generation.
@@ -527,6 +546,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                 state->isolatedProfile.Reset();
                 state->emergencyDeny.Reset();
                 state->legacyFolderMapped=false;
+                state->browserReady=false;
                 // The request remains blocked until the browser is closed.
                 // Releasing failed deferrals is safe only AFTER Close.
                 for(auto& pending:state->blockedResourceDeferrals)
@@ -706,31 +726,31 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                 auto target=sub.lock();
                                 if(!target || !target->alive)return S_OK;
                                 if(FAILED(status)||!ctrl) {
-                                    showError(target,L"WebView2 controller failed. Native file UI remains available.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 controller failed. Native file UI remains available.");return S_OK;
                                 }
                                 target->controller=ctrl;
                                 target->environment=ownEnv;
                                 ComPtr<ICoreWebView2_13> profiledView;
                                 if(FAILED(ctrl->get_CoreWebView2(&target->view))||!target->view) {
-                                    showError(target,L"WebView2 browser creation failed.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 browser creation failed.");return S_OK;
                                 }
                                 ComPtr<ICoreWebView2Profile> privateProfile;
                                 if(FAILED(target->view.As(&profiledView))||!profiledView||
                                    FAILED(profiledView->get_Profile(&privateProfile))||!privateProfile||
                                    FAILED(privateProfile.As(&target->isolatedProfile))||
                                    !target->isolatedProfile) {
-                                    showError(target,L"Isolated WebView2 profile unavailable.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"Isolated WebView2 profile unavailable.");return S_OK;
                                 }
                                 BOOL verifiedPrivate=FALSE;
                                 if(FAILED(privateProfile->get_IsInPrivateModeEnabled(&verifiedPrivate))||
                                    !verifiedPrivate) {
-                                    showError(target,L"WebView2 private profile check failed.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 private profile check failed.");return S_OK;
                                 }
                                 if(FAILED(target->environment->CreateWebResourceResponse(
                                     nullptr,503,L"Blocked",
                                     L"Cache-Control: no-store\r\nX-Content-Type-Options: nosniff",
                                     &target->emergencyDeny))||!target->emergencyDeny) {
-                                    showError(target,L"WebView2 deny response setup failed.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"WebView2 deny response setup failed.");return S_OK;
                                 }
                                 RECT bounds{};GetClientRect(target->child,&bounds);
                                 bounds.top=44; // dedicated native UI recovery toolbar
@@ -742,7 +762,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                     settings->put_IsStatusBarEnabled(FALSE);
                                 }
                                 if(!mapLegacyBundledUi(*target,true)) {
-                                    showError(target,L"Local Web UI mapping unsupported.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"Local Web UI mapping unsupported.");return S_OK;
                                 }
                                 // A user-selected UI is locally trusted only for its
                                 // approved bytes, NOT for external browser/system effects.
@@ -754,7 +774,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             if(args)args->put_Handled(TRUE);
                                             return S_OK;
                                         }).Get(),&popupToken))) {
-                                    showError(target,L"Popup protection unavailable.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"Popup protection unavailable.");return S_OK;
                                 }
                                 EventRegistrationToken permissionsToken{};
                                 if(FAILED(target->view->add_PermissionRequested(
@@ -765,13 +785,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 COREWEBVIEW2_PERMISSION_STATE_DENY);
                                             return S_OK;
                                         }).Get(),&permissionsToken))) {
-                                    showError(target,L"Web permission protection unavailable.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"Web permission protection unavailable.");return S_OK;
                                 }
                                 // Intercept *all* network/resource requests before navigation.
                                 // No request may silently fall through after pinned activation.
                                 if(FAILED(target->view->AddWebResourceRequestedFilter(
                                     L"*",COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL))) {
-                                    showError(target,L"Resource interception unavailable.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"Resource interception unavailable.");return S_OK;
                                 }
                                 std::weak_ptr<Shared> resources=target;
                                 EventRegistrationToken resourceToken{};
@@ -783,7 +803,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             if(!current||!current->alive)return E_ABORT;
                                             return pinnedResourceResponse(*current,args);
                                         }).Get(),&resourceToken))) {
-                                    showError(target,L"Web resource interception failed.");return S_OK;
+                                    abandonUnreadyBrowser(*target);showError(target,L"Web resource interception failed.");return S_OK;
                                 }
                                 // Accept only trusted top-level local page messages.
                                 // Slot and numeric validation additionally occur in
@@ -931,7 +951,11 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             if(FAILED(started) && pending)rollbackUi(*liveNav);
                                             return S_OK;
                                         }).Get(),&loadToken);
-                                target->view->Navigate(L"https://fwvst.local/index.html");
+                                target->browserReady=true;
+                                if(FAILED(target->view->Navigate(L"https://fwvst.local/index.html"))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Initial UI navigation failed.");
+                                }
                                 return S_OK;
                             }).Get());
                     if(FAILED(started)) showError(live,L"WebView2 controller setup failed.");
