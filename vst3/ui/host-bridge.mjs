@@ -49,19 +49,12 @@ export function createHostUiBridge({ webview, document, bindings = DEFAULT_BINDI
   function createUiPanel() {
     if (typeof document.createElement !== "function" ||
         typeof document.body?.appendChild !== "function") return;
+    // Page-controlled buttons must never invoke native OS pickers.
+    // Native Select/Back toolbar lives outside the WebView child bounds.
     uiPanel = document.createElement("section");
     uiPanel.id = "fw-vst-ui-reload";
-    uiPanel.style.cssText = "display:flex;gap:8px;padding:8px;position:sticky;" +
-      "top:0;z-index:999;background:#1c1e24;color:#fff";
-    for (const [caption, kind] of [
-      ["Select verified UI", "ui-select"], ["Back to previous UI", "ui-back"]
-    ]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = caption;
-      listen(button, "click", () => emit(kind));
-      uiPanel.appendChild(button);
-    }
+    uiPanel.style.cssText = "padding:6px;background:#1c1e24;color:#fff;font:12px system-ui";
+    uiPanel.textContent = "UI Select / Back: use the native toolbar above this page";
     document.body.appendChild(uiPanel);
   }
   function createBindingPanel() {
