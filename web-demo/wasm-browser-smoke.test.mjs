@@ -874,8 +874,20 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       !document.querySelector("#stop").disabled,{timeout:25000});
     assert.match(await page.$eval("#harmonic-apply-evidence",el=>el.textContent),
       /DSP初期設定|DSPが最新設定/, "Wet entry must disclose DSP acceptance without claiming spectrum measurements");
+    // Mix is a local gain, not a revisioned DSP parameter. A fully Dry
+    // audition must immediately say original-only without inventing an ACK.
     await page.$eval("#wet",el=>{
-      el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#harmonic-apply-evidence",el=>el.dataset.phase),"dry");
+    await page.$eval("#wet",el=>{
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    // Use a genuine Rust parameter change for the request/ACK test.
+    const previousShift=await page.$eval("#axis-shift",el=>el.value);
+    await page.$eval("#axis-shift",el=>{
+      el.value=el.value==="0.3"?"0.4":"0.3";
+      el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.waitForFunction(()=>document.querySelector("#harmonic-apply-evidence")?.dataset.phase==="applied",
       {timeout:12000});
@@ -885,9 +897,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(auditionAck.text,/最新設定を受理.*実音の測定ではありません/);
     assert.match(auditionAck.title,/DSP ACK #[1-9]/);
     assert.ok(auditionAck.height<=18,"Local feedback must not reflow the graph");
-    await page.$eval("#wet",el=>{
-      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
-    });
+    await page.$eval("#axis-shift",(el,value)=>{
+      el.value=value;el.dispatchEvent(new Event("input",{bubbles:true}));
+    },previousShift);
     await page.waitForFunction(()=>document.querySelector("#harmonic-apply-evidence")?.dataset.phase==="applied",
       {timeout:12000});
     assert.ok(await page.evaluate(()=>window.__dryWorkletCount)>=1,
