@@ -755,10 +755,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                 bounds.top=44; // dedicated native UI recovery toolbar
                                 ctrl->put_Bounds(bounds);
                                 ComPtr<ICoreWebView2Settings> settings;
-                                if(SUCCEEDED(target->view->get_Settings(&settings))&&settings) {
-                                    settings->put_AreDefaultContextMenusEnabled(FALSE);
-                                    settings->put_AreDevToolsEnabled(FALSE);
-                                    settings->put_IsStatusBarEnabled(FALSE);
+                                if(FAILED(target->view->get_Settings(&settings))||!settings||
+                                   FAILED(settings->put_AreDefaultContextMenusEnabled(FALSE))||
+                                   FAILED(settings->put_AreDevToolsEnabled(FALSE))||
+                                   FAILED(settings->put_IsStatusBarEnabled(FALSE))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Required WebView2 security settings unavailable.");
+                                    return S_OK;
                                 }
                                 if(!mapLegacyBundledUi(*target,true)) {
                                     abandonUnreadyBrowser(*target);showError(target,L"Local Web UI mapping unsupported.");return S_OK;
@@ -809,7 +812,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                 // parseUiWireMessage + receive(), not in JavaScript.
                                 std::weak_ptr<Shared> messageTarget=target;
                                 EventRegistrationToken msgToken{};
-                                target->view->add_WebMessageReceived(
+                                if(FAILED(target->view->add_WebMessageReceived(
                                     Callback<ICoreWebView2WebMessageReceivedEventHandler>(
                                         [messageTarget](ICoreWebView2*,
                                            ICoreWebView2WebMessageReceivedEventArgs* args)->HRESULT {
@@ -828,18 +831,26 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 CoTaskMemFree(payload);
                                             }
                                             return S_OK;
-                                        }).Get(),&msgToken);
+                                        }).Get(),&msgToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Web message validation registration failed.");
+                                    return S_OK;
+                                }
                                 EventRegistrationToken gotFocusToken{};
-                                target->controller->add_GotFocus(
+                                if(FAILED(target->controller->add_GotFocus(
                                     Callback<ICoreWebView2FocusChangedEventHandler>(
                                         [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
                                             const auto owner=messageTarget.lock();
                                             if(owner && owner->alive)owner->hasFocus=true;
                                             return S_OK;
-                                        }).Get(),&gotFocusToken);
+                                        }).Get(),&gotFocusToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Host focus routing registration failed.");
+                                    return S_OK;
+                                }
                                 // Browser focus loss may not reach the parent HWND.
                                 EventRegistrationToken focusToken{};
-                                target->controller->add_LostFocus(
+                                if(FAILED(target->controller->add_LostFocus(
                                     Callback<ICoreWebView2FocusChangedEventHandler>(
                                         [messageTarget](ICoreWebView2Controller*,IUnknown*)->HRESULT {
                                             const auto owner=messageTarget.lock();
@@ -848,11 +859,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                 endAllEdits(*owner);
                                             }
                                             return S_OK;
-                                        }).Get(),&focusToken);
+                                        }).Get(),&focusToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Focus revocation registration failed.");
+                                    return S_OK;
+                                }
                                 // Refuse navigation to external origins in the embedded UI.
                                 std::weak_ptr<Shared> nav=target;
                                 EventRegistrationToken navToken{};
-                                target->view->add_NavigationStarting(
+                                if(FAILED(target->view->add_NavigationStarting(
                                     Callback<ICoreWebView2NavigationStartingEventHandler>(
                                         [nav](ICoreWebView2*,
                                               ICoreWebView2NavigationStartingEventArgs* args)->HRESULT {
@@ -879,9 +894,13 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             liveNav->hasFocus=false;
                                             liveNav->displayedBindingPhase.clear();
                                             return S_OK;
-                                        }).Get(),&navToken);
+                                        }).Get(),&navToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"Navigation authorization registration failed.");
+                                    return S_OK;
+                                }
                                 EventRegistrationToken loadToken{};
-                                target->view->add_NavigationCompleted(
+                                if(FAILED(target->view->add_NavigationCompleted(
                                     Callback<ICoreWebView2NavigationCompletedEventHandler>(
                                         [nav](ICoreWebView2* browser,
                                               ICoreWebView2NavigationCompletedEventArgs* args)->HRESULT {
@@ -1026,7 +1045,11 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                  else if(recovering)PostMessageW(liveNav->child,WM_APP+42,0,0);
                                              }
                                             return S_OK;
-                                        }).Get(),&loadToken);
+                                        }).Get(),&loadToken))) {
+                                    abandonUnreadyBrowser(*target);
+                                    showError(target,L"UI load verification registration failed.");
+                                    return S_OK;
+                                }
                                 target->browserReady=true;
                                 if(FAILED(target->view->Navigate(L"https://fwvst.local/index.html"))) {
                                     abandonUnreadyBrowser(*target);
