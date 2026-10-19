@@ -655,7 +655,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
     // U5: short real WAV render belongs to one source+DSP+Wet configuration.
-    await page.click(".offline-tool summary");
+    await page.click("#export-jump");
+    assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
+      "Source → WAV action must expand the offline tool directly");
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),"render",
+      "Navigation must land on the next enabled export action");
     await page.click("#render");
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});
