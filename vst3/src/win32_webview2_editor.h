@@ -58,6 +58,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                  BlankRecovery, ClearRecovery, LoadRecovery };
         SwitchStage switchStage=SwitchStage::Idle;
         std::uint64_t switchEpoch=0;
+        std::uint64_t expectedNavigationId=0; // WebView2 unrelated completions may overlap
         // Keep an uncompleted failed request blocked until async browser teardown.
         std::array<ComPtr<ICoreWebView2Deferral>,128> blockedResourceDeferrals{};
         std::size_t blockedResourceCount=0;
@@ -303,6 +304,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.uiActivation.cancel();
         state.switchStage=Shared::SwitchStage::Idle;
         ++state.switchEpoch;
+        state.expectedNavigationId=0;
         if(state.view)state.view->Stop();
         if(state.controller)state.controller->Close();
         state.view.Reset();
@@ -341,6 +343,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         // the rejected candidate's localStorage/cookies.
         state.switchStage=Shared::SwitchStage::BlankRecovery;
         ++state.switchEpoch;
+        state.expectedNavigationId=0;
         state.activationStarted=GetTickCount64();
         if(!state.alive||!state.view||
            FAILED(state.view->Navigate(L"about:blank")))
@@ -355,6 +358,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         state.servedIndexGeneration=0;
         state.switchStage=Shared::SwitchStage::BlankCandidate;
         ++state.switchEpoch;
+        state.expectedNavigationId=0;
         state.activationStarted=GetTickCount64();
         if(FAILED(state.view->Navigate(L"about:blank"))) {
             rollbackUi(state);
@@ -874,20 +878,43 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                             const auto liveNav=nav.lock();
                                             if(!liveNav||!liveNav->alive)return S_OK;
                                             LPWSTR uri=nullptr;
-                                            if(SUCCEEDED(args->get_Uri(&uri))) {
-                                                const std::wstring url=uri?uri:L"";
+                                            UINT64 navigationId=0;
+                                            BOOL userInitiated=FALSE;
+                                            if(!args||FAILED(args->get_Uri(&uri))||
+                                               FAILED(args->get_NavigationId(&navigationId))||
+                                               !navigationId){
                                                 CoTaskMemFree(uri);
-                                                const auto stage=liveNav->switchStage;
-                                                const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
-                                                    stage==Shared::SwitchStage::BlankRecovery;
-                                                const bool loading=stage==Shared::SwitchStage::LoadCandidate||
-                                                    stage==Shared::SwitchStage::LoadRecovery;
-                                                // Permit the native intermediary blank document.
-                                                // Reject all other navigations during cleanup.
-                                                const bool allow=(url==L"about:blank"&&blanking)||
-                                                    (url.rfind(L"https://fwvst.local/",0)==0 &&
-                                                     (stage==Shared::SwitchStage::Idle||loading));
-                                                if(!allow)args->put_Cancel(TRUE);
+                                                if(args)args->put_Cancel(TRUE);
+                                                return S_OK;
+                                            }
+                                            const std::wstring url=uri?uri:L"";
+                                            CoTaskMemFree(uri);
+                                            const auto stage=liveNav->switchStage;
+                                            const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
+                                                stage==Shared::SwitchStage::BlankRecovery;
+                                            const bool loading=stage==Shared::SwitchStage::LoadCandidate||
+                                                stage==Shared::SwitchStage::LoadRecovery;
+                                            bool allow=false;
+                                            if(stage==Shared::SwitchStage::Idle) {
+                                                allow=url.rfind(L"https://fwvst.local/",0)==0;
+                                            } else if(blanking||loading) {
+                                                const bool exact=blanking?url==L"about:blank"
+                                                    :url==L"https://fwvst.local/index.html";
+                                                // WebView2 host Navigate() reports user initiated;
+                                                // script-driven navigations are not. Only the first
+                                                // native navigation ID can advance this stage.
+                                                if(exact&&
+                                                   SUCCEEDED(args->get_IsUserInitiated(&userInitiated))&&
+                                                   userInitiated==TRUE&&
+                                                   (!liveNav->expectedNavigationId||
+                                                    liveNav->expectedNavigationId==navigationId)){
+                                                    liveNav->expectedNavigationId=navigationId;
+                                                    allow=true;
+                                                }
+                                            }
+                                            if(!allow){
+                                                args->put_Cancel(TRUE);
+                                                return S_OK;
                                             }
                                             endAllEdits(*liveNav);
                                             liveNav->uiReady=false;
@@ -905,7 +932,15 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                         [nav](ICoreWebView2* browser,
                                               ICoreWebView2NavigationCompletedEventArgs* args)->HRESULT {
                                             const auto liveNav=nav.lock();
-                                            if(!liveNav||!liveNav->alive)return S_OK;
+                                            if(!liveNav||!liveNav->alive||!args)return S_OK;
+                                            UINT64 completedId=0;
+                                            if(FAILED(args->get_NavigationId(&completedId))||!completedId)return S_OK;
+                                            // Cancelled stray navigations also emit Completed.
+                                            // Do not mistake their failure for native blank/load.
+                                            if(liveNav->switchStage!=Shared::SwitchStage::Idle&&
+                                               (!liveNav->expectedNavigationId||
+                                                completedId!=liveNav->expectedNavigationId))
+                                                return S_OK;
                                             BOOL ok=FALSE;
                                             const auto stage=liveNav->switchStage;
                                             const bool blanking=stage==Shared::SwitchStage::BlankCandidate||
@@ -950,6 +985,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
                                                             owner->switchStage=recovering
                                                                 ?Shared::SwitchStage::LoadRecovery
                                                                 :Shared::SwitchStage::LoadCandidate;
+                                                            owner->expectedNavigationId=0;
                                                             if(FAILED(owner->view->Navigate(L"https://fwvst.local/index.html"))) {
                                                                 if(recovering)PostMessageW(owner->child,WM_APP+42,0,0);
                                                                 else rollbackUi(*owner);
