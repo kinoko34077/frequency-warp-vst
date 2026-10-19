@@ -27,3 +27,17 @@ test("unsigned manifest is reproducible, external to UI root and non-overwriting
     assert.notEqual(duplicate.status,0,"manifest may not overwrite an approved snapshot");
   }finally{await rm(workspace,{recursive:true,force:true});}
 });
+
+test("generator rejects Windows reserved-name UI assets before writing manifest",async()=>{
+  const workspace=await mkdtemp(join(tmpdir(),"fw-ui-reserved-"));
+  try {
+    const root=join(workspace,"ui");
+    await mkdir(root);
+    await writeFile(join(root,"index.html"),"test");
+    await writeFile(join(root,"host-bridge.mjs"),"export {}");
+    await writeFile(join(root,"CON.js"),"export {}");
+    const run=spawnSync(process.execPath,[tool,root],{encoding:"utf8"});
+    assert.notEqual(run.status,0,"reserved name must not yield usable manifest");
+    await assert.rejects(readFile(join(workspace,"manifest.fwui")));
+  }finally {await rm(workspace,{recursive:true,force:true});}
+});
