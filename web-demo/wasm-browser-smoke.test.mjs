@@ -957,6 +957,19 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#wet",el=>{
       el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
+    const ackBeforeWet=await page.$eval("#rt-indicator",el=>el.dataset.appliedRevision);
+    await page.$eval("#wet-value",el=>{
+      el.value="12.345";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const wetLive=await page.$eval("#wet-value",el=>Number(el.dataset.fwCanonical));
+    assert.ok(Math.abs(wetLive-.12345)<1e-12,
+      "Live gain typed 12.345% must remain exact across slider presentation");
+    assert.equal(await page.$eval("#rt-indicator",el=>el.dataset.appliedRevision),ackBeforeWet,
+      "Gain-only edits must not masquerade as new Rust DSP revision ACK");
+    await page.$eval("#wet",el=>{
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#wet-value",el=>Number(el.dataset.fwCanonical)),1);
     // Use a genuine Rust parameter change for the request/ACK test.
     const previousShift=await page.$eval("#axis-shift",el=>el.value);
     await page.$eval("#axis-shift",el=>{
