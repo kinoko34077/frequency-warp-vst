@@ -28,7 +28,8 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
 static constexpr wchar_t kPinnedUrl[]=L"https://fwvst-smoke.invalid/index.html";
-static constexpr char kPinnedHtml[]="<html><body>PINNED_ROUTED</body></html>";
+static constexpr char kPinnedHtmlA[]="<html><body>PINNED_A</body></html>";
+static constexpr char kPinnedHtmlB[]="<html><body>PINNED_B</body></html>";
 
 struct Smoke {
     HWND hwnd=nullptr;
@@ -39,6 +40,9 @@ struct Smoke {
     bool awaitingBlank=false;
     bool awaitingPinned=false;
     unsigned pinnedRequests=0;
+    unsigned clears=0;
+    unsigned phase=0; // 0: UI A, 1: UI B, 2: Back to A
+    bool resourceReady=false;
     std::filesystem::path uiRoot;
     ComPtr<ICoreWebView2Environment> env;
     ComPtr<ICoreWebView2Controller> controller;
@@ -59,6 +63,7 @@ struct Smoke {
 // If the mapping still intercepts this request, the page will show
 // UNAPPROVED_FOLDER or the explicit native router will never be invoked.
 static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
+    if(!s->resourceReady) {
     ComPtr<ICoreWebView2_3> host;
     if(FAILED(s->view.As(&host))||!host){
         s->complete(false,"ICoreWebView2_3 virtual host API unavailable");
@@ -98,12 +103,13 @@ static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
                 if(pinned)++owner->pinnedRequests;
                 ComPtr<IStream> stream;
                 if(pinned) {
-                    const auto bytes=sizeof(kPinnedHtml)-1;
+                    const char* current=owner->phase==1?kPinnedHtmlB:kPinnedHtmlA;
+                    const auto bytes=std::strlen(current);
                     HGLOBAL heap=GlobalAlloc(GMEM_MOVEABLE,bytes);
                     if(!heap){owner->complete(false,"response allocation failed");return E_OUTOFMEMORY;}
                     void* dest=GlobalLock(heap);
                     if(!dest){GlobalFree(heap);owner->complete(false,"response lock failed");return E_OUTOFMEMORY;}
-                    std::memcpy(dest,kPinnedHtml,bytes);
+                    std::memcpy(dest,current,bytes);
                     GlobalUnlock(heap);
                     if(FAILED(CreateStreamOnHGlobal(heap,TRUE,&stream))){
                         GlobalFree(heap);
@@ -124,6 +130,8 @@ static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
             }).Get(),&token))){
         s->complete(false,"WebResourceRequested event registration failed");
         return false;
+    }
+    s->resourceReady=true;
     }
     s->awaitingPinned=true;
     s->navigationId=0;
@@ -292,20 +300,42 @@ int wmain() {
                                                     return S_OK;
                                                 }
                                                 active->awaitingPinned=false;
-                                                const HRESULT script=browser->ExecuteScript(
-                                                    L"document.body.textContent",
-                                                    Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-                                                        [weak](HRESULT hr,LPCWSTR json)->HRESULT {
+                                                const unsigned stage=active->phase;
+                                                // Code executes INSIDE the live Chromium page:
+                                                // verify exact per-version immutable bytes and
+                                                // check old same-origin localStorage was erased
+                                                // before B or Back was allowed to load.
+                                                const wchar_t* script=stage==0
+                                                    ?LR"JS((()=>{const ok=document.body.textContent.includes("PINNED_A");localStorage.setItem("fwui-version","A");return ok;})())JS"
+                                                    :stage==1
+                                                    ?LR"JS((()=>{const ok=document.body.textContent.includes("PINNED_B")&&localStorage.getItem("fwui-version")===null;localStorage.setItem("fwui-version","B");return ok;})())JS"
+                                                    :LR"JS((()=>document.body.textContent.includes("PINNED_A")&&localStorage.getItem("fwui-version")===null)())JS";
+                                                const HRESULT scriptCall=browser->ExecuteScript(
+                                                    script,Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+                                                        [weak,stage](HRESULT hr,LPCWSTR json)->HRESULT {
                                                             auto checked=weak.lock();
                                                             if(!checked||checked->finished)return S_OK;
-                                                            const std::wstring_view result=json?json:L"";
-                                                            checked->complete(SUCCEEDED(hr)&&
-                                                                result.find(L"PINNED_ROUTED")!=std::wstring_view::npos &&
-                                                                result.find(L"UNAPPROVED_FOLDER")==std::wstring_view::npos,
-                                                                "InPrivate + blank/clear + unmapped pinned HTTP bytes");
+                                                            if(checked->phase!=stage)return S_OK;
+                                                            if(FAILED(hr)||!json||std::wstring_view(json)!=L"true"){
+                                                                checked->complete(false,"version-specific live DOM / storage-isolation mismatch");
+                                                                return S_OK;
+                                                            }
+                                                            std::cout<<"PASS stage "<<stage<<" live immutable DOM + storage"<<std::endl;
+                                                            if(stage==2){
+                                                                checked->complete(checked->clears==3,
+                                                                    "real A-to-B-to-Back(A) Chromium navigation and triple storage clear");
+                                                                return S_OK;
+                                                            }
+                                                            ++checked->phase;
+                                                            checked->awaitingBlank=true;
+                                                            checked->navigationId=0;
+                                                            checked->pinnedRequests=0;
+                                                            if(FAILED(checked->view->Navigate(L"about:blank")))
+                                                                checked->complete(false,"switch/back native blank failed");
                                                             return S_OK;
                                                         }).Get());
-                                                if(FAILED(script))active->complete(false,"pinned DOM read failed");
+                                                if(FAILED(scriptCall))
+                                                    active->complete(false,"live DOM script evaluation failed");
                                                 return S_OK;
                                             }
                                             active->awaitingBlank=false;
@@ -318,6 +348,7 @@ int wmain() {
                                                             target->complete(false,"ClearBrowsingDataAll failed");
                                                             return S_OK;
                                                         }
+                                                        ++target->clears;
                                                         startPinnedResourceRuntimeProbe(target);
                                                         return S_OK;
                                                     }).Get());
