@@ -389,9 +389,7 @@ class Win32WebView2Editor final : public Steinberg::Vst::EditorView {
         if(!state.alive||!state.host||state.modalOpen)return;
         const auto msg=parseUiWireMessage(raw);
         if(!msg)return;
-        // Webpage messages cannot signal UI activation success.
-        // Only the native Chromium Runtime.evaluate completion is eligible.
-        if(msg->kind==UiWireKind::UiActivationReady)return;
+        // Only native Chromium evaluation may accept a UI generation.
         // Until the current native-snapshot/bridge handshake is verified,
         // *no* DOM gesture, binding or hello can edit the DAW state.
         if(state.uiActivation.phase()==ui_assets::UiActivationTransaction::Phase::AwaitingHandshake)
