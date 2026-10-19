@@ -12,17 +12,23 @@
 #include <wrl/event.h>
 #include <WebView2.h>
 #include <filesystem>
+#include <fstream>
+#include <cstring>
 #include <memory>
 #include <iostream>
 #include <chrono>
 #include <string>
 #include <string_view>
 #include <exception>
+#include <stdexcept>
 #include <system_error>
 #include <cstdint>
 
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
+
+static constexpr wchar_t kPinnedUrl[]=L"https://fwvst-smoke.invalid/index.html";
+static constexpr char kPinnedHtml[]="<html><body>PINNED_ROUTED</body></html>";
 
 struct Smoke {
     HWND hwnd=nullptr;
@@ -31,6 +37,9 @@ struct Smoke {
     std::string reason="uninitialized";
     std::uint64_t navigationId=0;
     bool awaitingBlank=false;
+    bool awaitingPinned=false;
+    unsigned pinnedRequests=0;
+    std::filesystem::path uiRoot;
     ComPtr<ICoreWebView2Environment> env;
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> view;
@@ -44,6 +53,86 @@ struct Smoke {
         std::cout<<(passed?"PASS: ":"FAIL: ")<<reason<<std::endl;
     }
 };
+
+
+// The same host alias is first mapped to a mutable folder and then unmapped.
+// If the mapping still intercepts this request, the page will show
+// UNAPPROVED_FOLDER or the explicit native router will never be invoked.
+static bool startPinnedResourceRuntimeProbe(const std::shared_ptr<Smoke>& s) {
+    ComPtr<ICoreWebView2_3> host;
+    if(FAILED(s->view.As(&host))||!host){
+        s->complete(false,"ICoreWebView2_3 virtual host API unavailable");
+        return false;
+    }
+    const std::wstring uiFolder=s->uiRoot.wstring();
+    if(FAILED(host->SetVirtualHostNameToFolderMapping(
+        L"fwvst-smoke.invalid",uiFolder.c_str(),
+        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))||
+       FAILED(host->ClearVirtualHostNameToFolderMapping(L"fwvst-smoke.invalid"))){
+        s->complete(false,"WebView2 virtual host mapping clear failed");
+        return false;
+    }
+    if(FAILED(s->view->AddWebResourceRequestedFilter(
+        L"*",COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL))){
+        s->complete(false,"WebResourceRequested filter missing");
+        return false;
+    }
+    EventRegistrationToken token{};
+    std::weak_ptr<Smoke> weak=s;
+    if(FAILED(s->view->add_WebResourceRequested(
+        Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+            [weak](ICoreWebView2*,ICoreWebView2WebResourceRequestedEventArgs* args)->HRESULT {
+                const auto owner=weak.lock();
+                if(!owner||owner->finished||!args)return S_OK;
+                ComPtr<ICoreWebView2WebResourceRequest> request;
+                LPWSTR name=nullptr;
+                if(FAILED(args->get_Request(&request))||!request||
+                   FAILED(request->get_Uri(&name))){
+                    owner->complete(false,"WebView2 resource request unavailable");
+                    CoTaskMemFree(name);
+                    return E_FAIL;
+                }
+                const std::wstring uri=name?name:L"";
+                CoTaskMemFree(name);
+                const bool pinned=uri==kPinnedUrl;
+                if(pinned)++owner->pinnedRequests;
+                ComPtr<IStream> stream;
+                if(pinned) {
+                    const auto bytes=sizeof(kPinnedHtml)-1;
+                    HGLOBAL heap=GlobalAlloc(GMEM_MOVEABLE,bytes);
+                    if(!heap){owner->complete(false,"response allocation failed");return E_OUTOFMEMORY;}
+                    void* dest=GlobalLock(heap);
+                    if(!dest){GlobalFree(heap);owner->complete(false,"response lock failed");return E_OUTOFMEMORY;}
+                    std::memcpy(dest,kPinnedHtml,bytes);
+                    GlobalUnlock(heap);
+                    if(FAILED(CreateStreamOnHGlobal(heap,TRUE,&stream))){
+                        GlobalFree(heap);
+                        owner->complete(false,"response stream failed");
+                        return E_FAIL;
+                    }
+                }
+                ComPtr<ICoreWebView2WebResourceResponse> response;
+                const HRESULT hr=owner->env->CreateWebResourceResponse(
+                    stream.Get(),pinned?200:403,pinned?L"OK":L"Denied",
+                    pinned?L"Content-Type: text/html\r\nCache-Control: no-store":
+                           L"Cache-Control: no-store",&response);
+                if(FAILED(hr)||!response||FAILED(args->put_Response(response.Get()))){
+                    owner->complete(false,"native WebView2 response installation failed");
+                    return E_FAIL;
+                }
+                return S_OK;
+            }).Get(),&token))){
+        s->complete(false,"WebResourceRequested event registration failed");
+        return false;
+    }
+    s->awaitingPinned=true;
+    s->navigationId=0;
+    if(FAILED(s->view->Navigate(kPinnedUrl))){
+        s->complete(false,"pinned URL navigation failed synchronously");
+        return false;
+    }
+    return true;
+}
 
 int wmain() {
     const HRESULT apartment=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
@@ -85,6 +174,11 @@ int wmain() {
                 ("fwui5b3-smoke-"+std::to_string(GetCurrentProcessId())+
                  "-"+std::to_string(GetTickCount64()));
             std::filesystem::create_directories(profileRoot);
+            state->uiRoot=profileRoot/"ui";
+            std::filesystem::create_directories(state->uiRoot);
+            std::ofstream mapping(state->uiRoot/"index.html",std::ios::binary);
+            mapping<<"<html><body>UNAPPROVED_FOLDER</body></html>";
+            if(!mapping)throw std::runtime_error("fixture creation failed");
         } catch(const std::exception& e) {
             state->complete(false,e.what());
         }
@@ -156,13 +250,16 @@ int wmain() {
                                                 active->complete(false,"NavigationStarting data missing");
                                                 return S_OK;
                                             }
-                                            const bool blank=uri&&std::wstring_view(uri)==L"about:blank";
+                                            const bool expected=uri&&
+                                                (active->awaitingBlank
+                                                  ?std::wstring_view(uri)==L"about:blank"
+                                                  :active->awaitingPinned&&std::wstring_view(uri)==kPinnedUrl);
                                             CoTaskMemFree(uri);
-                                            if(!blank||!id||!initiated) {
+                                            if(!expected||!id||!initiated) {
                                                 event->put_Cancel(TRUE);
                                                 return S_OK;
                                             }
-                                            if(active->awaitingBlank&&!active->navigationId)
+                                            if((active->awaitingBlank||active->awaitingPinned)&&!active->navigationId)
                                                 active->navigationId=id;
                                             else if(active->navigationId!=id)
                                                 event->put_Cancel(TRUE);
@@ -181,11 +278,34 @@ int wmain() {
                                                !id||id!=active->navigationId)return S_OK;
                                             LPWSTR source=nullptr;
                                             const bool ready=SUCCEEDED(event->get_IsSuccess(&success))&&
-                                                success&&SUCCEEDED(browser->get_Source(&source))&&
-                                                source&&std::wstring_view(source)==L"about:blank";
+                                                success&&SUCCEEDED(browser->get_Source(&source))&&source&&
+                                                std::wstring_view(source)==
+                                                    (active->awaitingBlank?L"about:blank":kPinnedUrl);
                                             CoTaskMemFree(source);
                                             if(!ready) {
-                                                active->complete(false,"native about:blank navigation failed");
+                                                active->complete(false,"native document navigation failed");
+                                                return S_OK;
+                                            }
+                                            if(active->awaitingPinned) {
+                                                if(!active->pinnedRequests){
+                                                    active->complete(false,"pinned resource router was bypassed");
+                                                    return S_OK;
+                                                }
+                                                active->awaitingPinned=false;
+                                                const HRESULT script=browser->ExecuteScript(
+                                                    L"document.body.textContent",
+                                                    Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+                                                        [weak](HRESULT hr,LPCWSTR json)->HRESULT {
+                                                            auto checked=weak.lock();
+                                                            if(!checked||checked->finished)return S_OK;
+                                                            const std::wstring_view result=json?json:L"";
+                                                            checked->complete(SUCCEEDED(hr)&&
+                                                                result.find(L"PINNED_ROUTED")!=std::wstring_view::npos &&
+                                                                result.find(L"UNAPPROVED_FOLDER")==std::wstring_view::npos,
+                                                                "InPrivate + blank/clear + unmapped pinned HTTP bytes");
+                                                            return S_OK;
+                                                        }).Get());
+                                                if(FAILED(script))active->complete(false,"pinned DOM read failed");
                                                 return S_OK;
                                             }
                                             active->awaitingBlank=false;
@@ -193,11 +313,12 @@ int wmain() {
                                                 Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
                                                     [weak](HRESULT outcome)->HRESULT {
                                                         const auto target=weak.lock();
-                                                        if(target&&!target->finished)
-                                                            target->complete(SUCCEEDED(outcome),
-                                                                SUCCEEDED(outcome)
-                                                                ?"InPrivate HWND + NavigationId + browser clear"
-                                                                :"ClearBrowsingDataAll failed");
+                                                        if(!target||target->finished)return S_OK;
+                                                        if(FAILED(outcome)){
+                                                            target->complete(false,"ClearBrowsingDataAll failed");
+                                                            return S_OK;
+                                                        }
+                                                        startPinnedResourceRuntimeProbe(target);
                                                         return S_OK;
                                                     }).Get());
                                             if(FAILED(clear))active->complete(false,"storage clear call failed");
