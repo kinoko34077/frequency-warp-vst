@@ -654,6 +654,30 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(metadata,/12\.0秒/);
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
+    // U5: short real WAV render belongs to one source+DSP+Wet configuration.
+    await page.click(".offline-tool summary");
+    await page.click("#render");
+    await page.waitForFunction(()=>!document.querySelector("#download").disabled,
+      {timeout:45000});
+    assert.equal(await page.$eval("#progress",el=>Number(el.value)),100);
+    await page.$eval("#wet",el=>{
+      el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),true,
+      "Wet-only Mix change must invalidate previous completed WAV, despite no DSP revision");
+    assert.match(await page.$eval("#status",el=>el.textContent),/再変換/);
+    await page.click("#render");
+    await page.waitForFunction(()=>!document.querySelector("#download").disabled,
+      {timeout:45000});
+    await page.$eval("#axis-shift",el=>{
+      el.value=".15";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),true,
+      "DSP control change must invalidate completed frozen WAV");
+    await page.$eval("#wet",el=>{el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#axis-shift",el=>{el.value=".25";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval(".offline-tool",el=>el.open=false);
+
     // AUD-05: the independent original player has no DSP feedback tracker.
     // Reset must neither throw TypeError nor interrupt original transport.
     const resetPage=await browser.newPage();
