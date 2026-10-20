@@ -810,3 +810,51 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
 .vr-linear-rail>select{min-width:59px;width:59px;max-width:59px;min-height:33px;
   padding:3px 2px;font-size:11px;background:#173831;color:#e5f5eb;
   border:1px solid #52786d;border-radius:5px}
+
+/* V6: actual desktop browser number spinners; discreet in-field touch stepper. */
+.vr-number-row{position:relative;display:flex;align-items:stretch;gap:3px}
+.vr-number-row input[type=number]{flex:1 1 0;min-width:0;appearance:auto;-webkit-appearance:auto}
+.vr-number-row input[type=number]::-webkit-inner-spin-button{
+  -webkit-appearance:auto;opacity:1;cursor:ns-resize}
+.vr-number-row .vr-spin{display:none;flex:0 0 23px;flex-direction:column;
+  border:1px solid #48746c;border-radius:4px;overflow:hidden}
+.vr-number-row .vr-spin button{min-width:23px;min-height:20px;padding:0;line-height:17px;
+  border:0;border-radius:0;font-size:15px;background:#163c37;color:#dbfaed}
+.vr-number-row .vr-spin button+button{border-top:1px solid #48746c}
+.vr-number-row .vr-spin button:disabled{opacity:.35}
+.vr-number-row .vr-digit-open{font-size:17px;min-width:34px;padding:2px;border-radius:4px}
+@media(pointer:coarse){.vr-number-row .vr-spin{display:flex}
+  .vr-number-row .vr-digit-open{display:block}}
+/* Wheel groups columns under ONE selected row like a mobile drum dial. */
+.vr-wheel-sheet[hidden]{display:none!important}
+.vr-wheel-sheet{position:fixed;inset:0;z-index:4000;display:block}
+.vr-wheel-backdrop{position:absolute;inset:0;background:#0005}
+.vr-wheel-panel{position:absolute;left:0;right:0;bottom:0;
+  background:#f0f0f3;color:#17191d;box-shadow:0 -6px 28px #0003;
+  padding-bottom:env(safe-area-inset-bottom,0px);max-height:68dvh}
+.vr-wheel-toolbar{display:flex;justify-content:space-between;align-items:center;
+  padding:7px 14px;border-bottom:1px solid #d4d4d8;font-size:13px}
+.vr-wheel-actions{display:flex;gap:14px;align-items:center}
+.vr-wheel-actions button{border:0;background:transparent;color:#007aff;
+  font-size:14px;padding:8px;min-height:40px}
+#vr-wheel-done{font-weight:700}
+.vr-wheel-viewport{height:210px;position:relative;overflow:hidden}
+.vr-wheel-active-band{pointer-events:none;position:absolute;z-index:1;
+  left:12px;right:12px;top:84px;height:42px;border-radius:8px;background:#d8d8df88}
+.vr-wheel-columns{position:relative;z-index:2;display:flex;align-items:stretch;gap:1px;
+  justify-content:center;max-width:100%;height:210px;overflow-x:auto;
+  scroll-padding:8px;padding:0 10px}
+.vr-wheel-column{height:210px;box-sizing:border-box;flex:1 0 32px;
+  max-width:64px;min-width:32px;overflow-y:auto;scroll-snap-type:y mandatory;
+  overscroll-behavior-y:contain;scrollbar-width:none;touch-action:pan-y;
+  padding:84px 0;-webkit-overflow-scrolling:touch;text-align:center;
+  outline-offset:-2px}
+.vr-wheel-column::-webkit-scrollbar{display:none}
+.vr-wheel-column:focus-visible{outline:2px solid #007aff}
+.vr-wheel-digit{height:42px;display:flex;justify-content:center;align-items:center;
+  font-size:23px;line-height:1;scroll-snap-align:center;color:#85858d;user-select:none}
+.vr-wheel-digit.is-selected{color:#111116;font-weight:500}
+.vr-wheel-dot{align-self:center;font-size:22px;flex:0 0 10px;text-align:center;
+  z-index:4;pointer-events:none}
+@media(max-width:390px){.vr-wheel-column{flex-basis:30px;min-width:28px}
+  .vr-wheel-columns{justify-content:flex-start}}
