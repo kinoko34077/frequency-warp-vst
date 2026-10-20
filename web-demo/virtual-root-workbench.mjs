@@ -2,8 +2,7 @@
  * Compact arithmetic progression, signed auto-fold, direct realtime DSP updates.
  */
 import {createVirtualRootPlan} from "./virtual-root-plan.mjs";
-import {hzFromVirtualRootRail,virtualRootRailFromHz,
-  virtualRootPercentFromHz,virtualRootHzFromPercent} from "./virtual-root-rail.mjs";
+import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
 import {parseView,formatView} from "./parameter-units.mjs";
 const $=selector=>document.querySelector(selector);
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
@@ -32,7 +31,7 @@ const field=(key,title,value,min,max,step,rail=true)=>`
       <button type="button" class="vr-digit-open" data-vr-digit="${key}" aria-expanded="false" aria-controls="vr-digits-${key}">桁別</button>
     </div>
     <div id="vr-digits-${key}" class="vr-digit-picker" hidden></div>
-    ${rail?`<input id="vr-${key}-rail" type="range" min="${key==="target-h"||key==="source-f"?1:min}" max="${key==="target-h"||key==="source-f"?20000:max}" step="1" value="${Math.round(value)}" aria-label="${title}を整数単位で調整">`:""}
+    ${rail?`<div class="vr-linear-rail"><input id="vr-${key}-rail" type="range" min="${key==="target-h"||key==="source-f"?1:min}" max="${key==="target-h"?200:key==="source-f"?1000:max}" step="1" value="${Math.round(value)}" aria-label="${title}を整数単位で調整">${key==="target-h"||key==="source-f"?`<select id="vr-${key}-scale" aria-label="${title}のバー操作範囲"><option value="200"${key==="target-h"?" selected":""}>〜200</option><option value="1000"${key==="source-f"?" selected":""}>〜1k</option><option value="5000">〜5k</option><option value="20000">〜20k</option></select>`:""}</div>`:""}
   </div>`;
 function makeDigitPicker(key,places,signed,input,change){
   const root=$("#vr-digits-"+key),button=document.querySelector('[data-vr-digit="'+key+'"]');
@@ -96,11 +95,14 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     </details>
     <p id="vr-error" class="vr-error" role="status" hidden></p>`;
   const state={F:350,H:87.5,m:4,h1:1}, units={F:"hz",H:"hz"};
+  const scopes={F:1000,H:200}, choices=[200,1000,5000,20000];
   const inputIds={F:"vr-source-f",H:"vr-target-h",m:"vr-step-m",h1:"vr-first-index"};
   const keyIds={F:"source-f",H:"target-h",m:"step-m",h1:"first-index"};
   const controls=Object.fromEntries(Object.entries(keyIds).map(([key,id])=>[key,$("#vr-"+id)]));
   const rails=Object.fromEntries(Object.entries(keyIds).map(([key,id])=>[key,$("#vr-"+id+"-rail")]));
-  const percentOpts={id:"fundamental",fromRail:virtualRootHzFromPercent,toRail:virtualRootPercentFromHz,digits:2};
+  const percentOpts=key=>({id:"fundamental",digits:2,
+    fromRail:t=>1+(scopes[key]-1)*t,
+    toRail:v=>clamp((v-1)/(scopes[key]-1),0,1)});
   const getUnit=key=>units[key]||"hz";
   function fromText(key,raw){
     if(!String(raw).trim())return null;
@@ -108,7 +110,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     if(unit!=="note"&&!/^-?\d+(?:\.\d{0,2})?$/.test(String(raw)))return null;
     try{
       const n=(key==="H"||key==="F")?
-        parseView(raw,unit,percentOpts):Number(raw);
+        parseView(raw,unit,percentOpts(key)):Number(raw);
       if(!finite(n))return null;
       if((key==="H"||key==="F")&&n<=0)return null;
       if(key==="H"&&n>20000 || key==="F"&&n>5120000)return null;
@@ -118,7 +120,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     }catch{return null;}
   }
   const displayValue=key=>key==="H"||key==="F"?
-    String(formatView(state[key],getUnit(key),percentOpts)):String(state[key]);
+    String(formatView(state[key],getUnit(key),percentOpts(key))):String(state[key]);
   let activePlan=null,lastFingerprint="",generation=0;
   const error=$("#vr-error");
   function render(){
@@ -128,11 +130,20 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     root.querySelector('[data-vr-digit="target-h"]').disabled=keep;
     root.querySelectorAll('[data-vr-counter="target-h"]').forEach(b=>b.disabled=keep);
     for(const key of Object.keys(controls)){
+      if(key==="H"||key==="F"){
+        if(state[key]>scopes[key]){
+          scopes[key]=choices.find(value=>value>=state[key])||20000;
+        }
+        const scopeSelect=$("#vr-"+keyIds[key]+"-scale");
+        scopeSelect.value=String(scopes[key]);
+        rails[key].max=String(scopes[key]);
+        rails[key].setAttribute("aria-valuetext",fmt(state[key],2)+"Hz");
+      }
       const el=controls[key];
       if(document.activeElement!==el)el.value=displayValue(key);
       el.setAttribute("aria-invalid","false");
       if(rails[key])rails[key].value=String(key==="H"||key==="F"?
-        virtualRootRailFromHz(state[key]).position:state[key]);
+        Math.min(scopes[key],virtualRootRailFromHz(state[key]).position):state[key]);
       if(key==="H"||key==="F")for(const button of document.querySelectorAll('[data-vr-unit-for="'+keyIds[key]+'"]')){
         button.setAttribute("aria-pressed",String(button.dataset.vrUnit===getUnit(key)));
       }
@@ -235,6 +246,19 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     });
   }
   $("#vr-placement").addEventListener("change",()=>{render();applyRealtime();});
+  for(const key of ["H","F"]){
+    $("#vr-"+keyIds[key]+"-scale").addEventListener("change",event=>{
+      const requested=Number(event.target.value);
+      scopes[key]=requested;
+      // Scale changes adjust only the gesture/percentage view, not stored Hz.
+      // If the typed frequency lies above the gesture range, preserve it.
+      const slider=rails[key];slider.max=String(requested);
+      slider.value=String(Math.min(requested,virtualRootRailFromHz(state[key]).position));
+      // Manual range selection is a view change and must not trigger audio.
+      if(getUnit(key)==="percent"&&document.activeElement!==controls[key])
+        controls[key].value=displayValue(key);
+    });
+  }
   const pickers=[
     ["source-f",[6,5,4,3,2,1,0,-1,-2],false],
     ["target-h",[4,3,2,1,0,-1,-2],false],
