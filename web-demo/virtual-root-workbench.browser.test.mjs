@@ -20,7 +20,14 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.goto("http://127.0.0.1:8798/index.html",{waitUntil:"domcontentloaded"});
       await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
-      assert.equal(await page.$eval("#vr-target-h-rail",el=>[el.min,el.max,el.step].join("|")),"1|20000|1");
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>[el.min,el.max,el.step].join("|")),"1|200|1");
+      assert.equal(await page.$eval("#vr-source-f-rail",el=>el.max),"1000");
+      await page.select("#vr-target-h-scale","1000");
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.max),"1000");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5",
+        "Changing the linear span must not alter canonical H");
+      await page.select("#vr-target-h-scale","200");
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.max),"200");
       assert.equal(await page.$eval("#vr-step-m-rail",el=>el.step),"1");
       assert.equal(await page.$eval("#vr-first-index-rail",el=>el.min),"-129");
       assert.equal(await page.$eval("#vr-details",el=>el.open),false);
