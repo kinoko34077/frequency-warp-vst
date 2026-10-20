@@ -1,3 +1,4 @@
+import {mountLabComparison} from "./lab-port.mjs";
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
@@ -1569,9 +1570,10 @@ for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
   });
 }
 
-controls.dry.addEventListener("click",()=>play("dry"));
-controls.wet.addEventListener("click",()=>play("wet"));
+controls.dry.addEventListener("click",()=>{labCompare?.cancel();play("dry");});
+controls.wet.addEventListener("click",()=>{labCompare?.cancel();play("wet");});
 controls.stop.addEventListener("click",()=>{
+  labCompare?.cancel();
   if(comparisonPending){
     comparisonPending=null;
     comparisonMessage("停止しました · 加工設定の反映は未確認","ready");
@@ -1643,6 +1645,7 @@ async function load(file){
     state.offline=null;state.exportIdentity=null;state.sourceGeneration++;
     state.decoded={sampleRate:data.sampleRate};
     state.dry=dry;state.seek=0;state.lastStats=null;
+    labCompare?.refresh();
     state.sourceGeneration++;
     comparisonSlots.A=null;comparisonSlots.B=null;
     comparisonPending=null;comparisonCurrent=null;
@@ -1970,6 +1973,14 @@ attachHarmonicPanel(id=>{
   }
   updateParams(id);updateEngineInfo();
 },foldPoint,axisMarker,settings);
+const labCompare=mountLabComparison({
+  getSource:()=>state.dry?{channels:state.dry,sampleRate:state.decoded.sampleRate,sourceToken:state.sourceGeneration}:null,
+  getPosition:()=>state.player?playPosition():state.seek,
+  getContext:context,
+  stopBase:stop
+});
+$("#audio-file").addEventListener("change",()=>labCompare.cancel());
+window.addEventListener("pagehide",()=>labCompare.cancel());
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});
 // Set only after all interactive controls have registered successfully.
