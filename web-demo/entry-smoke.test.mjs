@@ -366,3 +366,41 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await rm(root,{recursive:true,force:true});
   }
 });
+
+
+test("Public entry shows a source-local error when audio module never boots",{
+  timeout:25000
+},async()=>{
+  const server=liveUrl?null:spawn("python3",["-m","http.server","8767","--bind","127.0.0.1"],{
+    cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"
+  });
+  let browser;
+  try{
+    browser=await puppeteer.launch({
+      executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",
+      headless:true,args:["--no-sandbox","--disable-dev-shm-usage"]
+    });
+    const page=await browser.newPage();
+    await page.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+    await page.setRequestInterception(true);
+    page.on("request",request=>{
+      if(new URL(request.url()).pathname.endsWith("/app.mjs"))
+        request.abort("failed");
+      else request.continue();
+    });
+    await page.goto(liveUrl||"http://127.0.0.1:8767/index.html",{
+      waitUntil:"domcontentloaded",timeout:18000
+    });
+    await page.waitForFunction(()=>
+      document.querySelector("#file-meta").textContent.includes("音声処理を起動できませんでした"),
+      {timeout:12000});
+    assert.match(await page.$eval("#status",el=>el.textContent),/起動に失敗/);
+    assert.equal(await page.$eval("#status",el=>el.dataset.kind),"error");
+    assert.match(await page.$eval("#file-meta",el=>el.textContent),/再読込み/,
+      "On narrow screens the actionable failure must appear beside native source chooser");
+    await page.close();
+  }finally{
+    await browser?.close();
+    server?.kill("SIGTERM");
+  }
+});
