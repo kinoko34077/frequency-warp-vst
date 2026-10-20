@@ -125,6 +125,8 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     const keep=$("#vr-placement").value==="keep-spacing";
     if(keep)state.H=state.F/state.m;
     controls.H.readOnly=keep;rails.H.disabled=keep;
+    root.querySelector('[data-vr-digit="target-h"]').disabled=keep;
+    root.querySelectorAll('[data-vr-counter="target-h"]').forEach(b=>b.disabled=keep);
     for(const key of Object.keys(controls)){
       const el=controls[key];
       if(document.activeElement!==el)el.value=displayValue(key);
@@ -141,11 +143,11 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         placement:keep?"keep-spacing":"target",count:8
       });
       const p=activePlan;
-      const seq=p.outputs.map(row=>fmt(row.output,3)).join(", ");
+      const seq=p.outputs.map(row=>fmt(row.gridIndex,3)).join(", ");
       $("#vr-sequence").textContent="倍音列: "+seq+"…";
       $("#vr-formula").replaceChildren(document.createTextNode("aₖ = |"+state.h1+" + (k−1) × "+state.m+"| × "+fmt(p.H,2)+" Hz　 Δ = "),fraction(p.fraction),
         document.createTextNode(" × "+fmt(p.pitched,2)+" Hz"));
-      $("#vr-summary").textContent="F′ "+fmt(p.pitched,2)+" Hz · Pitch "+fmt(p.ratio,3)+"倍 · H "+fmt(p.H,2)+" Hz";
+      $("#vr-summary").textContent="F′ "+fmt(p.pitched,2)+" Hz · Pitch "+fmt(p.ratio,3)+"倍 · H "+fmt(p.H,2)+" Hz · 周波数 "+p.outputs.slice(0,5).map(row=>fmt(row.output,3)).join(", ")+"…";
       const graph=$("#vr-preview"),part=document.createDocumentFragment();
       const max=Math.max(1,...p.outputs.flatMap(row=>[row.source,row.output]));
       for(const row of p.outputs){
@@ -224,6 +226,8 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       controls[key].type=units[key]==="note"?"text":"number";
       controls[key].inputMode=units[key]==="note"?"text":"decimal";
       controls[key].step=units[key]==="note"?"any":".01";
+      root.querySelector('[data-vr-digit="'+keyIds[key]+'"]').hidden=units[key]==="note";
+      if(units[key]==="note")root.querySelector("#vr-digits-"+keyIds[key]).hidden=true;
       controls[key].min=units[key]==="percent"?"0":".01";
       controls[key].max=units[key]==="percent"?"100":String(key==="H"?20000:5120000);
       render();
