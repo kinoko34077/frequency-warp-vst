@@ -128,6 +128,9 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.evaluate(()=>{
         const el=document.querySelector("#background-output");
         el.dispatchEvent(new Event("playing"));
+        // iPhone's lock-screen pause arrives with the document hidden; unlike
+        // a spontaneous route interruption, it must release the audio loop.
+        Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>"hidden"});
         el.dispatchEvent(new Event("pause"));
       });
       await page.waitForFunction(()=>document.querySelector("#stop").disabled,{timeout:10000});
