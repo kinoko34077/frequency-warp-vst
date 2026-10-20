@@ -26,7 +26,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#vr-details",el=>el.open),false);
       assert.equal(await page.$("#vr-apply"),null,"No mandatory Apply click");
       assert.equal(await page.$("#vr-mode"),null,"No explicit fold mode");
-      assert.match(await page.$eval("#vr-sequence",el=>el.textContent),/倍音列: 87\.5, 437\.5, 787\.5/);
+      assert.match(await page.$eval("#vr-sequence",el=>el.textContent),/倍音列: 1, 5, 9/);
       assert.equal(await page.$eval("#vr-formula [role=math]",el=>el.getAttribute("aria-label")),"-3 / 4");
       await page.$eval("#vr-target-h-rail",el=>{
         el.value="90";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -51,7 +51,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.$eval("#vr-first-index-rail",el=>{
         el.value="-5";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
-      assert.match(await page.$eval("#vr-sequence",el=>el.textContent),/436\.25, 87\.25, 261\.75/);
+      assert.match(await page.$eval("#vr-sequence",el=>el.textContent),/倍音列: 5, 1, 3/);
       assert.equal(await page.$eval("#vr-formula [role=math]",el=>el.getAttribute("aria-label")),"-9 / 4");
       await page.waitForFunction(()=>document.querySelector("#numerator").value==="-9",
         {timeout:10000});
