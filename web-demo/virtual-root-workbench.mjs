@@ -3,6 +3,7 @@
  * acceptance/retirement gate. No speculation about hearing a theoretical H.
  */
 import {createVirtualRootPlan,virtualRootStatus} from "./virtual-root-plan.mjs";
+import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
 const $=id=>document.querySelector(id);
 const number=id=>Number($("#"+id).value);
 const concise=v=>v===0?"0":Number.isFinite(v)?(
@@ -30,7 +31,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     <div class="vr-inputs">
       <label>元基音 F（Hz・手入力）<input id="vr-source-f" type="text" inputmode="decimal" value="350"></label>
       <label>配置方法<select id="vr-placement"><option value="target">仮想基音を自由に配置（間隔も変化）</option><option value="keep-spacing">元の倍音間隔を保持（Hは自動算出）</option></select></label>
-      <label>仮想基音 H（Hz）<input id="vr-target-h" type="text" inputmode="decimal" value="87.5" aria-describedby="vr-status"></label>
+      <label>仮想基音 H（Hz）<input id="vr-target-h" type="text" inputmode="decimal" value="87.5" aria-describedby="vr-status"><input id="vr-h-rail" type="range" min="0" max="1000" step="1" aria-label="仮想基音を正の周波数でドラッグ"><small id="vr-rail-note"></small></label>
       <label>倍音の並べ方<select id="vr-mode"><option value="series">一定間隔で並べる</option><option value="fold-to-root">0Hz折返しでHへ到達</option></select></label>
       <label>番号の間隔 m<input id="vr-step-m" type="number" min="1" max="64" step="1" value="4"></label>
       <label id="vr-first-field">最初の番号 h₁<input id="vr-first-index" type="number" min="1" max="129" step="1" value="1"></label>
@@ -66,9 +67,16 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     const keep=placement()==="keep-spacing";
     $("#vr-target-h").readOnly=keep;
     $("#vr-target-h").setAttribute("aria-readonly",String(keep));
+    $("#vr-h-rail").disabled=keep;
     try{
       current=collect();
       if(keep)$("#vr-target-h").value=String(current.H);
+      const rail=virtualRootRailFromHz(current.H);
+      $("#vr-h-rail").value=String(rail.position);
+      $("#vr-h-rail").setAttribute("aria-valuetext",String(current.H)+"Hz");
+      $("#vr-rail-note").textContent=rail.limited?
+        "ドラッグ範囲外。直接入力したHは丸めず保持します。":
+        "0Hzを含まない対数レール（入力値は丸めません）";
       const plan=current;
       const hasH=plan.hasPhysicalRoot;
       summary.textContent="仮想基音 "+concise(plan.H)+" Hz ・ 間隔 "+
@@ -78,7 +86,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         document.createTextNode(" × F′ = "+concise(plan.shift)+" Hz （F′ = "+
           concise(plan.pitched)+" Hz、前段Pitch "+concise(plan.ratio)+"倍）")
       );
-      const maxHz=Math.max(...plan.outputs.map(x=>x.output),Number.MIN_VALUE);
+      const maxHz=Math.max(...plan.outputs.flatMap(x=>[x.source,x.output]),Number.MIN_VALUE);
       const fragment=document.createDocumentFragment();
       for(const row of plan.outputs){
         const el=document.createElement("div");el.className="vr-partial";el.setAttribute("role","listitem");
@@ -89,10 +97,14 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
           (row.reflected?"負へ移動 "+concise(row.signed)+" Hz → 折返し ":"")+
           concise(row.output)+" Hz（番号"+row.gridIndex+
           (row.atRoot?"・仮想基音へ到達":"")+"）";
+        const orig=document.createElement("div");orig.className="vr-partial-track vr-original-track";
+        const originalBar=document.createElement("span");originalBar.className="vr-partial-bar vr-original-bar";
+        originalBar.style.width=Math.max(1,Math.min(100,100*row.source/maxHz))+"%";
+        orig.append(originalBar);
         const rail=document.createElement("div");rail.className="vr-partial-track";
         const bar=document.createElement("span");bar.className="vr-partial-bar";
         bar.style.width=Math.max(1,Math.min(100,100*row.output/maxHz))+"%";
-        rail.append(bar);el.append(caption,rail);fragment.append(el);
+        rail.append(bar);el.append(caption,orig,rail);fragment.append(el);
       }
       preview.replaceChildren(fragment);
       status.textContent=virtualRootStatus(plan);
@@ -130,6 +142,11 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       appliedFingerprint=null;
       render();
     });
+  $("#vr-h-rail").addEventListener("input",()=>{
+    if(placement()!=="target")return;
+    $("#vr-target-h").value=String(hzFromVirtualRootRail(number("vr-h-rail")));
+    appliedFingerprint=null;render();
+  });
   document.querySelectorAll("[data-vr-preset]").forEach(button=>
     button.addEventListener("click",()=>{
       const [m,h1]=button.dataset.vrPreset.split(":").map(Number);
