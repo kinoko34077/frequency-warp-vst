@@ -29,8 +29,8 @@ export function auditUnitConsumer(file,source){
   const hasBinding=/\bcreateParameterBinding\s*\(|\bmount(?:Parameter|Frequency)UnitField\s*\(/.test(source);
   if(hasUnitSwitch&&hasEditor&&!hasBinding)
     errors.push(file+": numeric-unit UI must consume the canonical parameter binding or mounted UI adapter");
-  const usesFieldAdapter=/\\bmount(?:Parameter|Frequency)UnitField\\s*\\(/.test(source);
-  const usesSharedSwitch=/\\bcreateParameterUnitSwitch\\s*\\(/.test(source);
+  const usesFieldAdapter=/\bmount(?:Parameter|Frequency)UnitField\s*\(/.test(source);
+  const usesSharedSwitch=/\bcreateParameterUnitSwitch\s*\(/.test(source);
   if(hasUnitSwitch&&hasEditor&&hasBinding&&!usesFieldAdapter&&!usesSharedSwitch)
     errors.push(file+": numeric-unit icon UI must reuse createParameterUnitSwitch, not generate independent icon buttons");
   if(file==="virtual-root-workbench.mjs"){
