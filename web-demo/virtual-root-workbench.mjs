@@ -43,6 +43,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       <button type="button" data-vr-preset="2:1">1・3・5…</button>
     </div>
     <p id="vr-summary" class="vr-summary" aria-live="polite"></p>
+    <p class="vr-legend"><span class="vr-legend-original">━ 元の部分音</span><span class="vr-legend-result">━ 配置後の部分音（理論）</span></p>
     <div id="vr-preview" class="vr-preview" role="list" aria-label="倍音の理論上の移動"></div>
     <div id="vr-formula" class="vr-formula"></div>
     <p id="vr-status" class="vr-status" aria-live="polite"></p>
