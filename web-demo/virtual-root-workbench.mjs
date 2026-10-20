@@ -5,6 +5,7 @@ import {createVirtualRootPlan} from "./virtual-root-plan.mjs";
 import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
 import {parseView} from "./parameter-units.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
+import {createParameterUnitSwitch} from "./frequency-unit-field.mjs";
 const $=selector=>document.querySelector(selector);
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
 const fmt=(v,digits=3)=>finite(v)?Number(v.toFixed(digits)).toString():"—";
@@ -20,11 +21,7 @@ function fraction({n,m}){
 const field=(key,title,value,min,max,step,rail=true)=>`
   <div class="vr-control" data-vr-control="${key}">
     <label for="vr-${key}">${title}</label>
-    ${key==="target-h"||key==="source-f"?`<div class="unit-switch vr-unit-switch" role="group" aria-label="${title}の単位">
-      <button type="button" data-vr-unit-for="${key}" data-vr-unit="hz" aria-pressed="true">Hz</button>
-      <button type="button" data-vr-unit-for="${key}" data-vr-unit="note" aria-pressed="false">♪</button>
-      <button type="button" data-vr-unit-for="${key}" data-vr-unit="percent" aria-pressed="false">%</button>
-    </div>`:""}
+    ${key==="target-h"||key==="source-f"?`<div data-vr-unit-slot="${key}"></div>`:""}
     <div class="vr-number-row">
       <button type="button" class="vr-counter" data-vr-counter="${key}" data-delta="-1" aria-label="${title}を減らす">−</button>
       <input id="vr-${key}" type="number" inputmode="decimal" step="${step}" min="${min}" max="${max}" value="${value}" aria-label="${title}">
@@ -122,6 +119,32 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   const percentOpts=key=>({id:frequencyBindings[key].descriptor.id,digits:2,
     fromRail:frequencyBindings[key].descriptor.rail.fromPosition});
   const getUnit=key=>frequencyBindings[key]?.unit||"hz";
+  // Both the standard numeric inputs and this specialized lab consume the
+  // same icon/label/ARIA unit-switch component. Only the rail and digit
+  // gestures remain lab-specific.
+  const unitSwitches={};
+  for(const [key,id,title] of [["F","source-f","元基音 F"],["H","target-h","仮想基音 H"]]){
+    const slot=root.querySelector('[data-vr-unit-slot="'+id+'"]');
+    const view=createParameterUnitSwitch({
+      doc:slot.ownerDocument,label:title+"の単位",unitFor:id,
+      choices:[{value:"hz",label:"Hz"},{value:"note",label:"音名＋セント"},{value:"percent",label:"%"}],
+      selected:()=>getUnit(key),
+      onSelect:unit=>{
+        frequencyBindings[key].selectUnit(unit);
+        const el=controls[key],selectedUnit=getUnit(key);
+        el.type=selectedUnit==="note"?"text":"number";
+        el.inputMode=selectedUnit==="note"?"text":"decimal";
+        el.step=selectedUnit==="note"?"any":".01";
+        root.querySelector('[data-vr-digit="'+id+'"]').hidden=selectedUnit==="note";
+        if(selectedUnit==="note")root.querySelector("#vr-digits-"+id).hidden=true;
+        el.min=selectedUnit==="percent"?"0":".01";
+        el.max=selectedUnit==="percent"?"100":String(key==="H"?20000:5120000);
+        render();
+      }
+    });
+    view.element.classList.add("vr-unit-switch");
+    slot.replaceWith(view.element);unitSwitches[key]=view;
+  }
   function fromText(key,raw){
     if(!String(raw).trim())return null;
     const unit=getUnit(key);
@@ -162,9 +185,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       el.setAttribute("aria-invalid","false");
       if(rails[key])rails[key].value=String(key==="H"||key==="F"?
         Math.min(scopes[key],virtualRootRailFromHz(state[key]).position):state[key]);
-      if(key==="H"||key==="F")for(const button of document.querySelectorAll('[data-vr-unit-for="'+keyIds[key]+'"]')){
-        button.setAttribute("aria-pressed",String(button.dataset.vrUnit===getUnit(key)));
-      }
+      if(key==="H"||key==="F")unitSwitches[key].refresh();
     }
     try{
       activePlan=createVirtualRootPlan({
@@ -249,21 +270,6 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       if(key==="h1")state[key]=clamp(Math.round(state[key]),-129,129);
       if(key==="H"||key==="F")state[key]=clamp(state[key],.01,key==="H"?20000:5120000);
       render();applyRealtime();
-    });
-  }
-  for(const button of root.querySelectorAll("[data-vr-unit]")){
-    button.addEventListener("click",()=>{
-      const key=button.dataset.vrUnitFor==="target-h"?"H":"F";
-      frequencyBindings[key].selectUnit(button.dataset.vrUnit);
-      const selectedUnit=getUnit(key);
-      controls[key].type=selectedUnit==="note"?"text":"number";
-      controls[key].inputMode=selectedUnit==="note"?"text":"decimal";
-      controls[key].step=selectedUnit==="note"?"any":".01";
-      root.querySelector('[data-vr-digit="'+keyIds[key]+'"]').hidden=selectedUnit==="note";
-      if(selectedUnit==="note")root.querySelector("#vr-digits-"+keyIds[key]).hidden=true;
-      controls[key].min=selectedUnit==="percent"?"0":".01";
-      controls[key].max=selectedUnit==="percent"?"100":String(key==="H"?20000:5120000);
-      render();
     });
   }
   $("#vr-placement").addEventListener("change",()=>{render();applyRealtime();});
