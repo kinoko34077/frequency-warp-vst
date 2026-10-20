@@ -724,16 +724,6 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .export-shortcut{min-height:40px;padding:7px 10px;max-width:100%;
   text-align:left;align-self:start}
 
-/* Supplementary local Lab audition; original Rust controls stay intact. */
-.lab-port-panel .lab-port-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px 14px;margin:10px 0}
-.lab-port-panel .lab-port-controls>label{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:.86rem}
-.lab-port-panel .lab-port-controls select,.lab-port-panel .lab-port-controls input[type=range]{width:100%;max-width:100%;min-height:36px}
-.lab-port-panel .lab-port-checkbox{flex-direction:row!important;align-items:center}
-.lab-port-panel .lab-port-checkbox input{width:20px;height:20px}
-.lab-port-note{font-size:.83rem;line-height:1.6;opacity:.85;margin:8px 0}
-#lab-port-status{display:block;min-height:2.5em;font-size:.8rem}
-#lab-port-cycles-field[hidden]{display:none}
-
 /* #276 purpose-first virtual-root workbench. The legacy numerical Lab stays
  * in the source under its existing panel while this UI earns parity. */
 .virtual-root-panel{min-width:0;display:grid;gap:10px;align-content:start}
