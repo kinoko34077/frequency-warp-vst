@@ -78,6 +78,46 @@ test("virtual root H/m/h1 workbench: real Chrome target, sub-millihertz, fold q 
       assert.match(await page.$eval("#vr-summary",el=>el.textContent),/未出現/);
       await page.select("#vr-placement","keep-spacing");
       assert.equal(await page.$eval("#vr-target-h",el=>el.readOnly),true);
+      // An actual source is required to exercise the accepted A/B snapshot
+      // path. No simulated internal state writes or synthetic ACK claims.
+      await page.evaluate(()=>{
+        const rate=16000,frames=16000,buffer=new ArrayBuffer(44+frames*2);
+        const view=new DataView(buffer);
+        const str=(p,value)=>{for(let i=0;i<value.length;i++)view.setUint8(p+i,value.charCodeAt(i));};
+        str(0,"RIFF");view.setUint32(4,buffer.byteLength-8,true);str(8,"WAVE");
+        str(12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);
+        view.setUint16(22,1,true);view.setUint32(24,rate,true);
+        view.setUint32(28,rate*2,true);view.setUint16(32,2,true);
+        view.setUint16(34,16,true);str(36,"data");view.setUint32(40,frames*2,true);
+        for(let i=0;i<frames;i++)view.setInt16(44+i*2,Math.round(8000*Math.sin(2*Math.PI*440*i/rate)),true);
+        const input=document.querySelector("#audio-file"),data=new DataTransfer();
+        data.items.add(new File([buffer],"virtual-root-a-b.wav",{type:"audio/wav"}));
+        input.files=data.files;input.dispatchEvent(new Event("change",{bubbles:true}));
+      });
+      await page.waitForFunction(()=>!document.querySelector("#play-wet").disabled,{timeout:25000});
+      await page.select("#vr-placement","target");
+      await page.select("#vr-mode","series");
+      await page.click("[data-vr-preset='4:3']");
+      await page.click("#vr-apply");
+      await page.click("#compare-save-a");
+      await page.select("#vr-mode","fold-to-root");
+      await page.$eval("#vr-fold-q",el=>{
+        el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.click("#vr-apply");
+      await page.click("#compare-save-b");
+      await page.click("#compare-load-a");
+      assert.equal(await page.$eval("#vr-mode",el=>el.value),"series",
+        "Loading A must update the new workbench, not leave stale B controls");
+      assert.equal(await page.$eval("#vr-first-index",el=>el.value),"3");
+      await page.click("#compare-load-b");
+      assert.equal(await page.$eval("#vr-mode",el=>el.value),"fold-to-root");
+      assert.equal(await page.$eval("#vr-fold-q",el=>el.value),"2");
+      await page.click("#settings-open");
+      await page.click("#settings-reset");
+      assert.equal(await page.$eval("#vr-mode",el=>el.value),"series");
+      assert.equal(await page.$eval("#vr-first-index",el=>el.value),"1");
+      await page.click("#settings-done");
       assert.deepEqual(errors,[],width+" runtime errors");
       const spill=await page.evaluate(()=>Math.max(0,document.documentElement.scrollWidth-innerWidth));
       assert.ok(spill<=1,"Workbench must not cause horizontal overflow at "+width+"px: "+spill);
