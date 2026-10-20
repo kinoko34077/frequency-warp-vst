@@ -1,0 +1,28 @@
+# Capability / API index (Frequency Warp Web)
+
+Status: maintained for [#79](https://github.com/kinoko34077/frequency-warp-vst/issues/79), [devflow #758](https://github.com/kinoko34077/devflow/issues/758).
+This is a **routing ledger**. Follow the linked current specification, actual source and tests before altering a feature. An ES module export is a **module API**, not a remote/network API. Read [reuse-first rule](https://github.com/kinoko34077/devflow/blob/main/docs/operations/CAPABILITY_REUSE_POLICY.md) and `docs/PARAMETER_BINDING_SPEC.md`.
+
+| Capability ID | Semantics and authority | Export / consumer entry | Verification | Status / exceptions |
+|---|---|---|---|---|
+| `fw.unit.codec` | Physical frequency in Hz, 12-TET note + cents, rail travel%, interval ratio/cent/semitones. Dimension restrictions and parsing/formatting: `docs/PARAMETER_BINDING_SPEC.md` | `web-demo/parameter-units.mjs` exports `compatibleUnits`, `parseView`, `formatView`, note and interval codecs; consumed by `parameter-binding.mjs` | `web-demo/parameter-units.test.mjs` | Accepted on Web; never hand-reimplement notes or % ↔ rail |
+| `fw.parameter.binding` | Single Float64 canonical value, selected unit, min/max, rail transfer, optional snap and one-event update | `web-demo/parameter-binding.mjs` exports `defineParameter`, `createParameterBinding`, `snappedValue`; used in Web app, harmonic panel and virtual-root F/H | `web-demo/parameter-binding.test.mjs`, `parameter-unit-browser.test.mjs`, `virtual-root-workbench.browser.test.mjs` | Partially adopted; #79 M2/M3 migration remains open |
+| `fw.parameter.field` | Common compact unit icons, numeric editor, gesture slider proxy, snap menu | `web-demo/frequency-unit-field.mjs` exports `mountParameterUnitField` (`mountFrequencyUnitField` compatibility alias). Callers: `app.mjs`, `harmonics-panel.mjs` | `parameter-unit-browser.test.mjs` | Web-adopted; new generic numeric-unit widgets must use this or an explicit specialized adapter |
+| `fw.virtual-root.gesture` | Integer linear physical slider with selectable visible operating span and digit controls; do not confuse with % notation codec | `web-demo/virtual-root-rail.mjs`; consumer `virtual-root-workbench.mjs` | `virtual-root-rail.test.mjs`, `virtual-root-workbench.browser.test.mjs` | **Specialized gesture adapter** allowed; F/H notation and numeric canonical state owned by shared binding. Its digit/counter presentation has not been consolidated into a generalized UI component; UI parity remains a separate acceptance question |
+| `fw.frequency.bounds` | Interdependent L/H physical constraints | `web-demo/frequency-bounds.mjs`, applied in `app.mjs` | `frequency-bounds.test.mjs` | Accepted owner; no second constraint resolver |
+| `fw.frequency.dsp` | Authoritative frequency mapping and audio stream parameters | Shared Rust `core/src/lib.rs` native+WASM exports; Web host `app.mjs` / Worklet | `docs/SHARED_DSP_ARCHITECTURE.md`, Rust/Chrome/WAV tests | DSP separate from notation and UI; native/VST3 guarantees require separate evidence |
+| `kit.web.shell` | Reusable website shell/navigation/theme/features | `kinotch-site-kit` own `docs/SPECIFICATION.md`, `docs/MODULAR_CAPABILITY_CATALOG.md` | Site Kit local tests | Separate owner; NOT an implicit replacement for music-unit codec |
+
+## Mandatory use for new work
+
+1. Resolve semantic equivalence and read the owner/source/test before coding. If an existing interface is sufficient, **import it**. If a variant is needed, extend the owner or add a small adapter.
+2. Unique gesture geometry, musical model and true domain requirements may remain local, but they must call the canonical unit codec and parameter binding when their meaning is compatible.
+3. Do not copy `parseView/formatView`, keep parallel F/H number or unit stores, or add new stand-alone numeric-unit switch logic. If a binding cannot represent a newly requested behavior, record the missing API contract in #79 before creating a separate owner.
+4. Run `node --test web-demo/capability-reuse-check.test.mjs` and the existing Node/Chrome/Rust coverage. CI detects common structural duplication and has **negative fixtures**, but cannot prove all semantic/visual duplication. The reviewer must still compare UI and ownership.
+5. Keep legacy migration explicit in #79 M2/M3, and the accepted `#276` virtual-root presentation independent. Do not equate a CI pass with physical iPhone acceptance.
+
+## Compatibility and exclusions
+
+- `harmonics-panel.mjs` contains legacy-domain control glue while already mounting the shared parameter field for F/carrier/r. Replace only under #79's staged M3 tests; it is not a general template to copy.
+- `virtual-root-workbench.mjs` has a purpose-specific slider, number counters and digit picker. A common binding does not prescribe their visual layout; visual component consolidation needs independent mobile/accessibility regression, not an untested bulk rewrite.
+- No change to Rust/WASM or VST3 host parameter IDs/ABI is authorized by this catalog.
