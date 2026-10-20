@@ -890,12 +890,19 @@ async function mediaBridge(player){
     player.bridgeRoute.connect(node);
     element.srcObject=node.stream;
     const fallback=()=>{if(state.player===player)switchAudioRoute(player,state.ctx,false);};
-    element.onpause=fallback;
+    // An external iOS lock-screen / headset pause is a transport pause, not
+    // a route failure. Rerouting a looping BufferSource here kept playing.
+    element.onpause=()=>{
+      if(state.player===player&&!player.bridgeInternalPause)void stop();
+    };
     element.onwaiting=fallback;
     element.onstalled=fallback;
     element.onerror=fallback;
     element.onplaying=()=>{
-      if(state.player===player)switchAudioRoute(player,state.ctx,true);
+      if(state.player===player){
+        player.bridgeInternalPause=false;
+        switchAudioRoute(player,state.ctx,true);
+      }
     };
     await element.play();
     if(state.player!==player){
@@ -914,7 +921,7 @@ async function mediaBridge(player){
     // The rejected promise may belong to an obsolete player. Only its
     // CURRENT owner may mutate this shared element's media output.
     if(state.player===player){
-      try{element.pause();element.srcObject=null;}catch{}
+      try{player.bridgeInternalPause=true;element.pause();element.srcObject=null;}catch{}
     }
   }
 }
