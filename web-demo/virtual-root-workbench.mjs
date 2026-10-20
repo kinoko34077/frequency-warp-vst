@@ -147,7 +147,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       $("#vr-sequence").textContent="倍音列: "+seq+"…";
       $("#vr-formula").replaceChildren(document.createTextNode("aₖ = |"+state.h1+" + (k−1) × "+state.m+"| × "+fmt(p.H,2)+" Hz　 Δ = "),fraction(p.fraction),
         document.createTextNode(" × "+fmt(p.pitched,2)+" Hz"));
-      $("#vr-summary").textContent="F′ "+fmt(p.pitched,2)+" Hz · Pitch "+fmt(p.ratio,3)+"倍 · H "+fmt(p.H,2)+" Hz · 周波数 "+p.outputs.slice(0,5).map(row=>fmt(row.output,3)).join(", ")+"…";
+      $("#vr-summary").textContent="F′ "+fmt(p.pitched,2)+" Hz · Pitch "+fmt(p.ratio,3)+"倍 · 仮想基音 H "+fmt(p.H,2)+" Hz · 周波数 "+p.outputs.slice(0,5).map(row=>fmt(row.output,3)).join(", ")+"…";
       const graph=$("#vr-preview"),part=document.createDocumentFragment();
       const max=Math.max(1,...p.outputs.flatMap(row=>[row.source,row.output]));
       for(const row of p.outputs){
