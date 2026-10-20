@@ -1,19 +1,21 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
-
-test("virtual H rail never maps a nonzero gesture to physical P=0",()=>{
-  assert.equal(hzFromVirtualRootRail(0),1e-12);
-  assert.ok(hzFromVirtualRootRail(1)>0);
-  assert.ok(hzFromVirtualRootRail(999)>0);
-  for(const hz of [1e-10,.0001,.0009,.001,.01,20,350,10000,20000]){
-    const m=virtualRootRailFromHz(hz);
-    assert.equal(m.limited,false);
-    assert.ok(m.position>=0&&m.position<=1000);
-    assert.ok(hzFromVirtualRootRail(m.position)>0);
+import {hzFromVirtualRootRail,virtualRootRailFromHz,
+  virtualRootPercentFromHz,virtualRootHzFromPercent} from "./virtual-root-rail.mjs";
+test("virtual root rail is linear, in integer Hz, with no logarithmic gesture",()=>{
+  for(const hz of [1,2,25,87.5,350,10000,20000]){
+    const rail=virtualRootRailFromHz(hz);
+    assert.equal(rail.position,Math.round(hz));
+    assert.equal(hzFromVirtualRootRail(rail.position),Math.round(hz));
+    assert.equal(rail.limited,false);
   }
-  assert.equal(virtualRootRailFromHz(1e-14).limited,true);
-  assert.equal(virtualRootRailFromHz(50000).limited,true);
-  assert.throws(()=>hzFromVirtualRootRail(-1),RangeError);
+  assert.equal(hzFromVirtualRootRail(100),100);
+  assert.equal(hzFromVirtualRootRail(101),101);
+  assert.equal(virtualRootRailFromHz(0.01).position,1);
+  assert.equal(virtualRootRailFromHz(.01).limited,true);
+  assert.equal(virtualRootRailFromHz(30000).limited,true);
+  assert.equal(virtualRootHzFromPercent(.5),10000.5);
+  assert.equal(virtualRootPercentFromHz(10000.5),.5);
+  assert.throws(()=>hzFromVirtualRootRail(0),RangeError);
   assert.throws(()=>virtualRootRailFromHz(0),RangeError);
 });
