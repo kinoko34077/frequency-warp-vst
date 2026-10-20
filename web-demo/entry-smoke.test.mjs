@@ -129,6 +129,17 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#settings-inline");
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(()=>document.activeElement?.id),"settings-inline");
+    // The native File must remain associated with its input while the
+    // asynchronous read begins, especially for iOS FileProvider-backed files.
+    await page.evaluate(()=>{
+      const original=File.prototype.arrayBuffer;
+      window.__pickerAttachedAtRead=null;
+      File.prototype.arrayBuffer=function(...args){
+        const field=document.querySelector("#audio-file");
+        window.__pickerAttachedAtRead=Array.from(field.files).includes(this);
+        return original.apply(this,args);
+      };
+    });
     const [chooser]=await Promise.all([
       page.waitForFileChooser({timeout:9000}),
       page.click("#drop")
@@ -139,6 +150,10 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       !document.querySelector("#play-wet").disabled &&
       document.querySelector("#file-meta").textContent.includes("picker.wav"),
       {timeout:23000});
+    assert.equal(await page.evaluate(()=>window.__pickerAttachedAtRead),true,
+      "Do not clear native file input before its asynchronous File.arrayBuffer read");
+    await page.waitForFunction(()=>document.querySelector("#audio-file").files.length===0,
+      {timeout:4000});
     // Failed replacement must leave the previously decoded sample ready to
     // play and export, without forcing the user to re-select it.
     const bad=join(root,"too-short.wav");await writeFile(bad,shortWav(.01));
@@ -151,6 +166,10 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
     assert.equal(await page.$eval("#render",el=>el.disabled),false);
     assert.match(await page.$eval("#status",el=>el.textContent),/以前の音声は保持/);
+    assert.match(await page.$eval("#file-meta",el=>el.textContent),/読込失敗/,
+      "Collapsed mobile HUD must not hide the actual failure next to source picker");
+    await page.waitForFunction(()=>document.querySelector("#audio-file").files.length===0,
+      {timeout:4000});
     // Replacing with another valid file still succeeds after the failure.
     await (await page.$("#audio-file")).uploadFile(wav);
     await page.waitForFunction(()=>
