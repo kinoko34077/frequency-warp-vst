@@ -1977,7 +1977,8 @@ const labCompare=mountLabComparison({
   getSource:()=>state.dry?{channels:state.dry,sampleRate:state.decoded.sampleRate,sourceToken:state.sourceGeneration}:null,
   getPosition:()=>state.player?playPosition():state.seek,
   getContext:context,
-  stopBase:stop
+  stopBase:stop,
+  getWarpSettings:()=>prepareStreamSettings({...settings(),sampleRate:state.decoded?.sampleRate||48000})
 });
 $("#audio-file").addEventListener("change",()=>labCompare.cancel());
 window.addEventListener("pagehide",()=>labCompare.cancel());

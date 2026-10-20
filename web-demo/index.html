@@ -51,9 +51,10 @@
 
             <section class="panel lab-port-panel" id="lab-port-panel" aria-labelledby="lab-port-title">
         <div class="section-header"><div><p class="eyebrow">EXPERIMENTAL AUDIO LAB</p><h2 id="lab-port-title">個別波長・モデル比較試聴</h2></div></div>
-        <p class="lab-port-note">追加された独立試聴です。既存のFrequency WarpエンジンA〜Dは変更しません。この試聴では原音の1.5秒区間へPV等の処理を施します。Frequency Warpの非線形写像・反転・曲率・移動は、この試聴にはまだ適用しません。</p>
+        <p class="lab-port-note">追加された独立試聴です。既存のFrequency WarpエンジンA〜Dは変更しません。この試聴では原音の1.5秒区間へPV等の処理を施します。初期状態は原音へLab処理のみです。「Rust→Lab」ONでは既存のWarp設定を先にRustで処理してからLabへ渡します。Lab内部の部分音を直接f→g(f)変換する方式とは異なります。</p>
         <div class="lab-port-controls">
           <label for="lab-port-backend">処理モデル <select id="lab-port-backend"><option value="pv">PV（位相ボコーダー）</option><option value="wsola">WSOLA</option><option value="dual">短窓＋長窓 複合</option><option value="am">AM包絡＋PV</option></select></label>
+          <label class="lab-port-checkbox" for="lab-port-apply-warp"><input type="checkbox" id="lab-port-apply-warp"> 現在のFrequency Warp変換を先に適用（Rust→Lab）</label>
           <label class="lab-port-checkbox" for="lab-port-individual"><input type="checkbox" id="lab-port-individual"> 周波数ごとの個別波長（試験版）</label>
           <label id="lab-port-cycles-field" for="lab-port-cycles" hidden>解析に使う周期数：<output id="lab-port-cycles-output" for="lab-port-cycles">8周期</output>
             <input type="range" id="lab-port-cycles" min="-1" max="5" step="1" value="3" disabled>
