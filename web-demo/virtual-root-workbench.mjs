@@ -20,6 +20,34 @@ function fractionOf({n,m}){
   return root;
 }
 export function mountVirtualRootWorkbench({onApply,onCurrent}){
+  // Static, trusted markup. An isolated module keeps the huge legacy Lab DOM
+  // intact until all accepted feature/real-browser gates are satisfied.
+  const root=$("#virtual-root-workbench");
+  if(!root)return;
+  root.innerHTML=`
+    <div class="section-header"><div><p class="eyebrow">VIRTUAL FUNDAMENTAL</p><h2>倍音を配置する</h2></div></div>
+    <p class="vr-intro">仮想基音の場所・番号の飛ばし幅・最初の番号から音の並びを作ります。バーは理論値であり、音源の実測ではありません。</p>
+    <div class="vr-inputs">
+      <label>元基音 F（Hz・手入力）<input id="vr-source-f" type="text" inputmode="decimal" value="350"></label>
+      <label>配置方法<select id="vr-placement"><option value="target">仮想基音を自由に配置（間隔も変化）</option><option value="keep-spacing">元の倍音間隔を保持（Hは自動算出）</option></select></label>
+      <label>仮想基音 H（Hz）<input id="vr-target-h" type="text" inputmode="decimal" value="87.5" aria-describedby="vr-status"></label>
+      <label>倍音の並べ方<select id="vr-mode"><option value="series">一定間隔で並べる</option><option value="fold-to-root">0Hz折返しでHへ到達</option></select></label>
+      <label>番号の間隔 m<input id="vr-step-m" type="number" min="1" max="64" step="1" value="4"></label>
+      <label id="vr-first-field">最初の番号 h₁<input id="vr-first-index" type="number" min="1" max="129" step="1" value="1"></label>
+      <label id="vr-fold-field" hidden>折返す元倍音 q<input id="vr-fold-q" type="number" min="1" max="32" step="1" value="1"></label>
+    </div>
+    <div class="vr-presets" role="group" aria-label="番号列の例">
+      <button type="button" data-vr-preset="4:1">1・5・9…</button>
+      <button type="button" data-vr-preset="4:3">3・7・11…</button>
+      <button type="button" data-vr-preset="2:1">1・3・5…</button>
+    </div>
+    <p id="vr-summary" class="vr-summary" aria-live="polite"></p>
+    <div id="vr-preview" class="vr-preview" role="list" aria-label="倍音の理論上の移動"></div>
+    <div id="vr-formula" class="vr-formula"></div>
+    <p id="vr-status" class="vr-status" aria-live="polite"></p>
+    <button id="vr-apply" class="primary" type="button">この配置を音声設定へ適用</button>
+    <p id="vr-audio-status" class="vr-audio-status" role="status" aria-live="polite">音声処理への反映は未確認です。</p>
+    <small>0.001Hz未満でも理論値は保持。現在の音声処理で適用できない場合、0Hzにせず元の音声設定を保持します。</small>`;
   const inputs=["vr-source-f","vr-target-h","vr-step-m","vr-first-index","vr-fold-q"];
   const foldField=$("#vr-fold-field"),startField=$("#vr-first-field");
   const preview=$("#vr-preview"),status=$("#vr-status"),audio=$("#vr-audio-status");
@@ -53,7 +81,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       const maxHz=Math.max(...plan.outputs.map(x=>x.output),Number.MIN_VALUE);
       const fragment=document.createDocumentFragment();
       for(const row of plan.outputs){
-        const el=document.createElement("div");el.className="vr-partial";
+        const el=document.createElement("div");el.className="vr-partial";el.setAttribute("role","listitem");
         if(row.atRoot)el.classList.add("at-virtual-root");
         if(row.reflected)el.classList.add("vr-is-reflected");
         const caption=document.createElement("div");caption.className="vr-partial-caption";
