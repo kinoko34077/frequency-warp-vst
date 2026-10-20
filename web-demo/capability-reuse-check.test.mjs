@@ -26,3 +26,11 @@ test("reject a copied unit icon UI even if it imports the value binding",()=>{
   const duplicated='<div class="unit-switch"><button data-vr-unit="hz">Hz</button></div> const binding = createParameterBinding(descriptor); function fromText(){return binding.value;}';
   assert.match(auditUnitConsumer("bespoke-units.mjs",duplicated).join("\\n"),/icon UI must reuse/);
 });
+
+test("reject duplicated percent-input focus/commit logic or absent shared owner in Web app",()=>{
+  const repeated=`const commitWetTyped=()=>{ wetBinding.setView(value,{unit:"percent"}); };
+  mountPercentParameterField({field,binding,refresh});`;
+  assert.match(auditUnitConsumer("app.mjs",repeated).join("\n"),/copied typed-percent/);
+  const missing=`const wetBinding={value:.5}; const wetField={};`;
+  assert.match(auditUnitConsumer("app.mjs",missing).join("\n"),/must reuse mountPercentParameterField/);
+});

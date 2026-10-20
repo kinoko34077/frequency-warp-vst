@@ -90,6 +90,43 @@ export function createParameterUnitSwitch({doc,label,choices,selected,onSelect,u
   return Object.freeze({element:root,refresh});
 }
 
+
+/** #79 M3 common typed %-field lifecycle for canonical fraction bindings.
+ * Preserve each parameter's own effect on audio/graph after a successful change.
+ * Range sliders remain gesture proxies and are managed by their owning app.
+ */
+export function mountPercentParameterField({field,binding,refresh,onChanged=()=>{}}){
+  if(!field||!binding||typeof binding.setView!=="function"||
+     typeof binding.display!=="function"||typeof refresh!=="function"||
+     typeof onChanged!=="function")
+    throw new TypeError("percent field requires field, canonical binding, refresh and change callback");
+  const commit=()=>{
+    const previous=binding.value;
+    try{
+      binding.setView(field.value,{unit:"percent",origin:"typed",
+        overflow:"clamp",notify:false});
+      delete field.dataset.invalid;
+    }catch{
+      field.dataset.invalid="true";
+      return false;
+    }
+    refresh();
+    if(!Object.is(previous,binding.value))onChanged(binding.value,previous);
+    return true;
+  };
+  const listeners=[
+    ["focus",()=>{field.value=String(binding.display(3));field.select();}],
+    ["input",commit],["change",commit],
+    ["blur",()=>{commit();refresh(true);delete field.dataset.invalid;}],
+    ["keydown",event=>{if(event.key==="Enter")field.blur();}]
+  ];
+  for(const [type,listener] of listeners)field.addEventListener(type,listener);
+  return Object.freeze({
+    commit,
+    dispose:()=>{for(const [type,listener] of listeners)field.removeEventListener(type,listener);}
+  });
+}
+
 export function mountParameterUnitField({descriptor,field,select,slider,railRoot,
   initialValue=descriptor.defaultValue,getDigits=()=>descriptor.digits,onValueChange=()=>{}}) {
   if (![field,select,slider,railRoot].every(Boolean) ||

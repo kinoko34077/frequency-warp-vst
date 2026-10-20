@@ -33,6 +33,12 @@ export function auditUnitConsumer(file,source){
   const usesSharedSwitch=/\bcreateParameterUnitSwitch\s*\(/.test(source);
   if(hasUnitSwitch&&hasEditor&&hasBinding&&!usesFieldAdapter&&!usesSharedSwitch)
     errors.push(file+": numeric-unit icon UI must reuse createParameterUnitSwitch, not generate independent icon buttons");
+  if(file==="app.mjs"){
+    if(!/\bmountPercentParameterField\s*\(/.test(source))
+      errors.push(file+": canonical percent editors must reuse mountPercentParameterField");
+    if(/\b(?:const|let|function)\s+commit(?:Wet|AReverb|ZeroReflect|ZeroDecay|Invert)Typed\b/.test(source))
+      errors.push(file+": copied typed-percent input controllers are forbidden");
+  }
   if(file==="virtual-root-workbench.mjs"){
     if(!usesSharedSwitch)errors.push(file+": virtual-root unit icons must use the common component");
     if(!/\bcreateParameterBinding\s*\(/.test(source))
