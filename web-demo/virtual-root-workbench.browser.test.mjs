@@ -28,7 +28,7 @@ test("virtual root H/m/h1 workbench: real Chrome target, sub-millihertz, fold q 
       assert.equal(await page.$eval("#vr-formula [role=math]",el=>el.getAttribute("aria-label")),"-3 / 4");
       const bars=await page.$$eval("#vr-preview [role=listitem]",els=>els.length);
       assert.equal(bars,8);
-      assert.equal(await page.$eval("#vr-preview .vr-original-bar",xs=>xs.length),8,
+      assert.equal(await page.$$eval("#vr-preview .vr-original-bar",xs=>xs.length),8,
         "Source frequencies must be visually comparable with 8 transformed bars");
       // A theoretical target smaller than a physical P tick remains positive,
       // present in the editor, and never detaches/mutates the old audio binding.
