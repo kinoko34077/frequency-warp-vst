@@ -21,9 +21,9 @@ export function createVirtualRootPlan({
   positive(F,"source fundamental F");
   integer(m,1,64,"harmonic index step m");
   integer(q,1,32,"fold source partial q");
-  integer(h1,1,129,"first occupied index h1");
+  integer(h1,-129,129,"first occupied index h1");
   integer(count,1,32,"partial count");
-  if(!["series","fold-to-root"].includes(mode))throw RangeError("unknown series mode");
+  if(!["series","fold-to-root","auto-fold"].includes(mode))throw RangeError("unknown series mode");
   if(!["target","keep-spacing"].includes(placement))throw RangeError("unknown pitch placement");
   // A fixed input spacing forces F'=F and therefore H=F/m. Arbitrary
   // H and preserved spacing cannot be independently demanded at fixed m.
@@ -32,7 +32,8 @@ export function createVirtualRootPlan({
   const pitched=frequency(m*root,"pitched fundamental F'");
   const ratio=pitched/F;
   if(!Number.isFinite(ratio)||ratio<=0)throw RangeError("pitch multiplier overflow");
-  const numerator=mode==="series"?h1-m:-(q*m+1);
+  const numerator=mode==="fold-to-root"?-(q*m+1):h1-m;
+  const foldNegative=mode!=="series";
   const shift=numerator*root;
   if(!Number.isFinite(shift))throw RangeError("frequency shift overflow");
   const outputs=[];
@@ -41,10 +42,10 @@ export function createVirtualRootPlan({
     if(!Number.isFinite(before))throw RangeError("partial overflow");
     outputs.push(Object.freeze({
       k,source:k*F,pitched:k*pitched,signed:before,
-      output:mode==="fold-to-root"?Math.abs(before):before,
-      gridIndex:mode==="fold-to-root"?Math.abs(m*k+numerator):m*k+numerator,
-      reflected:mode==="fold-to-root"&&before<0,
-      atRoot:mode==="fold-to-root"?k===q:mode==="series"&&k===1&&h1===1
+      output:foldNegative?Math.abs(before):before,
+      gridIndex:foldNegative?Math.abs(m*k+numerator):m*k+numerator,
+      reflected:foldNegative&&before<0,
+      atRoot:foldNegative?Math.abs(m*k+numerator)===1:k===1&&h1===1
     }));
   }
   const notes=[];
@@ -66,7 +67,7 @@ export function createVirtualRootPlan({
   return Object.freeze({
     F,H:root,m,h1,q,mode,placement,pitched,ratio,numerator,shift,
     fraction:Object.freeze({n:numerator,m}),
-    hasPhysicalRoot:mode==="fold-to-root"||h1===1,
+    hasPhysicalRoot:outputs.some(row=>row.atRoot),
     outputs:Object.freeze(outputs),
     capability:Object.freeze({
       rationalStage:rationalCapability,physicalPivot:representablePivot,
