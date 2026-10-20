@@ -276,6 +276,7 @@ function settings(){
     invert:scalar("invert",()=>Number($("#invert").value)),
     mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
     engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
+    individualCycles:$("#individual-enabled").checked?2**Number($("#individual-cycles").value):0,
     pitchRatio:harmonic.r,
     shiftHz:harmonic.n*harmonic.r*harmonic.F/harmonic.m,
     carrierHz:harmonic.c,zeroMode:0,
@@ -309,6 +310,7 @@ function settings(){
     value.engine=engineForInbandCurve(coreCurve,f=>
       mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
   }
+  if(value.engine!==0)value.individualCycles=0;
   return value;
 }
 
@@ -659,8 +661,18 @@ async function ensureSharedCore(){
   }
   return state.wasmPromise;
 }
+function refreshIndividualSettings(){
+ const s=settings(),supported=s.engine===0,enabled=$("#individual-enabled"),range=$("#individual-cycles");
+ enabled.disabled=!supported;range.disabled=!supported||!enabled.checked;
+ $("#individual-cycle-field").hidden=!enabled.checked;
+ $("#individual-cycle-value").textContent=(2**Number(range.value))+"周期";
+ $("#individual-model-status").textContent=supported?
+  "A方式の実測K/f窓で位相・振幅を推定し、リアルタイムRust周波数ワープへ反映します。FFT窓長を超える場合は制限されます。":
+  "B方式のK/f分析は未実装です。チェックは保持し、Aへ戻すと有効になります。WSOLA・複合・AMもRustリアルタイムでは未対応です。";
+}
 function updateEngineInfo(){
   const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
+  refreshIndividualSettings();
   const latency=1000*(q.fftSize-1)/rate;
   const names=["A · 部分音再合成","B · STFT変換"];
   const explain=[
@@ -1531,6 +1543,10 @@ for(const name of ["mode","outside","quality","overlap","engine"]){
   $("#"+name).addEventListener("change",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");updateEngineInfo();});
+for(const id of ["individual-enabled","individual-cycles"]){
+ $("#"+id).addEventListener("input",()=>{updateParams(id);updateEngineInfo();});
+ $("#"+id).addEventListener("change",()=>{updateParams(id);updateEngineInfo();});
+}
 $("#graph-log").addEventListener("input",drawCurve);
 $("#processing-min-hz").addEventListener("change",event=>{
   const v=Number(event.target.value);
