@@ -38,9 +38,14 @@ test("one typed-percent controller retains canonical precision and notifies exac
   field.trigger("change");
   assert.equal(changes.length,1,"input+change must not commit a second callback");
   assert.ok(renders.length>=2);
+  field.value="100";
+  field.trigger("input");
+  assert.equal(binding.value,1,"100% must map to the canonical endpoint");
+  assert.equal(changes.length,2);
   field.value="999";
   field.trigger("input");
-  assert.equal(binding.value,1,"valid high input clamps to declared max");
+  assert.equal(binding.value,1,"invalid >100% must preserve the last valid canonical value");
+  assert.equal(field.dataset.invalid,"true");
   assert.equal(changes.length,2);
 });
 
