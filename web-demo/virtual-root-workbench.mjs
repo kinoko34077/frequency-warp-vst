@@ -1,215 +1,254 @@
-/** Purpose-first virtual fundamental interface.
- * Old harmonics-panel stays owned and untouched until the full V2/V3
- * acceptance/retirement gate. No speculation about hearing a theoretical H.
+/** User-directed #276 V5 interface. Legacy harmonics-panel and old DSP stay intact.
+ * Compact arithmetic progression, signed auto-fold, direct realtime DSP updates.
  */
-import {createVirtualRootPlan,virtualRootStatus} from "./virtual-root-plan.mjs";
-import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
-const $=id=>document.querySelector(id);
-const number=id=>Number($("#"+id).value);
-const concise=v=>v===0?"0":Number.isFinite(v)?(
-  Math.abs(v)<.001?Number(v.toPrecision(8)).toString():
-  Number(v.toFixed(3)).toString()):"—";
-function fractionOf({n,m}){
-  const root=document.createElement("span");
-  root.className="vr-fraction";
-  root.setAttribute("role","math");
-  root.setAttribute("aria-label",n+" / "+m);
-  for(const [cls,value] of [["vr-numerator",n],["vr-denominator",m]]){
-    const part=document.createElement("span");
-    part.className=cls;part.textContent=String(value);root.append(part);
+import {createVirtualRootPlan} from "./virtual-root-plan.mjs";
+import {hzFromVirtualRootRail,virtualRootRailFromHz,
+  virtualRootPercentFromHz,virtualRootHzFromPercent} from "./virtual-root-rail.mjs";
+import {parseView,formatView} from "./parameter-units.mjs";
+const $=selector=>document.querySelector(selector);
+const finite=v=>typeof v==="number"&&Number.isFinite(v);
+const fmt=(v,digits=3)=>finite(v)?Number(v.toFixed(digits)).toString():"—";
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+function fraction({n,m}){
+  const node=document.createElement("span");node.className="vr-fraction";
+  node.setAttribute("role","math");node.setAttribute("aria-label",n+" / "+m);
+  for(const [type,num] of [["vr-numerator",n],["vr-denominator",m]]){
+    const item=document.createElement("span");item.className=type;item.textContent=String(num);node.append(item);
   }
-  return root;
+  return node;
+}
+const field=(key,title,value,min,max,step,rail=true)=>`
+  <div class="vr-control" data-vr-control="${key}">
+    <label for="vr-${key}">${title}</label>
+    ${key==="target-h"||key==="source-f"?`<div class="unit-switch vr-unit-switch" role="group" aria-label="${title}の単位">
+      <button type="button" data-vr-unit-for="${key}" data-vr-unit="hz" aria-pressed="true">Hz</button>
+      <button type="button" data-vr-unit-for="${key}" data-vr-unit="note" aria-pressed="false">♪</button>
+      <button type="button" data-vr-unit-for="${key}" data-vr-unit="percent" aria-pressed="false">%</button>
+    </div>`:""}
+    <div class="vr-number-row">
+      <button type="button" class="vr-counter" data-vr-counter="${key}" data-delta="-1" aria-label="${title}を減らす">−</button>
+      <input id="vr-${key}" type="number" inputmode="decimal" step="${step}" min="${min}" max="${max}" value="${value}" aria-label="${title}">
+      <button type="button" class="vr-counter" data-vr-counter="${key}" data-delta="1" aria-label="${title}を増やす">+</button>
+      <button type="button" class="vr-digit-open" data-vr-digit="${key}" aria-expanded="false" aria-controls="vr-digits-${key}">桁別</button>
+    </div>
+    <div id="vr-digits-${key}" class="vr-digit-picker" hidden></div>
+    ${rail?`<input id="vr-${key}-rail" type="range" min="${key==="target-h"||key==="source-f"?1:min}" max="${key==="target-h"||key==="source-f"?20000:max}" step="1" value="${Math.round(value)}" aria-label="${title}を整数単位で調整">`:""}
+  </div>`;
+function makeDigitPicker(key,places,signed,input,change){
+  const root=$("#vr-digits-"+key),button=document.querySelector('[data-vr-digit="'+key+'"]');
+  let controls=[];
+  if(signed){
+    const sign=document.createElement("select");sign.setAttribute("aria-label","符号");
+    for(const [v,name] of [["1","+"],["-1","−"]]){
+      const option=document.createElement("option");option.value=v;option.textContent=name;sign.append(option);
+    }
+    root.append(sign);controls.push({select:sign,place:null});
+  }
+  for(const place of places){
+    const select=document.createElement("select");
+    select.setAttribute("aria-label",place<0?"小数第"+(-place)+"位":"10の"+place+"乗の桁");
+    for(let i=0;i<=9;i++){
+      const option=document.createElement("option");option.value=String(i);option.textContent=String(i);
+      select.append(option);
+    }
+    root.append(select);controls.push({select,place});
+  }
+  const sync=()=>{
+    const v=Number(input.value)||0;
+    for(const {select,place} of controls)
+      select.value=place===null?(v<0?"-1":"1"):
+        String(Math.floor(Math.abs(v)/10**place+1e-8)%10);
+  };
+  root.addEventListener("change",()=>{
+    let amount=0,sign=1;
+    for(const {select,place} of controls){
+      if(place===null)sign=Number(select.value);
+      else amount+=Number(select.value)*10**place;
+    }
+    input.value=String(Number((sign*amount).toFixed(2)));
+    change();
+  });
+  button.addEventListener("click",()=>{
+    root.hidden=!root.hidden;button.setAttribute("aria-expanded",String(!root.hidden));
+    if(!root.hidden)sync();
+  });
+  return sync;
 }
 export function mountVirtualRootWorkbench({onApply,onCurrent}){
-  // Static, trusted markup. An isolated module keeps the huge legacy Lab DOM
-  // intact until all accepted feature/real-browser gates are satisfied.
-  const root=$("#virtual-root-workbench");
-  if(!root)return;
+  const root=$("#virtual-root-workbench");if(!root)return;
   root.innerHTML=`
-    <div class="section-header"><div><p class="eyebrow">VIRTUAL FUNDAMENTAL</p><h2>倍音を配置する</h2></div></div>
-    <p class="vr-intro">仮想基音の場所・番号の飛ばし幅・最初の番号から音の並びを作ります。バーは理論値であり、音源の実測ではありません。</p>
+    <div class="section-header"><h2>倍音を配置する</h2></div>
     <div class="vr-inputs">
-      <label>元基音 F（Hz・手入力）<input id="vr-source-f" type="text" inputmode="decimal" value="350"></label>
-      <label>配置方法<select id="vr-placement"><option value="target">仮想基音を自由に配置（間隔も変化）</option><option value="keep-spacing">元の倍音間隔を保持（Hは自動算出）</option></select></label>
-      <label>仮想基音 H（Hz）<input id="vr-target-h" type="text" inputmode="decimal" value="87.5" aria-describedby="vr-status"><input id="vr-h-rail" type="range" min="0" max="1000" step="1" aria-label="仮想基音を正の周波数でドラッグ"><small id="vr-rail-note"></small></label>
-      <label>倍音の並べ方<select id="vr-mode"><option value="series">一定間隔で並べる</option><option value="fold-to-root">0Hz折返しでHへ到達</option></select></label>
-      <label>番号の間隔 m<input id="vr-step-m" type="number" min="1" max="64" step="1" value="4"></label>
-      <label id="vr-first-field">最初の番号 h₁<input id="vr-first-index" type="number" min="1" max="129" step="1" value="1"></label>
-      <label id="vr-fold-field" hidden>折返す元倍音 q<input id="vr-fold-q" type="number" min="1" max="32" step="1" value="1"></label>
+      ${field("source-f","元基音 F",350,.01,5120000,.01)}
+      <div class="vr-control"><label for="vr-placement">音程の配置</label><select id="vr-placement">
+        <option value="target">仮想基音を動かす</option><option value="keep-spacing">元の倍音間隔を維持</option>
+      </select></div>
+      ${field("target-h","仮想基音 H",87.5,.01,20000,.01)}
+      ${field("step-m","番号間隔",4,1,64,1)}
+      ${field("first-index","初項",1,-129,129,1)}
     </div>
-    <div class="vr-presets" role="group" aria-label="番号列の例">
-      <button type="button" data-vr-preset="4:1">1・5・9…</button>
-      <button type="button" data-vr-preset="4:3">3・7・11…</button>
-      <button type="button" data-vr-preset="2:1">1・3・5…</button>
-    </div>
-    <p id="vr-summary" class="vr-summary" aria-live="polite"></p>
-    <p class="vr-legend"><span class="vr-legend-original">━ 元の部分音</span><span class="vr-legend-result">━ 配置後の部分音（理論）</span></p>
-    <div id="vr-preview" class="vr-preview" role="list" aria-label="倍音の理論上の移動"></div>
+    <p id="vr-sequence" class="vr-sequence" aria-live="polite"></p>
     <div id="vr-formula" class="vr-formula"></div>
-    <p id="vr-status" class="vr-status" aria-live="polite"></p>
-    <button id="vr-apply" class="primary" type="button">この配置を音声設定へ適用</button>
-    <p id="vr-audio-status" class="vr-audio-status" role="status" aria-live="polite">音声処理への反映は未確認です。</p>
-    <small>0.001Hz未満でも理論値は保持。現在の音声処理で適用できない場合、0Hzにせず元の音声設定を保持します。</small>`;
-  const inputs=["vr-source-f","vr-target-h","vr-step-m","vr-first-index","vr-fold-q"];
-  const foldField=$("#vr-fold-field"),startField=$("#vr-first-field");
-  const preview=$("#vr-preview"),status=$("#vr-status"),audio=$("#vr-audio-status");
-  const apply=$("#vr-apply"),formula=$("#vr-formula"),summary=$("#vr-summary");
-  let current=null,appliedFingerprint=null;
-  const mode=()=>$("#vr-mode").value;
-  const placement=()=>$("#vr-placement").value;
-  const collect=()=>createVirtualRootPlan({
-    F:number("vr-source-f"),H:number("vr-target-h"),m:number("vr-step-m"),
-    h1:number("vr-first-index"),q:number("vr-fold-q"),
-    mode:mode(),placement:placement(),count:8
-  });
-  function render(){
-    foldField.hidden=mode()!=="fold-to-root";
-    startField.hidden=mode()==="fold-to-root";
-    const keep=placement()==="keep-spacing";
-    $("#vr-target-h").readOnly=keep;
-    $("#vr-target-h").setAttribute("aria-readonly",String(keep));
-    $("#vr-h-rail").disabled=keep;
+    <details id="vr-details"><summary>詳細表示</summary>
+      <p id="vr-summary" class="vr-summary"></p>
+      <p class="vr-legend"><span>━ 元の部分音</span><span>━ 配置後の部分音（理論）</span></p>
+      <div id="vr-preview" class="vr-preview" role="list" aria-label="倍音配置の詳細"></div>
+    </details>
+    <p id="vr-error" class="vr-error" role="status" hidden></p>`;
+  const state={F:350,H:87.5,m:4,h1:1}, units={F:"hz",H:"hz"};
+  const inputIds={F:"vr-source-f",H:"vr-target-h",m:"vr-step-m",h1:"vr-first-index"};
+  const keyIds={F:"source-f",H:"target-h",m:"step-m",h1:"first-index"};
+  const controls=Object.fromEntries(Object.entries(keyIds).map(([key,id])=>[key,$("#vr-"+id)]));
+  const rails=Object.fromEntries(Object.entries(keyIds).map(([key,id])=>[key,$("#vr-"+id+"-rail")]));
+  const percentOpts={id:"fundamental",fromRail:virtualRootHzFromPercent,toRail:virtualRootPercentFromHz,digits:2};
+  const getUnit=key=>units[key]||"hz";
+  function fromText(key,raw){
+    if(!String(raw).trim())return null;
+    const unit=getUnit(key);
+    if(unit!=="note"&&!/^-?\d+(?:\.\d{0,2})?$/.test(String(raw)))return null;
     try{
-      current=collect();
-      if(keep)$("#vr-target-h").value=String(current.H);
-      const rail=virtualRootRailFromHz(current.H);
-      $("#vr-h-rail").value=String(rail.position);
-      $("#vr-h-rail").setAttribute("aria-valuetext",String(current.H)+"Hz");
-      $("#vr-rail-note").textContent=rail.limited?
-        "ドラッグ範囲外。直接入力したHは丸めず保持します。":
-        "0Hzを含まない対数レール（入力値は丸めません）";
-      const plan=current;
-      const hasH=plan.hasPhysicalRoot;
-      summary.textContent="仮想基音 "+concise(plan.H)+" Hz ・ 間隔 "+
-        plan.m+"番号 ・ "+(hasH?"Hそのものの部分音あり":"Hは番号を数える基準（実音としては未出現）");
-      formula.replaceChildren(
-        document.createTextNode("Δ = "),fractionOf(plan.fraction),
-        document.createTextNode(" × F′ = "+concise(plan.shift)+" Hz （F′ = "+
-          concise(plan.pitched)+" Hz、前段Pitch "+concise(plan.ratio)+"倍）")
-      );
-      const maxHz=Math.max(...plan.outputs.flatMap(x=>[x.source,x.output]),Number.MIN_VALUE);
-      const fragment=document.createDocumentFragment();
-      for(const row of plan.outputs){
-        const el=document.createElement("div");el.className="vr-partial";el.setAttribute("role","listitem");
-        if(row.atRoot)el.classList.add("at-virtual-root");
-        if(row.reflected)el.classList.add("vr-is-reflected");
-        const caption=document.createElement("div");caption.className="vr-partial-caption";
-        caption.textContent="元の第"+row.k+"倍音 "+concise(row.source)+" Hz → "+
-          (row.reflected?"負へ移動 "+concise(row.signed)+" Hz → 折返し ":"")+
-          concise(row.output)+" Hz（番号"+row.gridIndex+
-          (row.atRoot?"・仮想基音へ到達":"")+"）";
-        const orig=document.createElement("div");orig.className="vr-partial-track vr-original-track";
-        const originalBar=document.createElement("span");originalBar.className="vr-partial-bar vr-original-bar";
-        originalBar.style.width=Math.max(1,Math.min(100,100*row.source/maxHz))+"%";
-        orig.append(originalBar);
-        const rail=document.createElement("div");rail.className="vr-partial-track";
-        const bar=document.createElement("span");bar.className="vr-partial-bar";
-        bar.style.width=Math.max(1,Math.min(100,100*row.output/maxHz))+"%";
-        rail.append(bar);el.append(caption,orig,rail);fragment.append(el);
+      const n=(key==="H"||key==="F")?
+        parseView(raw,unit,percentOpts):Number(raw);
+      if(!finite(n))return null;
+      if((key==="H"||key==="F")&&n<=0)return null;
+      if(key==="H"&&n>20000 || key==="F"&&n>5120000)return null;
+      if(key==="m"&&(!Number.isSafeInteger(n)||n<1||n>64))return null;
+      if(key==="h1"&&(!Number.isSafeInteger(n)||n< -129||n>129))return null;
+      return n;
+    }catch{return null;}
+  }
+  const displayValue=key=>key==="H"||key==="F"?
+    String(formatView(state[key],getUnit(key),percentOpts)):String(state[key]);
+  let activePlan=null,lastFingerprint="",generation=0;
+  const error=$("#vr-error");
+  function render(){
+    const keep=$("#vr-placement").value==="keep-spacing";
+    if(keep)state.H=state.F/state.m;
+    controls.H.readOnly=keep;rails.H.disabled=keep;
+    for(const key of Object.keys(controls)){
+      const el=controls[key];
+      if(document.activeElement!==el)el.value=displayValue(key);
+      el.setAttribute("aria-invalid","false");
+      if(rails[key])rails[key].value=String(key==="H"||key==="F"?
+        virtualRootRailFromHz(state[key]).position:state[key]);
+      if(key==="H"||key==="F")for(const button of document.querySelectorAll('[data-vr-unit-for="'+keyIds[key]+'"]')){
+        button.setAttribute("aria-pressed",String(button.dataset.vrUnit===getUnit(key)));
       }
-      preview.replaceChildren(fragment);
-      status.textContent=virtualRootStatus(plan);
-      status.dataset.state=plan.capability.rationalStage?"ready":"theory";
-      apply.disabled=!plan.capability.rationalStage;
-      if(!plan.capability.rationalStage){
-        appliedFingerprint=null;
-        audio.textContent="音声には未適用です。現在の音声設定は保持されます。";
-      }
-    }catch(error){
-      current=null;apply.disabled=true;
-      status.textContent="数値を確認してください："+error.message;
-      status.dataset.state="invalid";
-      summary.textContent="入力中。正しい値になるまで直前の音声設定を保持します。";
-      preview.replaceChildren();formula.replaceChildren();
-      audio.textContent="直前の音声設定を保持中";
     }
-  }
-  function refreshAudio(){
-    if(!appliedFingerprint)return;
-    const original=$("#harmonic-apply-evidence");
-    const phase=original?.dataset.phase||"unknown";
-    audio.textContent=phase==="applied"?"音声エンジン反映済（ACK）":
-      phase==="pending"?"DSP反映を確認中…":
-      "音声反映状態："+(original?.textContent?.trim()||"未確認");
-    audio.dataset.phase=phase;
-  }
-  for(const id of [...inputs,"vr-mode","vr-placement"])
-    $("#"+id).addEventListener("input",()=>{
-      if(id==="vr-placement"&&placement()==="keep-spacing"){
-        const F=number("vr-source-f"),m=number("vr-step-m");
-        if(Number.isFinite(F)&&F>0&&m>=1)
-          $("#vr-target-h").value=String(F/m);
+    try{
+      activePlan=createVirtualRootPlan({
+        F:state.F,H:state.H,m:state.m,h1:state.h1,mode:"auto-fold",
+        placement:keep?"keep-spacing":"target",count:8
+      });
+      const p=activePlan;
+      const seq=p.outputs.map(row=>fmt(row.output,3)).join(", ");
+      $("#vr-sequence").textContent="倍音列: "+seq+"…";
+      $("#vr-formula").replaceChildren(document.createTextNode("aₖ = |"+state.h1+" + (k−1) × "+state.m+"| × "+fmt(p.H,2)+" Hz　 Δ = "),fraction(p.fraction),
+        document.createTextNode(" × "+fmt(p.pitched,2)+" Hz"));
+      $("#vr-summary").textContent="F′ "+fmt(p.pitched,2)+" Hz · Pitch "+fmt(p.ratio,3)+"倍 · H "+fmt(p.H,2)+" Hz";
+      const graph=$("#vr-preview"),part=document.createDocumentFragment();
+      const max=Math.max(1,...p.outputs.flatMap(row=>[row.source,row.output]));
+      for(const row of p.outputs){
+        const el=document.createElement("div");el.className="vr-partial";el.setAttribute("role","listitem");
+        if(row.reflected)el.classList.add("vr-is-reflected");
+        if(row.atRoot)el.classList.add("at-virtual-root");
+        const caption=document.createElement("div");caption.className="vr-partial-caption";
+        caption.textContent="第"+row.k+"倍音 "+fmt(row.source)+" → "+fmt(row.output)+" Hz"+
+          (row.reflected?"（0Hz折返し）":"");
+        el.append(caption);
+        for(const [value,cls] of [[row.source,"vr-original-bar"],[row.output,""]]){
+          const track=document.createElement("div");track.className="vr-partial-track";
+          const bar=document.createElement("span");bar.className="vr-partial-bar "+cls;
+          bar.style.width=Math.max(1,100*value/max)+"%";track.append(bar);el.append(track);
+        }
+        part.append(el);
       }
-      appliedFingerprint=null;
-      audio.textContent="配置を編集中。現在の表示値は音声へ未適用です。";
-      audio.dataset.phase="edited";
+      graph.replaceChildren(part);
+      error.hidden=true;error.textContent="";
+    }catch(e){activePlan=null;error.hidden=false;error.textContent="数値を確認してください";$("#vr-sequence").textContent="";$("#vr-preview").replaceChildren();}
+  }
+  const applyRealtime=()=>{
+    const version=++generation;
+    const p=activePlan;
+    if(!p?.capability.rationalStage)return;
+    const fp=[p.F,p.H,p.m,p.h1,p.numerator,p.ratio,p.shift,p.placement].join("|");
+    if(fp===lastFingerprint)return;
+    // Batch rapid slider gestures to one real engine parameter transaction per frame.
+    requestAnimationFrame(()=>{
+      if(version!==generation||!activePlan||!activePlan.capability.rationalStage)return;
+      try{onApply(activePlan);lastFingerprint=fp;error.hidden=true;error.textContent="";}
+      catch(e){error.hidden=false;error.textContent="音声設定エラー";error.title=String(e.message||e);}
+    });
+  };
+  function changed(key){
+    const n=fromText(key,controls[key].value);
+    if(n===null){controls[key].setAttribute("aria-invalid","true");return;}
+    state[key]=n;
+    render();applyRealtime();
+  }
+  for(const key of Object.keys(controls)){
+    const el=controls[key];
+    el.addEventListener("input",()=>changed(key));
+    el.addEventListener("change",()=>{changed(key);if(document.activeElement!==el)el.value=displayValue(key);});
+    el.addEventListener("blur",()=>{el.value=displayValue(key);el.setAttribute("aria-invalid","false");});
+    if(rails[key])rails[key].addEventListener("input",()=>{
+      const raw=Number(rails[key].value);
+      if(key==="m"||key==="h1")state[key]=Math.round(raw);
+      else state[key]=hzFromVirtualRootRail(raw);
+      render();applyRealtime();
+    });
+  }
+  for(const button of root.querySelectorAll("[data-vr-counter]")){
+    button.addEventListener("click",()=>{
+      const key=Object.keys(keyIds).find(k=>keyIds[k]===button.dataset.vrCounter);
+      if(!key||controls[key].readOnly)return;
+      const unit=getUnit(key);
+      if(unit==="note"){
+        state[key]=state[key]*2**(Number(button.dataset.delta)/12);
+      }else if(unit==="percent"){
+        state[key]=clamp(state[key]+Number(button.dataset.delta)*19999/100,1,20000);
+      }else{
+        const delta=(key==="m"||key==="h1")?1:.01;
+        state[key]=Math.round((state[key]+Number(button.dataset.delta)*delta)*100)/100;
+      }
+      if(key==="m")state[key]=clamp(Math.round(state[key]),1,64);
+      if(key==="h1")state[key]=clamp(Math.round(state[key]),-129,129);
+      if(key==="H"||key==="F")state[key]=clamp(state[key],.01,key==="H"?20000:5120000);
+      render();applyRealtime();
+    });
+  }
+  for(const button of root.querySelectorAll("[data-vr-unit]")){
+    button.addEventListener("click",()=>{
+      const key=button.dataset.vrUnitFor==="target-h"?"H":"F";
+      units[key]=button.dataset.vrUnit;
+      controls[key].type=units[key]==="note"?"text":"number";
+      controls[key].inputMode=units[key]==="note"?"text":"decimal";
+      controls[key].step=units[key]==="note"?"any":".01";
+      controls[key].min=units[key]==="percent"?"0":".01";
+      controls[key].max=units[key]==="percent"?"100":String(key==="H"?20000:5120000);
       render();
     });
-  $("#vr-h-rail").addEventListener("input",()=>{
-    if(placement()!=="target")return;
-    $("#vr-target-h").value=String(hzFromVirtualRootRail(number("vr-h-rail")));
-    appliedFingerprint=null;render();
-  });
-  document.querySelectorAll("[data-vr-preset]").forEach(button=>
-    button.addEventListener("click",()=>{
-      const [m,h1]=button.dataset.vrPreset.split(":").map(Number);
-      $("#vr-mode").value="series";$("#vr-step-m").value=String(m);
-      $("#vr-first-index").value=String(h1);
-      appliedFingerprint=null;
-      audio.textContent="番号列を編集中。音声には未適用です。";
-      audio.dataset.phase="edited";
-      render();
-    })
-  );
-  apply.addEventListener("click",()=>{
-    if(!current||!current.capability.rationalStage)return;
-    try{
-      onApply(current);
-      appliedFingerprint=current;
-      audio.textContent="音声エンジンへ設定を要求。ACK確認前は適用済みとは表示しません。";
-      audio.dataset.phase="pending";
-      refreshAudio();
-    }catch(error){
-      audio.textContent="音声設定へ未反映："+error.message;
-      audio.dataset.phase="rejected";
-    }
-  });
-  const evidence=$("#harmonic-apply-evidence");
-  if(evidence){
-    const observer=new MutationObserver(refreshAudio);
-    observer.observe(evidence,{childList:true,subtree:true,characterData:true,
-      attributes:true,attributeFilter:["data-phase"]});
   }
-  // On A/B restore or global reset, avoid falsely presenting old draft data
-  // as the currently active DSP configuration. The next V3 step will migrate
-  // workbench mode/preset metadata into the canonical A/B snapshot.
+  $("#vr-placement").addEventListener("change",()=>{render();applyRealtime();});
+  const pickers=[
+    ["source-f",[6,5,4,3,2,1,0,-1,-2],false],
+    ["target-h",[4,3,2,1,0,-1,-2],false],
+    ["step-m",[1,0],false],["first-index",[2,1,0],true]
+  ];
+  for(const [id,places,signed] of pickers)
+    makeDigitPicker(id,places,signed,$("#vr-"+id),()=>changed(
+      Object.keys(keyIds).find(k=>keyIds[k]===id)));
   document.addEventListener("fw:virtual-root-external-change",()=>{
-    appliedFingerprint=null;
-    const previous=onCurrent?.();
-    if(previous && Number.isFinite(previous.F) && previous.F>0 &&
-       Number.isInteger(previous.m) && previous.m>=1 && previous.m<=64 &&
-       Number.isFinite(previous.r) && previous.r>0){
-      const H=previous.r*previous.F/previous.m;
-      const q=previous.q;
-      const folded=Number.isSafeInteger(q) && q>=1 && q<=32 &&
-        previous.n===-(q*previous.m+1);
-      const first=previous.m+previous.n;
-      // If the existing sound is a valid sparse series or selected fold,
-      // restore its exact coordinates rather than displaying an unrelated
-      // draft after A/B load or Reset.
-      if(folded || (Number.isSafeInteger(first)&&first>=1&&first<=129)){
-        $("#vr-source-f").value=String(previous.F);
-        $("#vr-target-h").value=String(H);
-        $("#vr-step-m").value=String(previous.m);
-        $("#vr-fold-q").value=String(q);
-        $("#vr-first-index").value=String(folded?1:first);
-        $("#vr-mode").value=folded?"fold-to-root":"series";
+    generation++;lastFingerprint="";
+    const old=onCurrent?.();
+    if(old&&finite(old.F)&&old.F>0&&finite(old.r)&&old.r>0&&Number.isSafeInteger(old.m)&&old.m>=1&&old.m<=64){
+      const first=old.m+old.n;
+      if(Number.isSafeInteger(first)&&first>=-129&&first<=129){
+        Object.assign(state,{F:old.F,H:old.F*old.r/old.m,m:old.m,h1:first});
         $("#vr-placement").value="target";
       }
     }
-    render();
-    audio.textContent="別画面の加工設定を表示中。再生中のDSP反映は別途確認してください。";
-    audio.dataset.phase="external";
+    render(); // Loading A/B/Reset is already an existing DSP transaction; never write again.
   });
-  render();
+  render(); // Initial mount never overwrites existing audio settings.
 }
