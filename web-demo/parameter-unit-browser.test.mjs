@@ -26,7 +26,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     let started=false;
     for(let i=0;i<30;i++){
       try {
-        const response=await page.goto("http://127.0.0.1:8774/index.html",{waitUntil:"domcontentloaded"});
+        const response=await page.goto("http://127.0.0.1:8774/index.html?legacy_lab=1",{waitUntil:"domcontentloaded"});
         if(response?.ok()){started=true;break;}
       }catch{}
       await sleep(250);
@@ -798,7 +798,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16000);
     // Opt-in layout editor coexists: it must NOT hijack snap menus on
     // a recognized parameter, but retains its context menu elsewhere.
-    await page.goto("http://127.0.0.1:8774/index.html?layout_editor=1",{
+    await page.goto("http://127.0.0.1:8774/index.html?legacy_lab=1&layout_editor=1",{
       waitUntil:"domcontentloaded"
     });
     await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{
