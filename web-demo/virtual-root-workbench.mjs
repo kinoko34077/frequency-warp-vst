@@ -4,7 +4,7 @@
  */
 import {createVirtualRootPlan,virtualRootStatus} from "./virtual-root-plan.mjs";
 const $=id=>document.querySelector(id);
-const number=id=>Number($(id).value);
+const number=id=>Number($("#"+id).value);
 const concise=v=>v===0?"0":Number.isFinite(v)?(
   Math.abs(v)<.001?Number(v.toPrecision(8)).toString():
   Number(v.toFixed(3)).toString()):"—";
@@ -121,7 +121,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     audio.dataset.phase=phase;
   }
   for(const id of [...inputs,"vr-mode","vr-placement"])
-    $(id).addEventListener("input",()=>{
+    $("#"+id).addEventListener("input",()=>{
       if(id==="vr-placement"&&placement()==="keep-spacing"){
         const F=number("vr-source-f"),m=number("vr-step-m");
         if(Number.isFinite(F)&&F>0&&m>=1)
