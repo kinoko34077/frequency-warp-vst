@@ -52,12 +52,26 @@ test('user-visible Lab opt-in controls and original Rust engine selector coexist
  const html=readFileSync(new URL('./index.html',import.meta.url),'utf8');
  const app=readFileSync(new URL('./app.mjs',import.meta.url),'utf8');
  const worker=readFileSync(new URL('./lab-port-worker.mjs',import.meta.url),'utf8');
- for(const id of ['lab-port-backend','lab-port-individual','lab-port-cycles','lab-port-short',
+ for(const id of ['lab-port-backend','lab-port-individual','lab-port-apply-warp','lab-port-cycles','lab-port-short',
  'lab-port-long','lab-port-speed','lab-port-pitch','lab-port-preview','lab-port-stop'])
   assert.match(html,new RegExp('id="'+id+'"'));
  assert.match(app,/mountLabComparison/);
  assert.match(app,/AudioWorkletNode\(ctx,"frequency-warp-rust"/);
  assert.match(app,/controls\.wet\.addEventListener/);
  assert.match(worker,/renderPCM\(\{channels,sampleRate,sourceStartSeconds,\.\.\.options\}\)/);
- assert.match(html,/Frequency Warpの非線形写像・反転・曲率・移動は、この試聴にはまだ適用しません/);
+ assert.match(html,/Rustで処理してからLabへ渡します/);
+});
+
+test('sequential native Rust Warp stage is opt-in and routed through the existing actual WASM Worker',()=>{
+ const app=readFileSync(new URL('./app.mjs',import.meta.url),'utf8');
+ const ui=readFileSync(new URL('./lab-port.mjs',import.meta.url),'utf8');
+ const html=readFileSync(new URL('./index.html',import.meta.url),'utf8');
+ assert.match(app,/getWarpSettings:\(\)=>prepareStreamSettings/);
+ assert.match(ui,/new URL\('\.\/processor\.worker\.mjs',import\.meta\.url\)/);
+ assert.match(ui,/type:'process',channels:copies/);
+ assert.match(ui,/settings:checked\.settings/);
+ assert.match(ui,/const wet=Math\.max\(0,Math\.min\(1,Number\(checked\.settings\.wet\)\)\)/);
+ assert.match(ui,/launchLab\(combined,0\)/);
+ assert.match(ui,/if\(!warp\.checked\)/);
+ assert.match(html,/現在のFrequency Warp変換を先に適用/);
 });

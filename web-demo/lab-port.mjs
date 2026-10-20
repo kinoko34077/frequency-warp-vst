@@ -14,9 +14,9 @@ export function modelControls({individual,backend,cycles,short,long,speed,pitch}
   periodCycles:cycles,shortFftSize:short,longFftSize:long,
   fftSize:Math.min(4096,long),speed,semitones:pitch};
 }
-export function mountLabComparison({getSource,getPosition,getContext,stopBase}){
+export function mountLabComparison({getSource,getPosition,getContext,stopBase,getWarpSettings}){
  const $=id=>document.querySelector(id),p='#lab-port-';
- const backend=$(p+'backend'),individual=$(p+'individual'),
+ const backend=$(p+'backend'),individual=$(p+'individual'),warp=$(p+'apply-warp'),
   cycles=$(p+'cycles'),short=$(p+'short'),long=$(p+'long'),
   speed=$(p+'speed'),pitch=$(p+'pitch'),preview=$(p+'preview'),halt=$(p+'stop'),
   status=$(p+'status');
@@ -41,7 +41,7 @@ export function mountLabComparison({getSource,getPosition,getContext,stopBase}){
   preview.disabled=!getSource()?.channels;
  }
  function report(msg){status.textContent=msg;}
- for(const el of [backend,individual,cycles,short,long,speed,pitch]){
+ for(const el of [backend,individual,warp,cycles,short,long,speed,pitch]){
   el.addEventListener('input',()=>{cancel();refresh();});
   el.addEventListener('change',refresh);
  }
@@ -58,35 +58,77 @@ export function mountLabComparison({getSource,getPosition,getContext,stopBase}){
   const length=Math.min(source.channels[0].length-position,Math.ceil(source.sampleRate*1.5));
   if(length<Math.ceil(source.sampleRate*.04)){report('音声末尾のため試聴区間が短すぎます。');return;}
   const channels=source.channels.map(x=>x.slice(position,position+length));
-  report('試聴区間を解析中…（音声は端末内のみ）');
+  report(warp.checked?'Rust変換→Lab解析を準備中…':'Lab解析を準備中…');
   try{
    await stopBase();
    if(my!==token)return;
-   worker=new Worker(new URL('./lab-port-worker.mjs',import.meta.url),{type:'module'});
-   const owned=worker;
-   worker.onmessage=async ({data})=>{
-    if(my!==token||worker!==owned||getSource()?.sourceToken!==sourceTag)return;
-    worker.terminate();worker=null;
-    if(data.type==='error'){report('解析失敗：'+data.message);refresh();return;}
-    try{
-     const ctx=await getContext();
-     if(my!==token||getSource()?.sourceToken!==sourceTag)return;
-     const buffer=ctx.createBuffer(data.channels.length,data.channels[0].length,source.sampleRate);
-     data.channels.forEach((x,i)=>buffer.copyToChannel(x,i));
-     const output=ctx.createBufferSource();
-     output.buffer=buffer;output.connect(ctx.destination);node=output;
-     output.onended=()=>{if(node===output){node=null;halt.disabled=true;}};
-     output.start();halt.disabled=false;preview.disabled=false;
-     report('試聴中 · '+(options.jointBackend?'個別波長＋':'')+backend.value.toUpperCase()+' · '+data.duration.toFixed(2)+'秒');
-    }catch(e){report('試聴開始に失敗：'+e.message);refresh();}
+   const launchLab=(input,time)=>{
+    if(my!==token||getSource()?.sourceToken!==sourceTag)return;
+    worker=new Worker(new URL('./lab-port-worker.mjs',import.meta.url),{type:'module'});
+    const owned=worker;
+    worker.onmessage=async ({data})=>{
+     if(my!==token||worker!==owned||getSource()?.sourceToken!==sourceTag)return;
+     worker.terminate();worker=null;
+     if(data.type==='error'){report('Lab解析失敗：'+data.message);refresh();return;}
+     try{
+      const ctx=await getContext();
+      if(my!==token||getSource()?.sourceToken!==sourceTag)return;
+      const buffer=ctx.createBuffer(data.channels.length,data.channels[0].length,source.sampleRate);
+      data.channels.forEach((x,i)=>buffer.copyToChannel(x,i));
+      const output=ctx.createBufferSource();
+      output.buffer=buffer;output.connect(ctx.destination);node=output;
+      output.onended=()=>{if(node===output){node=null;halt.disabled=true;}};
+      output.start();halt.disabled=false;preview.disabled=false;
+      report('試聴中 · '+(warp.checked?'Rust Warp→':'')+
+       (options.jointBackend?'個別波長＋':'')+backend.value.toUpperCase()+
+       ' · '+data.duration.toFixed(2)+'秒');
+     }catch(e){report('試聴開始に失敗：'+e.message);refresh();}
+    };
+    worker.onerror=e=>{
+     if(my!==token||worker!==owned)return;
+     worker.terminate();worker=null;report('Lab試聴が失敗しました。'+(e.message||''));refresh();
+    };
+    worker.postMessage({channels:input,sampleRate:source.sampleRate,sourceStartSeconds:time,options},
+      input.map(ch=>ch.buffer));
+    halt.disabled=false;
    };
-   worker.onerror=e=>{
-    if(my!==token||worker!==owned)return;
-    worker.terminate();worker=null;report('試聴処理が失敗しました。'+(e.message||''));refresh();
-   };
-   worker.postMessage({channels,sampleRate:source.sampleRate,sourceStartSeconds:position/source.sampleRate,options},
-     channels.map(ch=>ch.buffer));
-   halt.disabled=false;
+   if(!warp.checked){
+    launchLab(channels,position/source.sampleRate);
+   }else{
+    if(typeof getWarpSettings!=='function')throw Error('Frequency Warp設定を取得できません');
+    const checked=getWarpSettings();
+    if(!checked?.ok)throw Error('Rust Warp設定が有効ではありません：'+(checked?.message||checked?.field||'未対応'));
+    const nativeWorker=new Worker(new URL('./processor.worker.mjs',import.meta.url),{type:'module'});
+    worker=nativeWorker;
+    const copies=channels.map(ch=>ch.slice());
+    const wet=Math.max(0,Math.min(1,Number(checked.settings.wet)));
+    report('Rust/WASM周波数変換中…その後Labで解析します');
+    nativeWorker.onmessage=({data})=>{
+     if(my!==token||worker!==nativeWorker||getSource()?.sourceToken!==sourceTag)return;
+     if(data.type==='error'){
+      nativeWorker.terminate();worker=null;
+      report('Rust周波数変換失敗：'+data.message);refresh();return;
+     }
+     if(data.type!=='done')return;
+     nativeWorker.terminate();worker=null;
+     const combined=data.channels.map((out,c)=>{
+      if(out.length!==channels[c].length)throw RangeError('Rust Warp変換長が一致しません');
+      return Float32Array.from(out,(v,i)=>(1-wet)*channels[c][i]+wet*v);
+     });
+     report('Rust変換完了。個別波長・Labモデルで解析中…');
+     // Rust-rendered audio is a *new* local segment; it has no original
+     // unwarped absolute oscillator phase basis.
+     launchLab(combined,0);
+    };
+    nativeWorker.onerror=e=>{
+     if(my!==token||worker!==nativeWorker)return;
+     nativeWorker.terminate();worker=null;
+     report('Rust周波数変換失敗：'+(e.message||''));refresh();
+    };
+    nativeWorker.postMessage({type:'process',channels:copies,
+      sampleRate:source.sampleRate,settings:checked.settings},copies.map(ch=>ch.buffer));
+    halt.disabled=false;
+   }
   }catch(e){if(my===token){report('試聴準備に失敗：'+e.message);refresh();}}
  });
  halt.addEventListener('click',()=>{cancel();report('試聴停止');});
