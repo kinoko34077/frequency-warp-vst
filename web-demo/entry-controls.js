@@ -4,6 +4,11 @@
  */
 (()=>{
   const $=id=>document.querySelector(id);
+  // Compatibility switch for the original #16 equation-heavy Lab.
+  // The legacy graph math and listeners remain in source, but the default
+  // workspace now has a task-first virtual root editor. No data migration.
+  if(new URL(location.href).searchParams.get("legacy_lab")==="1")
+    document.documentElement.dataset.legacyHarmonics="1";
   const dialog=$("#settings-dialog");
   const opener=$("#settings-open");
   // A settings entry inside the workbench must return to that actual trigger,
