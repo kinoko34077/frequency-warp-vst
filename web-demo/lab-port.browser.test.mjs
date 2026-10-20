@@ -64,6 +64,22 @@ test('real Chrome: native frequency-warp engines preserved while Lab slider and 
   assert.equal(await page.$eval('#engine',e=>e.options.length),before);
   await page.click('#lab-port-stop');
   assert.equal(await page.$eval('#lab-port-stop',e=>e.disabled),true);
+  // Real native Warp/WASM offline DSP must complete BEFORE the selected Lab
+  // module processes the same bounded sample excerpt. Do not just show a fake
+  // checkbox or silently process the original signal.
+  await page.$eval('#lab-port-apply-warp',e=>{
+   e.checked=true;e.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await page.click('#lab-port-preview');
+  await page.waitForFunction(()=>{
+   const text=document.querySelector('#lab-port-status').textContent;
+   return text.includes('Rust Warp→')||text.includes('失敗');
+  },{timeout:45000});
+  const sequential=await page.$eval('#lab-port-status',e=>e.textContent);
+  assert.match(sequential,/試聴中 · Rust Warp→/,sequential+' | '+errors.join('; '));
+  await page.click('#lab-port-stop');
+  assert.equal(await page.$eval('#engine',e=>e.options.length),before);
+
   assert.deepEqual(errors,[],'unexpected page module errors');
  }finally{await browser?.close();server.kill('SIGTERM');}
 });
