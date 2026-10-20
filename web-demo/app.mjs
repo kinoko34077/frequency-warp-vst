@@ -9,6 +9,7 @@ import {canExportChannels} from "./export-policy.mjs";
 import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration} from "./harmonics-panel.mjs";
+import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
 import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
@@ -1973,6 +1974,32 @@ attachHarmonicPanel(id=>{
   }
   updateParams(id);updateEngineInfo();
 },foldPoint,axisMarker,settings);
+// The new user-goal workbench is separate from the retained legacy maths UI.
+// One validated transaction updates the existing canonical harmonic owners.
+// Theoretical H outside current DSP capability stays a draft, never a 0Hz P.
+mountVirtualRootWorkbench({
+  onApply:plan=>{
+    if(!plan.capability.rationalStage)throw Error("現行DSPでは指定配置を再現できません");
+    const candidate={...captureHarmonicConfiguration(),
+      F:plan.F,m:plan.m,n:plan.numerator,q:plan.q,r:plan.ratio};
+    const prospective={...settings(),
+      pitchRatio:plan.ratio,shiftHz:plan.shift,axisReference:plan.pitched,
+      rationalEnabled:true};
+    const gate=prepareStreamSettings(prospective);
+    if(!gate.ok)throw Error(gate.message);
+    // This workbench controls the harmonic *grid* independently of the
+    // physical Warp pivot P. Never fabricate a physical zero position.
+    if(isHarmonicPivotLinked()){
+      $("#harmonic-pivot-link").checked=false;
+      restoreRationalAfterUnlink();
+      linkFeedback("新しい仮想基音操作では物理起点PとHを別管理します。Pは保持しました。");
+    }
+    restoreHarmonicConfiguration(candidate);
+    $("#rational-enabled").checked=true;
+    updateParams("virtual-root-workbench");
+    updateEngineInfo();
+  }
+});
 const labCompare=mountLabComparison({
   getSource:()=>state.dry?{channels:state.dry,sampleRate:state.decoded.sampleRate,sourceToken:state.sourceGeneration}:null,
   getPosition:()=>state.player?playPosition():state.seek,
