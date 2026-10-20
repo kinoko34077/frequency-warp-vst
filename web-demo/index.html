@@ -252,14 +252,7 @@
         <option disabled>候補 · 部分音＋残差（研究中）</option>
         <option disabled>候補 · Chirplet／非一様解析（未検証）</option>
       </select>
-      <div class="settings-pair" id="individual-analysis-settings">
- <label class="setting-checkbox" for="individual-enabled"><input id="individual-enabled" type="checkbox"> 周波数ごとの個別波長解析（リアルタイム）</label>
- <div id="individual-cycle-field" hidden><label for="individual-cycles">解析周期数 <output id="individual-cycle-value">8周期</output></label>
- <input id="individual-cycles" type="range" min="-1" max="5" step="1" value="3">
- <small>0.5 / 1 / 2 / 4 / 8 / 16 / 32周期。選択中のFFT窓の長さを超える場合は最大窓で制限します。</small></div>
- </div>
- <p id="individual-model-status" class="setting-help" role="status">選択中の処理エンジンとの対応を表示します。</p>
- <output id="engine-auto-result" class="engine-auto-result" role="status" aria-live="polite" hidden></output>
+      <output id="engine-auto-result" class="engine-auto-result" role="status" aria-live="polite" hidden></output>
       <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p></details>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">

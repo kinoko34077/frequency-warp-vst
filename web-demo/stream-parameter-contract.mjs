@@ -30,11 +30,6 @@ export function validateStreamSettings(p){
     if(!Number.isSafeInteger(p[key])||p[key]<min||p[key]>max)
       return failed(key,label+"が現行DSPの整数範囲（"+min+"〜"+max+"）外です。");
   }
-  if(p.individualCycles!==undefined &&
-     ![0,.5,1,2,4,8,16,32].includes(p.individualCycles))
-    return failed("individualCycles","個別波長解析の周期数が非対応です。");
-  if(p.individualCycles>0&&p.engine!==0)
-    return failed("individualCycles","現行のRust個別波長解析はA方式のみ実装済みです。");
   if(![4,8].includes(p.hopDiv))
     return failed("hopDiv","処理hopは4または8にしてください。");
   if(p.crusherBits!==0&&
