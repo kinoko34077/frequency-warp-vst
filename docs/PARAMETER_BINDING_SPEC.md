@@ -222,3 +222,18 @@ Each unit icon's `title` and `aria-label` must continue to convey its actual uni
 ## 2026-10-21 — common unit-icon renderer (UI reuse completion slice)
 
 The same `createParameterUnitSwitch` exported by `web-demo/frequency-unit-field.mjs` now owns the visible Hz / ♪ / % button elements in both `mountParameterUnitField` and the V5 virtual-root controls. It owns glyphs, accessible titles/labels, selected `aria-pressed` and semitone/cent alternate action. Specialized consumers supply their **binding**, allowed unit choices and `onSelect` adapter; they must not copy icon markup or preserve a second unit-state store. The older hidden `select` remains a compatibility bridge for standard controls only. Virtual-root F/H use their shared `createParameterBinding`; specialized linear rail, digit wheel and number stepper remain separately owned because gesture behavior differs. Existing browser tests cover unit clicks, unit contents, ratio toggling, normal field/snap behavior and mobile virtual-root gestures; static negative fixtures detect new bespoke icon-unit widgets. No Rust/native DSP or DAW host ABI change.
+
+
+## 2026-10-21 M3 typed fraction field reuse candidate (#79)
+
+**Scope:** the five already-bound scalar fractions `wet`, `a-reverb`, `zero-reflect`, `zero-decay`, and `invert` previously repeated identical numeric input/focus/blur/error controller logic in `web-demo/app.mjs`. The owner is now `web-demo/frequency-unit-field.mjs::mountPercentParameterField({field,binding,refresh,onChanged})`, with a repository catalog entry `fw.parameter.percent-field`.
+
+**Contract:**
+- Caller supplies an existing `createParameterBinding` instance (canonical `0..1` Float64 with compatible `percent` unit), its input element, a `refresh(force?)` function, and an optional parameter-specific `onChanged(value,previous)` callback.
+- Focus shows three decimal places and selects editable text; `input` and `change` use `binding.setView(raw,{unit:"percent",origin:"typed",overflow:"clamp",notify:false})`, retaining its complete internal Float64 value.
+- Invalid or incomplete text never changes canonical state and sets `dataset.invalid`; blur restores the canonical view and clears transient invalid status. Enter blurs/commits. Consecutive input+change for the same canonical value does not emit duplicate callbacks.
+- `refresh()` runs after a valid commit; `onChanged` fires **only** when the canonical number changes. WebAudio Wet gain versus Rust revisioned DSP settings remain **consumer-owned** effects; generic input code may not make audio or bridge decisions.
+- Returned `dispose()` removes all bound field listeners. The coarse range sliders continue to use existing canonical bindings, not alternate percentage state.
+- The module is a local browser ES module API, not a HTTP API or a change to Rust/WASM/VST3 host ABI.
+
+**Evidence gates:** `web-demo/percent-parameter-field.test.mjs` (valid/invalid/precision/focus/change/disposal), `capability-reuse-check.test.mjs` (negative duplicated-controller fixtures), full Web/Chrome/Rust/WASM + offline regression, formal PR review, main readback and Pages only if all required gates pass. This entry describes the intended change until the exact PR/main CI is accepted. The remaining M2 coordinate/count and M3 `state.precise` migration stay OPEN; this is not full #79 completion.
