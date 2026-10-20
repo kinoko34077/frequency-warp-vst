@@ -34,11 +34,11 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.waitForFunction(()=>document.querySelector("#numerator").value==="-3" &&
         document.querySelector("#fundamental").value==="350",{timeout:10000});
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"90");
-      assert.match(await page.$eval("#vr-sequence",el=>el.textContent),/90, 450, 810/);
+      assert.match(await page.$eval("#vr-sequence",el=>el.textContent),/倍音列: 1, 5, 9/);
       await page.$eval("#vr-target-h",el=>{
         el.value="87.25";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
-      await page.waitForFunction(()=>document.querySelector("#vr-sequence").textContent.includes("87.25"));
+      await page.waitForFunction(()=>document.querySelector("#vr-sequence").textContent.includes("1, 5, 9"));
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.25");
       // Native frequency-codec unit switch must not rewrite canonical H.
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="note"]');
