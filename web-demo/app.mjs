@@ -1,4 +1,3 @@
-import {mountLabComparison} from "./lab-port.mjs";
 import {QUALITY,mixWet} from "./dsp.mjs";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
@@ -277,6 +276,7 @@ function settings(){
     invert:scalar("invert",()=>Number($("#invert").value)),
     mode:$("#mode").value,outside:$("#outside").value,qualityIndex,
     engine:Number($("#engine").value),hopDiv:Number($("#overlap").value),
+    individualCycles:$("#individual-enabled").checked?2**Number($("#individual-cycles").value):0,
     pitchRatio:harmonic.r,
     shiftHz:harmonic.n*harmonic.r*harmonic.F/harmonic.m,
     carrierHz:harmonic.c,zeroMode:0,
@@ -310,6 +310,7 @@ function settings(){
     value.engine=engineForInbandCurve(coreCurve,f=>
       mapAtFrequency(f,coreCurve,warp,translate).outputs[0]);
   }
+  if(value.engine!==0)value.individualCycles=0;
   return value;
 }
 
@@ -660,8 +661,19 @@ async function ensureSharedCore(){
   }
   return state.wasmPromise;
 }
+function refreshIndividualSettings(){
+  const s=settings(),enabled=s.engine===0;
+  const toggle=$("#individual-enabled"),cycle=$("#individual-cycles");
+  toggle.disabled=!enabled;cycle.disabled=!enabled||!toggle.checked;
+  $("#individual-cycle-field").hidden=!toggle.checked;
+  $("#individual-cycle-value").textContent=(2**Number(cycle.value))+"周期";
+  $("#individual-model-status").textContent=enabled?
+    "A方式：各部分音をK/f秒の窓で推定してリアルタイム周波数ワープします。FFT窓を超えるKは上限に制限されます。":
+    "B方式の個別波長解析は未実装です。WSOLA・短長複合・AMもリアルタイムRustモデルは未実装です。チェック状態は保持しますが、Bの音には適用しません。";
+}
 function updateEngineInfo(){
   const s=settings(),q=QUALITY[$("#quality").value],rate=state.ctx?.sampleRate||48000;
+  refreshIndividualSettings();
   const latency=1000*(q.fftSize-1)/rate;
   const names=["A · 部分音再合成","B · STFT変換"];
   const explain=[
@@ -1532,6 +1544,11 @@ for(const name of ["mode","outside","quality","overlap","engine"]){
   $("#"+name).addEventListener("change",()=>{updateParams(name);updateEngineInfo();});
 }
 $("#engine-auto").addEventListener("change",()=>{updateParams("engine-auto");updateEngineInfo();});
+for(const id of ["individual-enabled","individual-cycles"]){
+ $("#"+id).addEventListener("input",()=>{updateParams(id);updateEngineInfo();});
+ $("#"+id).addEventListener("change",()=>{updateParams(id);updateEngineInfo();});
+}
+
 $("#graph-log").addEventListener("input",drawCurve);
 $("#processing-min-hz").addEventListener("change",event=>{
   const v=Number(event.target.value);
@@ -1572,10 +1589,10 @@ for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
   });
 }
 
-controls.dry.addEventListener("click",()=>{labCompare?.cancel();play("dry");});
-controls.wet.addEventListener("click",()=>{labCompare?.cancel();play("wet");});
+controls.dry.addEventListener("click",()=>{play("dry");});
+controls.wet.addEventListener("click",()=>{play("wet");});
 controls.stop.addEventListener("click",()=>{
-  labCompare?.cancel();
+  
   if(comparisonPending){
     comparisonPending=null;
     comparisonMessage("停止しました · 加工設定の反映は未確認","ready");
@@ -1647,7 +1664,7 @@ async function load(file){
     state.offline=null;state.exportIdentity=null;state.sourceGeneration++;
     state.decoded={sampleRate:data.sampleRate};
     state.dry=dry;state.seek=0;state.lastStats=null;
-    labCompare?.refresh();
+
     state.sourceGeneration++;
     comparisonSlots.A=null;comparisonSlots.B=null;
     comparisonPending=null;comparisonCurrent=null;
@@ -2004,15 +2021,6 @@ mountVirtualRootWorkbench({
     updateEngineInfo();
   }
 });
-const labCompare=mountLabComparison({
-  getSource:()=>state.dry?{channels:state.dry,sampleRate:state.decoded.sampleRate,sourceToken:state.sourceGeneration}:null,
-  getPosition:()=>state.player?playPosition():state.seek,
-  getContext:context,
-  stopBase:stop,
-  getWarpSettings:()=>prepareStreamSettings({...settings(),sampleRate:state.decoded?.sampleRate||48000})
-});
-$("#audio-file").addEventListener("change",()=>labCompare.cancel());
-window.addEventListener("pagehide",()=>labCompare.cancel());
 labels();drawCurve();updateEngineInfo();refreshPlayhead();
 ensureSharedCore().catch(()=>{});
 // Set only after all interactive controls have registered successfully.

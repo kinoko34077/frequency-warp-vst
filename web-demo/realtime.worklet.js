@@ -37,7 +37,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       const e = instance.exports;
       const required = [
         "memory","warp_alloc_f32","warp_free_f32","warp_stream_create",
-        "warp_stream_free","warp_stream_reset","warp_stream_set",
+        "warp_stream_free","warp_stream_reset","warp_stream_set","warp_stream_set_individual_cycles",
         "warp_stream_create_ext","warp_stream_set_ext",
         "warp_stream_process","warp_stream_latency","warp_stream_set_crusher",
         "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_a_options","warp_stream_set_a_band","warp_stream_set_a_quality","warp_stream_set_zero_reflect_gain","warp_stream_set_zero_reflect_decay"
@@ -70,6 +70,9 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
       if(e.warp_stream_set_zero_reflect_gain(stream,options.zeroReflectGain)!==0 ||
          e.warp_stream_set_zero_reflect_decay(stream,options.zeroReflectDecay)!==0){
         e.warp_stream_free(stream);throw Error("Rust zero-frequency reflection gain failed");
+      }
+      if(e.warp_stream_set_individual_cycles(stream,options.individualCycles||0)!==0){
+        e.warp_stream_free(stream);throw Error("Rust per-frequency cycles failed");
       }
       if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0){
         e.warp_stream_free(stream);throw Error("Rust bitcrusher initialization failed");
@@ -135,6 +138,8 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     if(zero!==0)return zero;
     const decay=e.warp_stream_set_zero_reflect_decay(stream,p.zeroReflectDecay);
     if(decay!==0)return decay;
+    const cycles=e.warp_stream_set_individual_cycles(stream,p.individualCycles||0);
+    if(cycles!==0)return cycles;
     return e.warp_stream_set_crusher(stream,p.crusherBits,p.crusherHold);
   }
   command(data) {
