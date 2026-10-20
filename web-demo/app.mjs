@@ -1661,13 +1661,28 @@ async function load(file){
     message("読み込み完了。再生できます。");
   }catch(error){
     if(token!==state.loadToken)return;
-    $("#file-meta").textContent=previousReady?state.fileMeta:"読み込み失敗（ファイルを選び直せます）";
+    // The mobile status HUD may be collapsed; make the actual decoder/file
+    // error visible beside the same source picker, not only in diagnostics.
+    $("#file-meta").textContent=(previousReady?state.fileMeta+" · 新しい音声":"選択した音声")+
+      "の読込失敗: "+error.message;
     message("音声を開けませんでした: "+error.message+
       (previousReady?"。以前の音声は保持しています。":""),"error");
   }
 }
 
-$("#audio-file").addEventListener("change",e=>{const file=e.target.files[0];e.target.value="";void load(file);});
+// FileProvider-backed iOS selections may remain externally referenced until
+// their bytes are read. Keep the native selected File attached during async
+// read/decode; clear afterwards so the same file can be chosen again.
+const audioInput=$("#audio-file");
+audioInput.addEventListener("change",async()=>{
+  const file=audioInput.files?.[0];
+  if(!file)return;
+  try{await load(file);}
+  finally{
+    // Another choice may have superseded this one during a slow decode.
+    if(audioInput.files?.[0]===file)audioInput.value="";
+  }
+});
 const drop=$("#drop");
 // The full-surface native file input opens via an actual tap. Do not
 // programmatically click it from a delegated handler: iOS/WebKit can

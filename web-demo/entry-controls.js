@@ -158,6 +158,11 @@
       if(status){
         status.textContent="音声処理の起動に失敗しました。ページを再読込みしてください。";
         status.dataset.kind="error";
+        // On phones the diagnostic HUD is collapsed; do not leave the
+        // seemingly usable native file picker with no decoder attached.
+        const meta=$("#file-meta");
+        if(meta&&!meta.textContent.includes("読込失敗"))
+          meta.textContent="音声処理を起動できませんでした。ページの再読込みが必要です。";
       }
     }
   },7000);
