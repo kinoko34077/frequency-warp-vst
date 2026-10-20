@@ -5,12 +5,14 @@ on:
     paths:
       - 'core/**'
       - 'web-demo/**'
+      - 'docs/CAPABILITY_API_CATALOG.md'
       - '.github/workflows/web-preview-tests.yml'
   push:
     branches: [main]
     paths:
       - 'core/**'
       - 'web-demo/**'
+      - 'docs/CAPABILITY_API_CATALOG.md'
       - '.github/workflows/web-preview-tests.yml'
 
 permissions:
@@ -33,6 +35,8 @@ jobs:
           cargo build --manifest-path core/Cargo.toml --release --target wasm32-unknown-unknown
           cp core/target/wasm32-unknown-unknown/release/frequency_warp_core.wasm web-demo/dsp_core.wasm
           test -s web-demo/dsp_core.wasm
+      - name: Enforce canonical numeric-unit API reuse (negative regression fixtures)
+        run: node --test web-demo/capability-reuse-check.test.mjs
       - name: UI-only helper checks
         run: node --test web-demo/settings-realtime-contract.test.mjs web-demo/dsp.test.mjs web-demo/harmonics.test.mjs web-demo/virtual-root-plan.test.mjs web-demo/virtual-root-rail.test.mjs web-demo/engine-policy.test.mjs web-demo/export-policy.test.mjs web-demo/crusher-visual.test.mjs web-demo/audio-route.test.mjs web-demo/stage-pages.test.mjs web-demo/parameter-units.test.mjs web-demo/parameter-binding.test.mjs web-demo/frequency-bounds.test.mjs web-demo/stream-parameter-contract.test.mjs web-demo/playback-feedback.test.mjs web-demo/audition-feedback-view.test.mjs web-demo/configuration-snapshot.test.mjs web-demo/export-identity.test.mjs web-demo/axis-shift-view.test.mjs web-demo/realtime-worklet-rms.test.mjs web-demo/realtime-worklet-rollback.test.mjs web-demo/visual-editor-core.test.mjs web-demo/visual-editor-platform/core.test.mjs web-demo/visual-editor-platform/model-adapter.test.mjs web-demo/visual-editor-platform/export.test.mjs
       - name: Shared WASM math and real audio output checks
