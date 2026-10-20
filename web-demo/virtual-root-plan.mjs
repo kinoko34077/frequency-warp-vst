@@ -50,6 +50,8 @@ export function createVirtualRootPlan({
   const notes=[];
   if(ratio<.25||ratio>4)notes.push("current DSP pitch ratio is limited to 0.25..4");
   if(Math.abs(shift)>20000)notes.push("current DSP shift is limited to +/-20,000 Hz");
+  if(numerator < -128||numerator>128)
+    notes.push("legacy DSP number offset n must be an integer in -128..128");
   if(pitched<1||pitched>20000)
     notes.push("current DSP axis reference F' is limited to 1..20,000 Hz");
   if(root<.001||root>20000)
@@ -59,7 +61,7 @@ export function createVirtualRootPlan({
   // This is the rational stage's capability gate only. It is NOT an actual
   // AudioWorklet ACK; live stream bands, Nyquist, zero-mode and CPU may add gates.
   const rationalCapability=ratio>=.25&&ratio<=4&&Math.abs(shift)<=20000
-    &&pitched>=1&&pitched<=20000&&F>=.001&&F<=5_120_000;
+    &&numerator>=-128&&numerator<=128&&pitched>=1&&pitched<=20000&&F>=.001&&F<=5_120_000;
   const representablePivot=root>=.001&&root<=20000;
   return Object.freeze({
     F,H:root,m,h1,q,mode,placement,pitched,ratio,numerator,shift,
