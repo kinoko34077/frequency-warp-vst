@@ -52,6 +52,7 @@ jobs:
           test -s _site/dual-thumb.mjs
       - name: Chrome realtime streaming and waveform seek against staged Pages
         run: |
+          WARP_WEB_ROOT=_site node --test web-demo/lab-port.browser.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/web-entry-quantitative.browser.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/visual-editor-interactions.browser.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/visual-editor-browser.test.mjs
