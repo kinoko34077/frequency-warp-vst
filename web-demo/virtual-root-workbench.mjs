@@ -155,8 +155,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         if(row.reflected)el.classList.add("vr-is-reflected");
         if(row.atRoot)el.classList.add("at-virtual-root");
         const caption=document.createElement("div");caption.className="vr-partial-caption";
-        caption.textContent="第"+row.k+"倍音 "+fmt(row.source)+" → "+fmt(row.output)+" Hz"+
-          (row.reflected?"（0Hz折返し）":"");
+        caption.textContent="第"+row.k+"倍音 "+fmt(row.source)+" Hz → "+
+          (row.reflected?fmt(row.signed)+" Hz → 0Hz折返し → ":"")+
+          fmt(row.output)+" Hz";
         el.append(caption);
         for(const [value,cls] of [[row.source,"vr-original-bar"],[row.output,""]]){
           const track=document.createElement("div");track.className="vr-partial-track";
