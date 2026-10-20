@@ -100,6 +100,19 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"3");
       await page.click("#compare-load-b");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"-5");
+      // Live DSP acceptance: a slider edit must obtain a new Worklet ACK
+      // while Wet is audible, with no separate Apply click.
+      await page.click("#play-wet");
+      await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000});
+      const priorRevision=await page.$eval("#rt-indicator",el=>Number(el.dataset.appliedRevision||0));
+      await page.$eval("#vr-first-index-rail",el=>{
+        el.value="-4";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.waitForFunction(revision=>
+        Number(document.querySelector("#rt-indicator").dataset.appliedRevision||0)>revision,
+        {timeout:20000},priorRevision);
+      assert.equal(await page.$eval("#numerator",el=>Number(el.value)),-8);
+      await page.click("#stop");
       await page.evaluate(()=>{document.querySelector("#background-output").play=()=>Promise.resolve();});
       await page.click("#play-dry");
       await page.waitForFunction(()=>!document.querySelector("#stop").disabled &&
