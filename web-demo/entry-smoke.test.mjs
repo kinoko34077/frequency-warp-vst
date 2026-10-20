@@ -54,7 +54,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
         await page.waitForFunction(()=>
           document.documentElement.dataset.fwBoot==="ready", {timeout:12000});
         await page.waitForFunction(()=>
-          document.querySelector("#mini-fundamental")?.textContent.includes("→"),{timeout:12000});
+          document.querySelector("#vr-summary")?.textContent.includes("仮想基音"),{timeout:12000});
         boot=true;
       }catch(e){
         lastError=e.message;
@@ -62,6 +62,10 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       }
     }
     assert.ok(boot,"Public app modules did not load: "+lastError+"; "+errors.join("; "));
+    assert.equal(await page.$eval("#virtual-root-workbench",el=>el.getClientRects().length>0),true,
+      "User-goal virtual root control must be visible on published default entry");
+    assert.equal(await page.$eval(".harmonic-mini",el=>el.getClientRects().length),0,
+      "Original harmonic theory controls stay legacy-only in the normal Web UI");
     // Mobile diagnostics must not begin as a wide fixed overlay over the graph
     // or pivot linker; the user can explicitly restore full detail.
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),true);
@@ -86,7 +90,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#runtime-hud-hide");
     for(const width of [320,390]){
       await page.setViewport({width,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
-      const hit=await page.$eval("#pivot-link-target",el=>{
+      const hit=await page.$eval("#vr-target-h",el=>{
         el.scrollIntoView({block:"center"});
         const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
         const under=document.elementFromPoint(x,y);
@@ -97,7 +101,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
           leftRight:left.right,rightLeft:right.left,graphW:graph.width,graphH:graph.height,
           overflow:document.documentElement.scrollWidth>innerWidth};
       });
-      assert.ok(hit.target,"Mobile status must not intercept physical pivot link at "+width+": "+JSON.stringify(hit));
+      assert.ok(hit.target,"Mobile status must not intercept virtual fundamental input at "+width+": "+JSON.stringify(hit));
       assert.ok(hit.leftRight<=hit.rightLeft+1&&Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
         "Keep compact LEFT controls / RIGHT square graph at "+width+": "+JSON.stringify(hit));
       const exportTarget=await page.$eval("#export-jump",el=>{

@@ -25,7 +25,18 @@ test('real Chrome: native frequency-warp engines preserved while Lab slider and 
   page.on('pageerror',e=>errors.push(String(e.message)));
   const url='http://127.0.0.1:8779/index.html';
   await page.goto(url,{waitUntil:'domcontentloaded',timeout:20000});
-  await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready',{timeout:20000});
+  try{
+   await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==='ready',{timeout:20000});
+  }catch(error){
+   const diag=await page.evaluate(()=>({
+    state:document.documentElement.dataset.fwBoot,
+    root:!!document.querySelector('#virtual-root-workbench'),
+    inputs:[...document.querySelectorAll('[id^="vr-"]')].map(x=>x.id),
+    visible:document.querySelector('#file-meta')?.textContent,
+    status:document.querySelector('#status')?.textContent
+   }));
+   throw Error('Web bootstrap failed '+JSON.stringify({errors,diag})+': '+error.message);
+  }
   assert.equal(await page.$eval('#lab-port-individual',e=>e.checked),false);
   assert.equal(await page.$eval('#lab-port-cycles-field',e=>e.hidden),true);
   const before=await page.$eval('#engine',e=>e.options.length);
@@ -79,7 +90,6 @@ test('real Chrome: native frequency-warp engines preserved while Lab slider and 
   assert.match(sequential,/試聴中 · Rust Warp→/,sequential+' | '+errors.join('; '));
   await page.click('#lab-port-stop');
   assert.equal(await page.$eval('#engine',e=>e.options.length),before);
-
   assert.deepEqual(errors,[],'unexpected page module errors');
  }finally{await browser?.close();server.kill('SIGTERM');}
 });

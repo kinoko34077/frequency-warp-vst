@@ -9,11 +9,11 @@ import puppeteer from "puppeteer-core";
 
 const modes=[
   {name:"ordinary",suffix:"",host:null},
-  {name:"legacy",suffix:"?layout_editor=1",host:"#fw-layout-inspector"},
-  {name:"v2",suffix:"?visual_editor_v2=1",host:"#visual-editor-v2"}
+  {name:"legacy",suffix:"&layout_editor=1",host:"#fw-layout-inspector"},
+  {name:"v2",suffix:"&visual_editor_v2=1",host:"#visual-editor-v2"}
 ];
 const widths=[320,390,768,1280];
-const base="http://127.0.0.1:8799/index.html";
+const base="http://127.0.0.1:8799/index.html?legacy_lab=1";
 function assertRecord(record){
   const who=record.mode+"/"+record.width;
   assert.ok(record.bootMs>=0&&record.bootMs<20000,who+" bootstrap timing "+JSON.stringify(record));
