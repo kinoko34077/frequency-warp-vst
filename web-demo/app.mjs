@@ -433,6 +433,7 @@ function switchSoundConfiguration(slot){
     try{
       updateParams("comparison");updateEngineInfo();tuneWet();
     }finally{applyingConfiguration=false;}
+    document.dispatchEvent(new Event("fw:virtual-root-external-change"));
     comparisonCurrent=null;
     if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
       const f=state.player.feedback.current;
@@ -1839,6 +1840,7 @@ $("#settings-reset").addEventListener("click",()=>{
   refreshZeroDecayView(true);
   refreshInvertView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
+  document.dispatchEvent(new Event("fw:virtual-root-external-change"));
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.
   const phase=state.player?.feedback?.current?.phase;
@@ -1973,11 +1975,13 @@ attachHarmonicPanel(id=>{
     linkFeedback("");
   }
   updateParams(id);updateEngineInfo();
+  document.dispatchEvent(new Event("fw:virtual-root-external-change"));
 },foldPoint,axisMarker,settings);
 // The new user-goal workbench is separate from the retained legacy maths UI.
 // One validated transaction updates the existing canonical harmonic owners.
 // Theoretical H outside current DSP capability stays a draft, never a 0Hz P.
 mountVirtualRootWorkbench({
+  onCurrent:()=>captureHarmonicConfiguration(),
   onApply:plan=>{
     if(!plan.capability.rationalStage)throw Error("現行DSPでは指定配置を再現できません");
     const candidate={...captureHarmonicConfiguration(),
