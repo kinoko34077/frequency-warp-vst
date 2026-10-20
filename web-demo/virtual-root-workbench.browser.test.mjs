@@ -28,6 +28,8 @@ test("virtual root H/m/h1 workbench: real Chrome target, sub-millihertz, fold q 
       assert.equal(await page.$eval("#vr-formula [role=math]",el=>el.getAttribute("aria-label")),"-3 / 4");
       const bars=await page.$$eval("#vr-preview [role=listitem]",els=>els.length);
       assert.equal(bars,8);
+      assert.equal(await page.$eval("#vr-preview .vr-original-bar",xs=>xs.length),8,
+        "Source frequencies must be visually comparable with 8 transformed bars");
       // A theoretical target smaller than a physical P tick remains positive,
       // present in the editor, and never detaches/mutates the old audio binding.
       await page.$eval("#harmonic-pivot-link",el=>{el.checked=true;});
@@ -35,6 +37,16 @@ test("virtual root H/m/h1 workbench: real Chrome target, sub-millihertz, fold q 
         el.value="0.0009";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"0.0009");
+      assert.ok(await page.$eval("#vr-h-rail",el=>Number(el.value))>0,
+        "Positive sub-.001 H must not snap onto the physical P=0 slider point");
+      await page.$eval("#vr-h-rail",el=>{
+        el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      assert.ok(await page.$eval("#vr-target-h",el=>Number(el.value))>0,
+        "Gesture minimum must be strictly positive, never 0Hz");
+      await page.$eval("#vr-target-h",el=>{
+        el.value="0.0009";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
       assert.equal(await page.$eval("#vr-apply",el=>el.disabled),true);
       assert.match(await page.$eval("#vr-summary",el=>el.textContent),/0.0009/);
       assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),true);
