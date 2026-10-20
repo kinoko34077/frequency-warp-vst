@@ -80,3 +80,19 @@ test("no silent overflow, fake 0 or clamp at current DSP boundaries",()=>{
   assert.throws(()=>createVirtualRootPlan({F:100,H:1e308,m:64}),RangeError);
   assert.throws(()=>createVirtualRootPlan({F:100,H:25,m:0}),RangeError);
 });
+
+
+test("V5 signed arithmetic progression folds negative terms automatically with no mode toggle",()=>{
+  const p=createVirtualRootPlan({F:350,H:87.5,m:4,h1:-5,mode:"auto-fold"});
+  assert.equal(p.numerator,-9);
+  assert.deepEqual(p.outputs.slice(0,5).map(v=>v.gridIndex),[5,1,3,7,11]);
+  assert.deepEqual(p.outputs.slice(0,5).map(v=>v.output),[437.5,87.5,262.5,612.5,962.5]);
+  assert.equal(p.outputs[0].reflected,true);
+  assert.equal(p.outputs[1].atRoot,true);
+  assert.equal(p.hasPhysicalRoot,true);
+  const origin=createVirtualRootPlan({F:100,H:25,m:2,h1:0,mode:"auto-fold"});
+  assert.equal(origin.outputs[0].output,0);
+  assert.equal(origin.outputs[1].output,50);
+  const negative=createVirtualRootPlan({F:350,H:87.5,m:4,h1:-129,mode:"auto-fold"});
+  assert.equal(negative.capability.rationalStage,false,"theory remains representable");
+});
