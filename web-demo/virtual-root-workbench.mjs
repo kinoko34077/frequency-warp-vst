@@ -140,6 +140,8 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
           $("#vr-target-h").value=String(F/m);
       }
       appliedFingerprint=null;
+      audio.textContent="配置を編集中。現在の表示値は音声へ未適用です。";
+      audio.dataset.phase="edited";
       render();
     });
   $("#vr-h-rail").addEventListener("input",()=>{
@@ -152,6 +154,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       const [m,h1]=button.dataset.vrPreset.split(":").map(Number);
       $("#vr-mode").value="series";$("#vr-step-m").value=String(m);
       $("#vr-first-index").value=String(h1);
+      appliedFingerprint=null;
+      audio.textContent="番号列を編集中。音声には未適用です。";
+      audio.dataset.phase="edited";
       render();
     })
   );
@@ -179,8 +184,31 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   // workbench mode/preset metadata into the canonical A/B snapshot.
   document.addEventListener("fw:virtual-root-external-change",()=>{
     appliedFingerprint=null;
-    audio.textContent="他の画面で加工設定が変更されました。ここで再適用できます。";
-    onCurrent?.();render();
+    const previous=onCurrent?.();
+    if(previous && Number.isFinite(previous.F) && previous.F>0 &&
+       Number.isInteger(previous.m) && previous.m>=1 && previous.m<=64 &&
+       Number.isFinite(previous.r) && previous.r>0){
+      const H=previous.r*previous.F/previous.m;
+      const q=previous.q;
+      const folded=Number.isSafeInteger(q) && q>=1 && q<=32 &&
+        previous.n===-(q*previous.m+1);
+      const first=previous.m+previous.n;
+      // If the existing sound is a valid sparse series or selected fold,
+      // restore its exact coordinates rather than displaying an unrelated
+      // draft after A/B load or Reset.
+      if(folded || (Number.isSafeInteger(first)&&first>=1&&first<=129)){
+        $("#vr-source-f").value=String(previous.F);
+        $("#vr-target-h").value=String(H);
+        $("#vr-step-m").value=String(previous.m);
+        $("#vr-fold-q").value=String(q);
+        $("#vr-first-index").value=String(folded?1:first);
+        $("#vr-mode").value=folded?"fold-to-root":"series";
+        $("#vr-placement").value="target";
+      }
+    }
+    render();
+    audio.textContent="別画面の加工設定を表示中。再生中のDSP反映は別途確認してください。";
+    audio.dataset.phase="external";
   });
   render();
 }
