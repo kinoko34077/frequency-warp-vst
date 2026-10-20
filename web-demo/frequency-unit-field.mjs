@@ -43,13 +43,60 @@ function placeMenu(menu,x,y){
 }
 
 
+/** Shared unit-icons component for both canonical parameter fields and specialized
+ * consumers (e.g. virtual-root's integer gesture rail). One semantic/visual UI
+ * owner; caller owns only its domain-specific rail and value editor. */
+export function createParameterUnitSwitch({doc,label,choices,selected,onSelect,unitFor=null}){
+  if(!doc||!Array.isArray(choices)||!choices.length||
+     typeof selected!=="function"||typeof onSelect!=="function")
+    throw new TypeError("unit switch requires choices, selected and onSelect");
+  const glyph={hz:"Hz",note:"♪",percent:"%",ratio:"×",semitones:"♩",cents:"¢",coordinate:"u",integer:"#"};
+  const root=doc.createElement("div");root.className="unit-switch";
+  root.setAttribute("role","group");root.setAttribute("aria-label",label||"単位");
+  const intervalPair=choices.some(item=>item.value==="semitones")&&
+    choices.some(item=>item.value==="cents");
+  const buttons=[];
+  for(const option of choices){
+    if(!option.value||option.disabled||(intervalPair&&option.value==="cents"))continue;
+    const button=doc.createElement("button");button.type="button";
+    button.dataset.unit=option.value;
+    if(unitFor!==null){button.dataset.vrUnitFor=unitFor;button.dataset.vrUnit=option.value;}
+    button.textContent=glyph[option.value]||option.label||option.value;
+    button.title=intervalPair&&option.value==="semitones"?
+      "半音／セント（再タップで切替）":(option.label||option.value);
+    button.setAttribute("aria-label",button.title);
+    button.addEventListener("click",()=>{
+      const next=intervalPair&&option.value==="semitones"?
+        (selected()==="semitones"?"cents":"semitones"):option.value;
+      onSelect(next);refresh();
+    });
+    root.append(button);buttons.push(button);
+  }
+  const refresh=()=>{
+    const current=selected();
+    for(const button of buttons){
+      const isInterval=intervalPair&&button.dataset.unit==="semitones";
+      const active=button.dataset.unit===current||(isInterval&&current==="cents");
+      button.setAttribute("aria-pressed",String(active));
+      if(isInterval){
+        const isCents=current==="cents";
+        button.textContent=isCents?"¢":"♩";
+        const title=isCents?"セント（再タップで半音）":"半音（再タップでセント）";
+        button.title=title;button.setAttribute("aria-label",title);
+      }
+    }
+  };
+  refresh();
+  return Object.freeze({element:root,refresh});
+}
+
 export function mountParameterUnitField({descriptor,field,select,slider,railRoot,
   initialValue=descriptor.defaultValue,getDigits=()=>descriptor.digits,onValueChange=()=>{}}) {
   if (![field,select,slider,railRoot].every(Boolean) ||
       typeof onValueChange !== "function")
     throw new TypeError("frequency unit field controls are required");
   const binding=createParameterBinding(descriptor,{initialValue});
-  let unitButtons=null;
+  let unitButtons=null,unitSwitch=null;
   const position=()=>descriptor.rail.toPosition(binding.value);
   // The slider remains a gesture proxy. Respect its own physical step:
   // harmonic F has step=1, reference sine has MIDI pitch step=.01.
@@ -76,18 +123,7 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
       field.placeholder=binding.unit==="note"?"音名を入力":"";
       lastRendered=field.value;
     }
-    if(unitButtons)for(const button of unitButtons.querySelectorAll("button[data-unit]")){
-      const isInterval=button.dataset.unit==="semitones"&&
-        descriptor.units.includes("cents");
-      const on=button.dataset.unit===binding.unit||(isInterval&&binding.unit==="cents");
-      button.setAttribute("aria-pressed",String(on));
-      if(isInterval){
-        const isCents=binding.unit==="cents";
-        button.textContent=isCents?"¢":"♩";
-        const name=isCents?"セント（再タップで半音）":"半音（再タップでセント）";
-        button.title=name;button.setAttribute("aria-label",name);
-      }
-    }
+    unitSwitch?.refresh();
   };
   let dirty=false;
   const commitTyped=()=>{
@@ -133,32 +169,15 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     dirty=false;
     display(true); // unit notation must never change DSP value
   });
-  // Compact tap targets are the user interface; retain the select as an
-  // accessible compatibility value source for legacy tests and adapters.
-  const glyph={hz:"Hz",note:"♪",percent:"%",ratio:"×",semitones:"♩",cents:"¢",coordinate:"u",integer:"#"};
-  unitButtons=field.ownerDocument.createElement("div");
-  unitButtons.className="unit-switch";unitButtons.setAttribute("role","group");
-  unitButtons.setAttribute("aria-label",select.getAttribute("aria-label")||"単位");
-  // Ratio keeps four exact views but presents only three compact buttons:
-  // ×, ♪ (tap again to alternate semitone/cent), and %.
-  const intervalPair=descriptor.units.includes("semitones")&&descriptor.units.includes("cents");
-  for(const option of select.options){
-    if(intervalPair&&option.value==="cents")continue;
-    if(!option.value||option.disabled)continue;
-    const button=field.ownerDocument.createElement("button");
-    button.type="button";button.dataset.unit=option.value;
-    button.textContent=glyph[option.value]||option.textContent;
-    button.title=intervalPair&&option.value==="semitones"?"半音／セント（再タップで切替）":option.textContent;
-    button.setAttribute("aria-label",button.title);
-    button.setAttribute("aria-pressed",String(option.value===binding.unit));
-    button.addEventListener("click",()=>{
-      if(intervalPair&&option.value==="semitones")
-        select.value=binding.unit==="semitones"?"cents":"semitones";
-      else select.value=option.value;
-      select.dispatchEvent(new Event("change",{bubbles:true}));
-    });
-    unitButtons.append(button);
-  }
+  // Shared view component; retain the hidden native select as the legacy
+  // compatibility bridge without duplicating icon markup/ARIA in consumers.
+  unitSwitch=createParameterUnitSwitch({
+    doc:field.ownerDocument,label:select.getAttribute("aria-label")||"単位",
+    choices:[...select.options].map(option=>({value:option.value,label:option.textContent,disabled:option.disabled})),
+    selected:()=>binding.unit,
+    onSelect:unit=>{select.value=unit;select.dispatchEvent(new Event("change",{bubbles:true}));}
+  });
+  unitButtons=unitSwitch.element;
   select.classList.add("unit-select-source");
   // The buttons are the accessible controls. Keep native select value as the
   // compatible programmatic bridge without an invisible keyboard Tab stop.
