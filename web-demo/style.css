@@ -793,7 +793,8 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
   border:1px solid #4b736b;border-radius:5px;background:#173a36;color:#d2eddf;font-size:10px}
 .vr-digit-picker{display:flex;gap:3px;max-width:100%;overflow-x:auto;padding:4px 0;
   scrollbar-width:thin}
-.vr-digit-picker[hidden]{display:none!important}
+.vr-digit-picker[hidden],.vr-digit-open[hidden]{display:none!important}
+.vr-number-row .vr-counter:disabled,.vr-digit-open:disabled{opacity:.4;cursor:not-allowed}
 .vr-digit-picker select{min-width:34px;width:34px;flex:0 0 34px;min-height:42px;padding:1px;
   font-size:16px;color:#e8fff7;background:#173831;border:1px solid #578276;border-radius:4px}
 @media(pointer:coarse){
