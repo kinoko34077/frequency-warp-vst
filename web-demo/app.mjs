@@ -11,7 +11,7 @@ import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHar
 import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
 import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
-import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
+import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
@@ -1318,143 +1318,28 @@ for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   });
   field.addEventListener("keydown",event=>{if(event.key==="Enter")field.blur();});
 }
-// Typed Wet % and coarse Wet slider must never own separate DSP values.
-const wetField=$("#wet-value");
-const commitWetTyped=()=>{
-  const previous=wetBinding.value;
-  try{
-    wetBinding.setView(wetField.value,{unit:"percent",origin:"typed",
-      overflow:"clamp",notify:false});
-    delete wetField.dataset.invalid;
-  }catch{
-    wetField.dataset.invalid="true";
-    return;
-  }
-  refreshWetView();
-  if(!Object.is(previous,wetBinding.value)){
+// #79 M3: one shared typed-% interaction controller for the five fraction
+// parameters. Canonical bindings own values; per-parameter callbacks retain
+// their distinct WebAudio-vs-Rust and comparison semantics.
+const typedPercentEditors=[
+  ["wet",wetBinding,refreshWetView,()=>{
     markComparisonEdited();labels();tuneWet();drawCurve();syncAuditionFeedback();
-  }
-};
-wetField.addEventListener("focus",()=>{
-  wetField.value=String(wetBinding.display(3));wetField.select();
-});
-wetField.addEventListener("input",commitWetTyped);
-wetField.addEventListener("change",commitWetTyped);
-wetField.addEventListener("blur",()=>{
-  commitWetTyped();
-  refreshWetView(true);
-  delete wetField.dataset.invalid;
-});
-wetField.addEventListener("keydown",event=>{if(event.key==="Enter")wetField.blur();});
-// A Reverb remains a revisioned DSP parameter, unlike the local Wet gain.
-const aReverbField=$("#a-reverb-value");
-const commitAReverbTyped=()=>{
-  const previous=aReverbBinding.value;
-  try{
-    aReverbBinding.setView(aReverbField.value,{unit:"percent",origin:"typed",
-      overflow:"clamp",notify:false});
-    delete aReverbField.dataset.invalid;
-  }catch{
-    aReverbField.dataset.invalid="true";return;
-  }
-  refreshAReverbView();
-  if(!Object.is(previous,aReverbBinding.value)){
+  }],
+  ["a-reverb",aReverbBinding,refreshAReverbView,()=>{
     updateParams("a-reverb");updateEngineInfo();
-  }
-};
-aReverbField.addEventListener("focus",()=>{
-  aReverbField.value=String(aReverbBinding.display(3));aReverbField.select();
-});
-aReverbField.addEventListener("input",commitAReverbTyped);
-aReverbField.addEventListener("change",commitAReverbTyped);
-aReverbField.addEventListener("blur",()=>{
-  commitAReverbTyped();refreshAReverbView(true);delete aReverbField.dataset.invalid;
-});
-aReverbField.addEventListener("keydown",event=>{if(event.key==="Enter")aReverbField.blur();});
-// Reflection gain is revisioned DSP state, unlike Wet's download-time mix.
-const zeroReflectField=$("#zero-reflect-value");
-const commitZeroReflectTyped=()=>{
-  const previous=zeroReflectBinding.value;
-  try{
-    zeroReflectBinding.setView(zeroReflectField.value,{unit:"percent",origin:"typed",
-      overflow:"clamp",notify:false});
-    delete zeroReflectField.dataset.invalid;
-  }catch{
-    zeroReflectField.dataset.invalid="true";return;
-  }
-  refreshZeroReflectView();
-  if(!Object.is(previous,zeroReflectBinding.value)){
+  }],
+  ["zero-reflect",zeroReflectBinding,refreshZeroReflectView,()=>{
     updateParams("zero-reflect");updateEngineInfo();
-  }
-};
-zeroReflectField.addEventListener("focus",()=>{
-  zeroReflectField.value=String(zeroReflectBinding.display(3));
-  zeroReflectField.select();
-});
-zeroReflectField.addEventListener("input",commitZeroReflectTyped);
-zeroReflectField.addEventListener("change",commitZeroReflectTyped);
-zeroReflectField.addEventListener("blur",()=>{
-  commitZeroReflectTyped();refreshZeroReflectView(true);
-  delete zeroReflectField.dataset.invalid;
-});
-zeroReflectField.addEventListener("keydown",event=>{
-  if(event.key==="Enter")zeroReflectField.blur();
-});
-// Reflect decay is a second independent revisioned DSP parameter.
-const zeroDecayField=$("#zero-decay-value");
-const commitZeroDecayTyped=()=>{
-  const previous=zeroDecayBinding.value;
-  try{
-    zeroDecayBinding.setView(zeroDecayField.value,{unit:"percent",origin:"typed",
-      overflow:"clamp",notify:false});
-    delete zeroDecayField.dataset.invalid;
-  }catch{
-    zeroDecayField.dataset.invalid="true";return;
-  }
-  refreshZeroDecayView();
-  if(!Object.is(previous,zeroDecayBinding.value)){
+  }],
+  ["zero-decay",zeroDecayBinding,refreshZeroDecayView,()=>{
     updateParams("zero-decay");updateEngineInfo();
-  }
-};
-zeroDecayField.addEventListener("focus",()=>{
-  zeroDecayField.value=String(zeroDecayBinding.display(3));zeroDecayField.select();
-});
-zeroDecayField.addEventListener("input",commitZeroDecayTyped);
-zeroDecayField.addEventListener("change",commitZeroDecayTyped);
-zeroDecayField.addEventListener("blur",()=>{
-  commitZeroDecayTyped();refreshZeroDecayView(true);delete zeroDecayField.dataset.invalid;
-});
-zeroDecayField.addEventListener("keydown",event=>{
-  if(event.key==="Enter")zeroDecayField.blur();
-});
-// Inversion affects the DSP curve and auto-engine selection; never silently
-// round a typed value through the dual-thumb's coarse 0.005 gesture rail.
-const invertField=$("#invert-value");
-const commitInvertTyped=()=>{
-  const previous=invertBinding.value;
-  try{
-    invertBinding.setView(invertField.value,{unit:"percent",origin:"typed",
-      overflow:"clamp",notify:false});
-    delete invertField.dataset.invalid;
-  }catch{
-    invertField.dataset.invalid="true";return;
-  }
-  refreshInvertView();
-  if(!Object.is(previous,invertBinding.value)){
+  }],
+  ["invert",invertBinding,refreshInvertView,()=>{
     updateParams("invert");updateEngineInfo();
-  }
-};
-invertField.addEventListener("focus",()=>{
-  invertField.value=String(invertBinding.display(3));invertField.select();
-});
-invertField.addEventListener("input",commitInvertTyped);
-invertField.addEventListener("change",commitInvertTyped);
-invertField.addEventListener("blur",()=>{
-  commitInvertTyped();refreshInvertView(true);delete invertField.dataset.invalid;
-});
-invertField.addEventListener("keydown",event=>{
-  if(event.key==="Enter")invertField.blur();
-});
+  }]
+];
+for(const [id,binding,refresh,onChanged] of typedPercentEditors)
+  mountPercentParameterField({field:$("#"+id+"-value"),binding,refresh,onChanged});
 // The move slider stores canonical u. Notation is conditional on curvature p,
  // and only a valid inverse conversion may update the DSP control.
  const moveField=$("#axis-shift-value"),moveUnit=$("#axis-shift-unit");
