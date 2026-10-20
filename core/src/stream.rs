@@ -206,14 +206,18 @@ impl Stream {
         let begin=middle.saturating_sub(width/2);
         let end=(begin+width).min(self.n);
         let mut cc=0.0;let mut ss=0.0;let mut cs=0.0;let mut cy=0.0;let mut sy=0.0;
+        // No allocations or trig calls per sample in the 128-frame audio callback.
+        let step=TAU*frequency/self.sample_rate;
+        let (step_sin,step_cos)=step.sin_cos();
+        let (mut sn,mut co)=(step*(begin as f64-middle as f64)).sin_cos();
         for i in begin..end{
-            let phase=TAU*frequency*(i as f64-middle as f64)/self.sample_rate;
-            let (sn,co)=phase.sin_cos();
             let j=i-begin;
             let weight=0.5-0.5*(TAU*j as f64/(end-begin) as f64).cos();
             let sample=self.input[channel][(start+i)%self.n]*weight;
             cc+=weight*co*co;ss+=weight*sn*sn;cs+=weight*co*sn;
             cy+=sample*co;sy+=sample*sn;
+            let next_cos=co*step_cos-sn*step_sin;
+            sn=sn*step_cos+co*step_sin;co=next_cos;
         }
         let determinant=cc*ss-cs*cs;
         if determinant<=1e-9*(cc+ss).powi(2){return None;}
