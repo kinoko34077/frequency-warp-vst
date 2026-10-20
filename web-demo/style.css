@@ -802,3 +802,11 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
   .vr-inputs{grid-template-columns:1fr;gap:8px}
   .vr-number-row .vr-counter{min-width:40px;flex-basis:40px}
 }
+
+/* The H/F gesture rail stays linear while a short scope makes 1Hz ticks
+ * independently reachable on phone; max choice changes gesture view only. */
+.vr-linear-rail{display:flex;gap:5px;align-items:center;min-width:0}
+.vr-linear-rail>input[type="range"]{min-width:0;flex:1 1 auto;width:auto}
+.vr-linear-rail>select{min-width:59px;width:59px;max-width:59px;min-height:33px;
+  padding:3px 2px;font-size:11px;background:#173831;color:#e5f5eb;
+  border:1px solid #52786d;border-radius:5px}
