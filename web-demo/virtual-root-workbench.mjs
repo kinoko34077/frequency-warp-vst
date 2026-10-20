@@ -3,7 +3,8 @@
  */
 import {createVirtualRootPlan} from "./virtual-root-plan.mjs";
 import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
-import {parseView,formatView} from "./parameter-units.mjs";
+import {parseView} from "./parameter-units.mjs";
+import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 const $=selector=>document.querySelector(selector);
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
 const fmt=(v,digits=3)=>finite(v)?Number(v.toFixed(digits)).toString():"—";
@@ -94,16 +95,33 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       <div id="vr-preview" class="vr-preview" role="list" aria-label="倍音配置の詳細"></div>
     </details>
     <p id="vr-error" class="vr-error" role="status" hidden></p>`;
-  const state={F:350,H:87.5,m:4,h1:1}, units={F:"hz",H:"hz"};
+  // Shared canonical bindings own F/H; the special virtual-root rails and digit
+  // controls only adapt gestures. No parallel frequency/unit store in this UI.
   const scopes={F:1000,H:200}, choices=[200,1000,5000,20000];
+  const createFrequencyBinding=(key,initialValue)=>createParameterBinding(defineParameter({
+    id:key==="F"?"virtual-root-f":"virtual-root-h",
+    min:Number.MIN_VALUE,max:Number.MAX_VALUE,defaultValue:initialValue,
+    units:["hz","note","percent"],digits:2,
+    rail:{
+      fromPosition:t=>1+(scopes[key]-1)*t,
+      toPosition:v=>clamp((v-1)/(scopes[key]-1),0,1)
+    }
+  }));
+  const frequencyBindings={F:createFrequencyBinding("F",350),H:createFrequencyBinding("H",87.5)};
+  const state={
+    get F(){return frequencyBindings.F.value;},
+    set F(value){frequencyBindings.F.setCanonical(value,{notify:false,overflow:"reject"});},
+    get H(){return frequencyBindings.H.value;},
+    set H(value){frequencyBindings.H.setCanonical(value,{notify:false,overflow:"reject"});},
+    m:4,h1:1
+  };
   const inputIds={F:"vr-source-f",H:"vr-target-h",m:"vr-step-m",h1:"vr-first-index"};
   const keyIds={F:"source-f",H:"target-h",m:"step-m",h1:"first-index"};
   const controls=Object.fromEntries(Object.entries(keyIds).map(([key,id])=>[key,$("#vr-"+id)]));
   const rails=Object.fromEntries(Object.entries(keyIds).map(([key,id])=>[key,$("#vr-"+id+"-rail")]));
-  const percentOpts=key=>({id:"fundamental",digits:2,
-    fromRail:t=>1+(scopes[key]-1)*t,
-    toRail:v=>clamp((v-1)/(scopes[key]-1),0,1)});
-  const getUnit=key=>units[key]||"hz";
+  const percentOpts=key=>({id:frequencyBindings[key].descriptor.id,digits:2,
+    fromRail:frequencyBindings[key].descriptor.rail.fromPosition});
+  const getUnit=key=>frequencyBindings[key]?.unit||"hz";
   function fromText(key,raw){
     if(!String(raw).trim())return null;
     const unit=getUnit(key);
@@ -120,7 +138,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     }catch{return null;}
   }
   const displayValue=key=>key==="H"||key==="F"?
-    String(formatView(state[key],getUnit(key),percentOpts(key))):String(state[key]);
+    String(frequencyBindings[key].display(2)):String(state[key]);
   let activePlan=null,lastFingerprint="",generation=0;
   const error=$("#vr-error");
   function render(){
@@ -220,7 +238,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       if(unit==="note"){
         state[key]=state[key]*2**(Number(button.dataset.delta)/12);
       }else if(unit==="percent"){
-        state[key]=clamp(state[key]+Number(button.dataset.delta)*19999/100,1,20000);
+        const binding=frequencyBindings[key],rail=binding.descriptor.rail;
+        const percent=clamp(rail.toPosition(binding.value)*100+Number(button.dataset.delta),0,100);
+        binding.setView(String(percent),{unit:"percent",origin:"typed",notify:false,overflow:"reject"});
       }else{
         const delta=(key==="m"||key==="h1")?1:.01;
         state[key]=Math.round((state[key]+Number(button.dataset.delta)*delta)*100)/100;
@@ -234,14 +254,15 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   for(const button of root.querySelectorAll("[data-vr-unit]")){
     button.addEventListener("click",()=>{
       const key=button.dataset.vrUnitFor==="target-h"?"H":"F";
-      units[key]=button.dataset.vrUnit;
-      controls[key].type=units[key]==="note"?"text":"number";
-      controls[key].inputMode=units[key]==="note"?"text":"decimal";
-      controls[key].step=units[key]==="note"?"any":".01";
-      root.querySelector('[data-vr-digit="'+keyIds[key]+'"]').hidden=units[key]==="note";
-      if(units[key]==="note")root.querySelector("#vr-digits-"+keyIds[key]).hidden=true;
-      controls[key].min=units[key]==="percent"?"0":".01";
-      controls[key].max=units[key]==="percent"?"100":String(key==="H"?20000:5120000);
+      frequencyBindings[key].selectUnit(button.dataset.vrUnit);
+      const selectedUnit=getUnit(key);
+      controls[key].type=selectedUnit==="note"?"text":"number";
+      controls[key].inputMode=selectedUnit==="note"?"text":"decimal";
+      controls[key].step=selectedUnit==="note"?"any":".01";
+      root.querySelector('[data-vr-digit="'+keyIds[key]+'"]').hidden=selectedUnit==="note";
+      if(selectedUnit==="note")root.querySelector("#vr-digits-"+keyIds[key]).hidden=true;
+      controls[key].min=selectedUnit==="percent"?"0":".01";
+      controls[key].max=selectedUnit==="percent"?"100":String(key==="H"?20000:5120000);
       render();
     });
   }
