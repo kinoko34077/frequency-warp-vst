@@ -50,30 +50,6 @@
       </section>
 
             <section id="virtual-root-workbench" class="panel virtual-root-panel" aria-label="仮想基音と倍音配置"></section>
-      <section class="panel lab-port-panel" id="lab-port-panel" aria-labelledby="lab-port-title">
-        <div class="section-header"><div><p class="eyebrow">EXPERIMENTAL AUDIO LAB</p><h2 id="lab-port-title">個別波長・モデル比較試聴</h2></div></div>
-        <p class="lab-port-note">追加された独立試聴です。既存のFrequency WarpエンジンA〜Dは変更しません。この試聴では原音の1.5秒区間へPV等の処理を施します。初期状態は原音へLab処理のみです。「Rust→Lab」ONでは既存のWarp設定を先にRustで処理してからLabへ渡します。Lab内部の部分音を直接f→g(f)変換する方式とは異なります。</p>
-        <div class="lab-port-controls">
-          <label for="lab-port-backend">処理モデル <select id="lab-port-backend"><option value="pv">PV（位相ボコーダー）</option><option value="wsola">WSOLA</option><option value="dual">短窓＋長窓 複合</option><option value="am">AM包絡＋PV</option></select></label>
-          <label class="lab-port-checkbox" for="lab-port-apply-warp"><input type="checkbox" id="lab-port-apply-warp"> 現在のFrequency Warp変換を先に適用（Rust→Lab）</label>
-          <label class="lab-port-checkbox" for="lab-port-individual"><input type="checkbox" id="lab-port-individual"> 周波数ごとの個別波長（試験版）</label>
-          <label id="lab-port-cycles-field" for="lab-port-cycles" hidden>解析に使う周期数：<output id="lab-port-cycles-output" for="lab-port-cycles">8周期</output>
-            <input type="range" id="lab-port-cycles" min="-1" max="5" step="1" value="3" disabled>
-            <small>0.5 · 1 · 2 · 4 · 8 · 16 · 32周期</small>
-          </label>
-          <label for="lab-port-short">短窓（サンプル） <select id="lab-port-short" disabled><option value="256">256</option><option value="512" selected>512</option><option value="1024">1024</option><option value="2048">2048</option></select></label>
-          <label for="lab-port-long">長窓（サンプル） <select id="lab-port-long"><option value="1024">1024</option><option value="2048" selected>2048</option><option value="4096">4096</option><option value="8192">8192</option></select></label>
-          <label for="lab-port-speed">再生速度 <output id="lab-port-speed-output" for="lab-port-speed">1.00×</output><input id="lab-port-speed" type="range" min="0.5" max="2" step="0.05" value="1"></label>
-          <label for="lab-port-pitch">音程 <output id="lab-port-pitch-output" for="lab-port-pitch">0半音</output><input id="lab-port-pitch" type="range" min="-12" max="12" step="1" value="0"></label>
-        </div>
-        <p id="lab-port-explainer" class="lab-port-note">個別波長OFF：選択したモデルで原音を処理します。短窓はWSOLA/複合、長窓はPV/複合/AMに適用します。</p>
-        <div class="actions">
-          <button type="button" id="lab-port-preview" disabled>▶ 再生位置から1.5秒を試聴</button>
-          <button type="button" id="lab-port-stop" disabled>■ 試聴停止</button>
-        </div>
-        <small id="lab-port-status" role="status" aria-live="polite">音源を選択すると試聴できます。処理はブラウザ内のみ。</small>
-      </section>
-
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <details class="panel-fold" open><summary>変換パラメータ・追加加工</summary>
