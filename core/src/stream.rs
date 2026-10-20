@@ -31,6 +31,7 @@ pub struct Stream {
     a_min_hz:f64,
     a_peak_band_bins:usize,
     a_quality_percent:u32,
+    individual_cycles:f64, // 0=legacy, otherwise measured K-period source support for peak oscillators
     a_reverb_amount:f32,
     a_reverb_delays:Vec<Vec<Vec<f32>>>,
     a_reverb_pos:[usize;3],
@@ -80,7 +81,7 @@ impl Stream {
             ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
             crusher_value:vec![0.0;channels],
-            a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
+            a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,individual_cycles:0.0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
@@ -184,6 +185,48 @@ impl Stream {
     /// crossed-zero component, 1 reflects at original magnitude. Intermediate
     /// values attenuate only the reflected component. The legacy 0/1/2
     /// zero-mode behavior is untouched until this setter is called.
+    pub fn set_individual_cycles(&mut self,cycles:f64)->Result<(),&'static str>{
+        if ![0.0,0.5,1.0,2.0,4.0,8.0,16.0,32.0].contains(&cycles){
+            return Err("unsupported independent-period K value");
+        }
+        self.individual_cycles=cycles;Ok(())
+    }
+    /// A real source-domain oscillator fit. The FFT discovers a candidate,
+    /// but the source support for estimating each oscillator's amplitude and
+    /// phase is K/f seconds, not a fixed-bin width. This is bounded by the
+    /// current FFT ring: low frequencies whose K cycles exceed N cannot be
+    /// resolved in full without selecting a longer quality FFT.
+    /// Return the centre-of-window (amplitude,phase), per stereo channel.
+    fn fit_partial(&self,channel:usize,start:usize,frequency:f64)->Option<(f64,f64)>{
+        if self.individual_cycles<=0.0||frequency<=0.0{return None;}
+        let span=(self.individual_cycles*self.sample_rate/frequency).round() as usize;
+        let width=span.clamp(12,self.n);
+        if width<16{return None;}
+        let middle=self.n/2;
+        let begin=middle.saturating_sub(width/2);
+        let end=(begin+width).min(self.n);
+        let mut cc=0.0;let mut ss=0.0;let mut cs=0.0;let mut cy=0.0;let mut sy=0.0;
+        // No allocations or trig calls per sample in the 128-frame audio callback.
+        let step=TAU*frequency/self.sample_rate;
+        let (step_sin,step_cos)=step.sin_cos();
+        let (mut sn,mut co)=(step*(begin as f64-middle as f64)).sin_cos();
+        for i in begin..end{
+            let j=i-begin;
+            let weight=0.5-0.5*(TAU*j as f64/(end-begin) as f64).cos();
+            let sample=self.input[channel][(start+i)%self.n]*weight;
+            cc+=weight*co*co;ss+=weight*sn*sn;cs+=weight*co*sn;
+            cy+=sample*co;sy+=sample*sn;
+            let next_cos=co*step_cos-sn*step_sin;
+            sn=sn*step_cos+co*step_sin;co=next_cos;
+        }
+        let determinant=cc*ss-cs*cs;
+        if determinant<=1e-9*(cc+ss).powi(2){return None;}
+        let a=(ss*cy-cs*sy)/determinant;
+        let b=(cc*sy-cs*cy)/determinant;
+        let amplitude=a.hypot(b);
+        if !amplitude.is_finite()||amplitude<1e-12{return None;}
+        Some((amplitude,(-b).atan2(a)))
+    }
     pub fn set_zero_reflect_gain(&mut self,gain:f64)->Result<(),&'static str>{
         if !gain.is_finite()||!(0.0..=1.0).contains(&gain){
             return Err("invalid negative-target reflection gain");
@@ -516,9 +559,13 @@ impl Stream {
             let rot_r=omega.cos();let rot_i=omega.sin();
             for c in 0..self.channels{
                 let z=self.spectrum[c][k];
-                let amplitude=4.0*z.magnitude()/self.n as f64*fade_gain;
+                let (amplitude,centre_phase)=
+                    if let Some((amp,phase))=self.fit_partial(c,start,frequency){
+                        (amp*fade_gain,phase+shift)
+                    }else{
+                        (4.0*z.magnitude()/self.n as f64*fade_gain,z.angle()+PI*k as f64+shift)
+                    };
                 if amplitude<1e-9{continue;}
-                let centre_phase=z.angle()+PI*k as f64+shift;
                 let start_phase=centre_phase-omega*(self.n as f64/2.0);
                 let mut cr=start_phase.cos();
                 let mut ci=start_phase.sin();
@@ -792,6 +839,11 @@ pub unsafe extern "C" fn warp_stream_set_a_band(ptr:*mut Stream,bins:u32)->i32{
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_individual_cycles(ptr:*mut Stream,cycles:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_individual_cycles(cycles){Ok(())=>0,Err(_)=>-2}
+}
+#[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_a_quality(ptr:*mut Stream,percent:u32)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_a_quality(percent){Ok(())=>0,Err(_)=>-2}
@@ -849,7 +901,7 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
     render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None,None)
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None,None,0.0)
 }
 
 /// Unified native/WASM offline export with controllable negative-target
@@ -867,7 +919,7 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_gain_ext(
     render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain),None)
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain),None,0.0)
 }
 
 /// Reflection synthesis amount and frequency-distance decay for WAV export.
@@ -887,7 +939,28 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_controls_ext(
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
         axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,
-        Some(zero_reflect_gain),Some(zero_reflect_decay))
+        Some(zero_reflect_gain),Some(zero_reflect_decay),0.0)
+}
+
+/// Bounded K-window peak analysis through exactly the SAME streaming Rust
+/// implementation as AudioWorklet. Existing export ABI stays unchanged.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_individual_cycles_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,
+    zero_reflect_gain:f64,zero_reflect_decay:f64,individual_cycles:f64,
+)->i32{
+    if !zero_reflect_gain.is_finite()||!(0.0..=1.0).contains(&zero_reflect_gain)||
+       !zero_reflect_decay.is_finite()||!(0.0..=1.0).contains(&zero_reflect_decay){return -2;}
+    render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
+        outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
+        crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,
+        Some(zero_reflect_gain),Some(zero_reflect_decay),individual_cycles)
 }
 
 unsafe fn render_zero_gain_internal(
@@ -896,7 +969,7 @@ unsafe fn render_zero_gain_internal(
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
-    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,zero_reflect_decay:Option<f64>,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,zero_reflect_decay:Option<f64>,individual_cycles:f64,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -911,6 +984,7 @@ unsafe fn render_zero_gain_internal(
        st.set_a_options(a_min_hz,a_reverb).is_err()||
        st.set_a_peak_band(a_peak_band_bins).is_err()||
        st.set_a_quality(a_quality_percent).is_err()||
+       st.set_individual_cycles(individual_cycles).is_err()||
        // Internal optional gain: no gain keeps the exact legacy 0/1/2
        // policy; Some(0..1) activates variable-amplitude reflection.
        zero_reflect_gain.is_some_and(|gain|
@@ -1010,6 +1084,33 @@ mod tests{
     fn settings()->Settings{
         Settings{low:20.0,high:3000.0,curvature:1.0,invert:1.0,
             mode:Progression::FoldHigh,quality:0}
+    }
+
+    #[test]
+    fn individual_periods_are_real_audio_controls_and_preserve_legacy_off(){
+        let fs=8192.0;
+        let src:(Vec<f32>)=(0..8192).map(|i|{
+            let t=i as f64/fs;
+            (0.22*(TAU*307.137*t+0.33).cos()) as f32
+        }).collect();
+        let mut render=|cycles:f64|{
+            let mut st=Stream::new(fs,1,settings(),0).unwrap();
+            st.set_individual_cycles(cycles).unwrap();
+            let mut out=vec![0.0f32;src.len()];
+            for start in (0..src.len()).step_by(128){
+                st.process(&src[start..start+128],&mut out[start..start+128],128).unwrap();
+            }
+            out
+        };
+        let old=render(0.0);
+        assert!(old.iter().all(|x|x.is_finite()));
+        let short=render(0.5);
+        let long=render(8.0);
+        assert!(short.iter().all(|x|x.is_finite()));
+        assert!(long.iter().all(|x|x.is_finite()));
+        let delta:f64=short.iter().zip(long.iter()).map(|(a,b)|(*a as f64-*b as f64).powi(2)).sum();
+        assert!(delta>1e-9,"K-period analysis must actually alter DSP audio, not only a UI value");
+        assert!(Stream::new(fs,1,settings(),0).unwrap().set_individual_cycles(0.75).is_err());
     }
     #[test]
     fn continuous_blocks_shift_tone_with_bounded_latency(){
