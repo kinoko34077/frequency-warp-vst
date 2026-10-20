@@ -763,3 +763,50 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
  * editor and the frequency plot without redundant legacy control surfaces. */
 html:not([data-legacy-harmonics="1"]) .workspace-right .harmonic-mini,
 html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!important}
+
+
+/* #276 V5: direct, compact, immediately applied progression controls. */
+.vr-inputs{grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:8px}
+.vr-control{display:flex;flex-direction:column;gap:3px;min-width:0}
+.vr-control>label{display:block;font-size:11px;color:#b5d8d1;line-height:1.35}
+.vr-control>select{min-height:40px;width:100%;box-sizing:border-box}
+.vr-number-row{display:flex;gap:3px;align-items:center;min-width:0}
+.vr-number-row input{min-width:0;flex:1 1 auto;width:66px;min-height:40px;
+  font-size:16px;box-sizing:border-box;font-variant-numeric:tabular-nums}
+.vr-number-row .vr-counter{flex:0 0 30px;min-width:30px;min-height:40px;
+  padding:2px;border:1px solid #4b736b;border-radius:5px;background:#173a36;
+  color:#ddf5e8;font-size:17px;cursor:pointer}
+.vr-number-row .vr-counter:active{background:#286c60}
+.vr-number-row input[aria-invalid="true"]{outline:2px solid #e6b38e}
+.vr-unit-switch{align-self:start;padding:1px}
+.vr-unit-switch button{min-height:28px;min-width:28px}
+.vr-control input[type="range"]{width:100%;min-height:32px;touch-action:pan-y;padding:0;margin:0}
+.vr-sequence{font-size:12px;line-height:1.35;margin:0;overflow-wrap:anywhere;
+  color:#c8efe0;font-variant-numeric:tabular-nums}
+.vr-formula{font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+#vr-details{min-width:0}
+#vr-details>summary{cursor:pointer;min-height:34px;font-size:12px;display:list-item;
+  color:#bce5d5}
+#vr-details .vr-preview{margin-top:5px}
+.vr-error{font-size:10px;color:#f2c18d;margin:0}
+.vr-digit-open{display:none;min-height:40px;min-width:34px;padding:2px 5px;
+  border:1px solid #4b736b;border-radius:5px;background:#173a36;color:#d2eddf;font-size:10px}
+.vr-digit-picker{display:flex;gap:3px;max-width:100%;overflow-x:auto;padding:4px 0;
+  scrollbar-width:thin}
+.vr-digit-picker[hidden],.vr-digit-open[hidden]{display:none!important}
+.vr-number-row .vr-counter:disabled,.vr-digit-open:disabled{opacity:.4;cursor:not-allowed}
+.vr-digit-picker select{min-width:34px;width:34px;flex:0 0 34px;min-height:42px;padding:1px;
+  font-size:16px;color:#e8fff7;background:#173831;border:1px solid #578276;border-radius:4px}
+@media(pointer:coarse){
+  .vr-digit-open{display:block}
+  .vr-inputs{grid-template-columns:1fr;gap:8px}
+  .vr-number-row .vr-counter{min-width:40px;flex-basis:40px}
+}
+
+/* The H/F gesture rail stays linear while a short scope makes 1Hz ticks
+ * independently reachable on phone; max choice changes gesture view only. */
+.vr-linear-rail{display:flex;gap:5px;align-items:center;min-width:0}
+.vr-linear-rail>input[type="range"]{min-width:0;flex:1 1 auto;width:auto}
+.vr-linear-rail>select{min-width:59px;width:59px;max-width:59px;min-height:33px;
+  padding:3px 2px;font-size:11px;background:#173831;color:#e5f5eb;
+  border:1px solid #52786d;border-radius:5px}
