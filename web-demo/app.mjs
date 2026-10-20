@@ -893,7 +893,14 @@ async function mediaBridge(player){
     // An external iOS lock-screen / headset pause is a transport pause, not
     // a route failure. Rerouting a looping BufferSource here kept playing.
     element.onpause=()=>{
-      if(state.player===player&&!player.bridgeInternalPause)void stop();
+      if(state.player!==player||player.bridgeInternalPause)return;
+      // Browser audio elements can pause spontaneously during output-route
+      // negotiations. An unhidden element pause is NOT a user Pause command.
+      // The installed MediaSession pause handler is the primary transport stop;
+      // a hidden iOS document pause is its physical-control fallback.
+      if(document.visibilityState==="hidden" ||
+         navigator.mediaSession?.playbackState==="paused")void stop();
+      else fallback();
     };
     element.onwaiting=fallback;
     element.onstalled=fallback;
