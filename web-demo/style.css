@@ -767,3 +767,9 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .vr-original-track{height:5px;background:#294048}
 .vr-original-bar{background:#809ca5}
 .vr-partial-track:not(.vr-original-track){margin-top:2px}
+
+/* The old equations-first harmonic Lab stays loaded for compatibility, and
+ * ?legacy_lab=1 explicitly restores it. Default UI exposes the purpose-first
+ * editor and the frequency plot without redundant legacy control surfaces. */
+html:not([data-legacy-harmonics="1"]) .workspace-right .harmonic-mini,
+html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!important}
