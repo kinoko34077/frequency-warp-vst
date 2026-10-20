@@ -59,7 +59,7 @@ test('user-visible Lab opt-in controls and original Rust engine selector coexist
  assert.match(app,/AudioWorkletNode\(ctx,"frequency-warp-rust"/);
  assert.match(app,/controls\.wet\.addEventListener/);
  assert.match(worker,/renderPCM\(\{channels,sampleRate,sourceStartSeconds,\.\.\.options\}\)/);
- assert.match(html,/Frequency Warpの非線形写像・反転・曲率・移動は、この試聴にはまだ適用しません/);
+ assert.match(html,/Rustで処理してからLabへ渡します/);
 });
 
 test('sequential native Rust Warp stage is opt-in and routed through the existing actual WASM Worker',()=>{
