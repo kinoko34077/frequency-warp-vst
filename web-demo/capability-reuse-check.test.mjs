@@ -19,6 +19,10 @@ test("allow a truly different specialized rail without duplicating unit semantic
   assert.deepEqual(auditUnitConsumer("unique-rail.mjs",'export const toRail = hz => Math.round(hz);'),[]);
 });
 test("allow a UI that adapts a shared canonical binding",()=>{
-  const using='<div class="unit-switch"></div> const control = createParameterBinding(descriptor); function fromText(v){return control.setView(v);}';
+  const using='<div class="unit-switch"></div> const control = createParameterBinding(descriptor); createParameterUnitSwitch(options); function fromText(v){return control.setView(v);}';
   assert.deepEqual(auditUnitConsumer("new-controls.mjs",using),[]);
+});
+test("reject a copied unit icon UI even if it imports the value binding",()=>{
+  const duplicated='<div class="unit-switch"><button data-vr-unit="hz">Hz</button></div> const binding = createParameterBinding(descriptor); function fromText(){return binding.value;}';
+  assert.match(auditUnitConsumer("bespoke-units.mjs",duplicated).join("\\n"),/icon UI must reuse/);
 });
