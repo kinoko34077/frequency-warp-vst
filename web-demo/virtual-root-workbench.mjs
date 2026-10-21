@@ -5,6 +5,7 @@ import {createVirtualRootPlan} from "./virtual-root-plan.mjs";
 import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
 import {parseView} from "./parameter-units.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
+import {createDigitWheelPicker} from "./digit-wheel-picker.mjs";
 import {createParameterUnitSwitch} from "./frequency-unit-field.mjs";
 const $=selector=>document.querySelector(selector);
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
@@ -23,54 +24,11 @@ const field=(key,title,value,min,max,step,rail=true)=>`
     <label for="vr-${key}">${title}</label>
     ${key==="target-h"||key==="source-f"?`<div data-vr-unit-slot="${key}"></div>`:""}
     <div class="vr-number-row">
-      <button type="button" class="vr-counter" data-vr-counter="${key}" data-delta="-1" aria-label="${title}を減らす">−</button>
       <input id="vr-${key}" type="number" inputmode="decimal" step="${step}" min="${min}" max="${max}" value="${value}" aria-label="${title}">
-      <button type="button" class="vr-counter" data-vr-counter="${key}" data-delta="1" aria-label="${title}を増やす">+</button>
-      <button type="button" class="vr-digit-open" data-vr-digit="${key}" aria-expanded="false" aria-controls="vr-digits-${key}">桁別</button>
+      <button type="button" class="vr-digit-open" data-vr-digit="${key}" aria-expanded="false" aria-controls="vr-wheel-overlay">桁ロール</button>
     </div>
-    <div id="vr-digits-${key}" class="vr-digit-picker" hidden></div>
     ${rail?`<div class="vr-linear-rail"><input id="vr-${key}-rail" type="range" min="${key==="target-h"||key==="source-f"?1:min}" max="${key==="target-h"?200:key==="source-f"?1000:max}" step="1" value="${Math.round(value)}" aria-label="${title}を整数単位で調整">${key==="target-h"||key==="source-f"?`<select id="vr-${key}-scale" aria-label="${title}のバー操作範囲"><option value="200"${key==="target-h"?" selected":""}>〜200</option><option value="1000"${key==="source-f"?" selected":""}>〜1k</option><option value="5000">〜5k</option><option value="20000">〜20k</option></select>`:""}</div>`:""}
   </div>`;
-function makeDigitPicker(key,places,signed,input,change){
-  const root=$("#vr-digits-"+key),button=document.querySelector('[data-vr-digit="'+key+'"]');
-  let controls=[];
-  if(signed){
-    const sign=document.createElement("select");sign.setAttribute("aria-label","符号");
-    for(const [v,name] of [["1","+"],["-1","−"]]){
-      const option=document.createElement("option");option.value=v;option.textContent=name;sign.append(option);
-    }
-    root.append(sign);controls.push({select:sign,place:null});
-  }
-  for(const place of places){
-    const select=document.createElement("select");
-    select.setAttribute("aria-label",place<0?"小数第"+(-place)+"位":"10の"+place+"乗の桁");
-    for(let i=0;i<=9;i++){
-      const option=document.createElement("option");option.value=String(i);option.textContent=String(i);
-      select.append(option);
-    }
-    root.append(select);controls.push({select,place});
-  }
-  const sync=()=>{
-    const v=Number(input.value)||0;
-    for(const {select,place} of controls)
-      select.value=place===null?(v<0?"-1":"1"):
-        String(Math.floor(Math.abs(v)/10**place+1e-8)%10);
-  };
-  root.addEventListener("change",()=>{
-    let amount=0,sign=1;
-    for(const {select,place} of controls){
-      if(place===null)sign=Number(select.value);
-      else amount+=Number(select.value)*10**place;
-    }
-    input.value=String(Number((sign*amount).toFixed(2)));
-    change();
-  });
-  button.addEventListener("click",()=>{
-    root.hidden=!root.hidden;button.setAttribute("aria-expanded",String(!root.hidden));
-    if(!root.hidden)sync();
-  });
-  return sync;
-}
 export function mountVirtualRootWorkbench({onApply,onCurrent}){
   const root=$("#virtual-root-workbench");if(!root)return;
   root.innerHTML=`
@@ -99,6 +57,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     id:key==="F"?"virtual-root-f":"virtual-root-h",
     min:Number.MIN_VALUE,max:Number.MAX_VALUE,defaultValue:initialValue,
     units:["hz","note","percent"],digits:2,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]},
     rail:{
       fromPosition:t=>1+(scopes[key]-1)*t,
       toPosition:v=>clamp((v-1)/(scopes[key]-1),0,1)
@@ -119,6 +78,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   const percentOpts=key=>({id:frequencyBindings[key].descriptor.id,digits:2,
     fromRail:frequencyBindings[key].descriptor.rail.fromPosition});
   const getUnit=key=>frequencyBindings[key]?.unit||"hz";
+  let wheel=null;
   // Both the standard numeric inputs and this specialized lab consume the
   // same icon/label/ARIA unit-switch component. Only the rail and digit
   // gestures remain lab-specific.
@@ -130,13 +90,13 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       choices:[{value:"hz",label:"Hz"},{value:"note",label:"音名＋セント"},{value:"percent",label:"%"}],
       selected:()=>getUnit(key),
       onSelect:unit=>{
+        if(wheel?.isOpen())wheel.close(false);
         frequencyBindings[key].selectUnit(unit);
         const el=controls[key],selectedUnit=getUnit(key);
         el.type=selectedUnit==="note"?"text":"number";
         el.inputMode=selectedUnit==="note"?"text":"decimal";
         el.step=selectedUnit==="note"?"any":".01";
         root.querySelector('[data-vr-digit="'+id+'"]').hidden=selectedUnit==="note";
-        if(selectedUnit==="note")root.querySelector("#vr-digits-"+id).hidden=true;
         el.min=selectedUnit==="percent"?"0":".01";
         el.max=selectedUnit==="percent"?"100":String(key==="H"?20000:5120000);
         render();
@@ -169,7 +129,6 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     if(keep)state.H=state.F/state.m;
     controls.H.readOnly=keep;rails.H.disabled=keep;
     root.querySelector('[data-vr-digit="target-h"]').disabled=keep;
-    root.querySelectorAll('[data-vr-counter="target-h"]').forEach(b=>b.disabled=keep);
     for(const key of Object.keys(controls)){
       if(key==="H"||key==="F"){
         if(state[key]>scopes[key]){
@@ -244,31 +203,20 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     el.addEventListener("input",()=>changed(key));
     el.addEventListener("change",()=>{changed(key);if(document.activeElement!==el)el.value=displayValue(key);});
     el.addEventListener("blur",()=>{el.value=displayValue(key);el.setAttribute("aria-invalid","false");});
-    if(rails[key])rails[key].addEventListener("input",()=>{
+    if(rails[key])rails[key].addEventListener("input",event=>{
       const raw=Number(rails[key].value);
       if(key==="m"||key==="h1")state[key]=Math.round(raw);
-      else state[key]=hzFromVirtualRootRail(raw);
-      render();applyRealtime();
-    });
-  }
-  for(const button of root.querySelectorAll("[data-vr-counter]")){
-    button.addEventListener("click",()=>{
-      const key=Object.keys(keyIds).find(k=>keyIds[k]===button.dataset.vrCounter);
-      if(!key||controls[key].readOnly)return;
-      const unit=getUnit(key);
-      if(unit==="note"){
-        state[key]=state[key]*2**(Number(button.dataset.delta)/12);
-      }else if(unit==="percent"){
-        const binding=frequencyBindings[key],rail=binding.descriptor.rail;
-        const percent=clamp(rail.toPosition(binding.value)*100+Number(button.dataset.delta),0,100);
-        binding.setView(String(percent),{unit:"percent",origin:"typed",notify:false,overflow:"reject"});
-      }else{
-        const delta=(key==="m"||key==="h1")?1:.01;
-        state[key]=Math.round((state[key]+Number(button.dataset.delta)*delta)*100)/100;
+      else {
+        // Reuse the shared canonical binding's rail-aware pitch grid.
+        // Gesture-only snap; direct cents input and unit switch never quantize Hz.
+        const binding=frequencyBindings[key];
+        const snap=getUnit(key)==="note"&&!event.altKey&&!event.ctrlKey;
+        binding.setCanonical(hzFromVirtualRootRail(raw),{
+          origin:"slider",snap,
+          railPixels:Math.max(1,rails[key].getBoundingClientRect().width),
+          overflow:"reject",notify:false
+        });
       }
-      if(key==="m")state[key]=clamp(Math.round(state[key]),1,64);
-      if(key==="h1")state[key]=clamp(Math.round(state[key]),-129,129);
-      if(key==="H"||key==="F")state[key]=clamp(state[key],.01,key==="H"?20000:5120000);
       render();applyRealtime();
     });
   }
@@ -286,15 +234,31 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         controls[key].value=displayValue(key);
     });
   }
-  const pickers=[
-    ["source-f",[6,5,4,3,2,1,0,-1,-2],false],
-    ["target-h",[4,3,2,1,0,-1,-2],false],
-    ["step-m",[1,0],false],["first-index",[2,1,0],true]
-  ];
-  for(const [id,places,signed] of pickers)
-    makeDigitPicker(id,places,signed,$("#vr-"+id),()=>changed(
-      Object.keys(keyIds).find(k=>keyIds[k]===id)));
+  // A single coordinated touch wheel replaces independent per-digit selects.
+  // The numeric input itself retains the browser's intrinsic desktop spinbutton.
+  wheel=createDigitWheelPicker({onValue:(key,value)=>{
+    if(controls[key].readOnly)return false;
+    const parsed=fromText(key,String(value)); // same canonical unit/validation codec
+    if(parsed===null)return false;
+    state[key]=parsed;render();applyRealtime();return true;
+  }});
+  const hzPlaces={
+    F:[6,5,4,3,2,1,0,-1,-2],H:[4,3,2,1,0,-1,-2],
+    m:[1,0],h1:[2,1,0]
+  };
+  for(const button of root.querySelectorAll("[data-vr-digit]")){
+    button.addEventListener("click",()=>{
+      const key=Object.keys(keyIds).find(name=>keyIds[name]===button.dataset.vrDigit);
+      if(!key||controls[key].readOnly||getUnit(key)==="note")return;
+      const percent=getUnit(key)==="percent";
+      wheel.open({key,label:controls[key].getAttribute("aria-label"),
+        value:Number(displayValue(key)),
+        places:percent?[2,1,0,-1,-2]:hzPlaces[key],
+        signed:key==="h1",trigger:button});
+    });
+  }
   document.addEventListener("fw:virtual-root-external-change",()=>{
+    if(wheel?.isOpen())wheel.close(false);
     generation++;lastFingerprint="";
     const old=onCurrent?.();
     if(old&&finite(old.F)&&old.F>0&&finite(old.r)&&old.r>0&&Number.isSafeInteger(old.m)&&old.m>=1&&old.m<=64){
