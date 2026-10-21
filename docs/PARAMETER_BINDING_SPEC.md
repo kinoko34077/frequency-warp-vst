@@ -1,3 +1,13 @@
+## Current contract: default unit-sensitive snap and per-instance overrides (#293; 2026-10-22)
+
+The later default-ON user decision in section 16 supersedes earlier staged text that described opt-in/OFF snapping. **Default application behavior** in shared Web parameter bindings:
+
+- During a slider gesture with the current view **♪ note**, nearby 12-TET semitones snap with a 6px physical-rail threshold; in **% rail view**, nearby **integer rail-travel percentages** snap at a 1% step and 6px threshold, *not at an integer number of Hz*. The source rail's continuous inverse defines the physical value, including nonlinear rails. Other view modes preserve the explicitly configured legacy descriptor snap (e.g., ratio semitone or signed slope anchor targets). A consumer with no legacy snap can still obtain the note/% defaults.
+- Snapping starts **ON for the user interface**, the context/long-press/keyboard menu toggles it per parameter, Alt/Ctrl temporarily bypasses it during a gesture, and Reset restores that consumer's configured default. Standard fields and the specialized virtual-root F/H unit-switch controls use the **same** `attachParameterSnapControls` interaction helper. No separate bespoke menu.
+- A parameter can override or disable one active unit's grid with `defineParameter({..., snapByUnit:{percent:{unit:"percent",mode:"step",step:5,thresholdPx:6},note:false}})`; ordinary `snap` remains the default/fallback for other units and the pure `snappedValue` legacy signature. The Web mounting adapter accepts `snapEnabledDefault` when a concrete consumer has a different approved preference. Special rails may specify `snapByUnit:{hz:false}` to retain an unsnapped integer-Hz gesture.
+- **Typed text (including fractional percent and cents), unit selection, forced constraints, silent linked parameters and display rounding never apply gesture snapping by default.** Numeric Float64 remains canonical. Physical rail endpoints are not replaced by nearby music targets.
+- Scope: Web UI and common binding only. VST3 IDs, Rust DSP, and native host parameter semantics are unchanged. Physical iPhone verification is separate from Chrome/Pages machine acceptance.
+
 # Frequency Warp — Common numeric parameter and unit contract (#77 / #79)
 
 ## Current accepted Web state — 2026-10-21 (supersedes earlier staged notes)
