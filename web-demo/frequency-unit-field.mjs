@@ -66,7 +66,7 @@ export function attachParameterSnapControls({doc,targets,defaultEnabled=true}){
   const setSnapEnabled=enabled=>{snapEnabled=Boolean(enabled);updateHints();};
   const showMenu=(x,y)=>{
     // Modal dialog is in the top layer; attach this transient menu there.
-    const container=field.closest("dialog[open]")||doc.body;
+    const container=targets[0].closest("dialog[open]")||doc.body;
     if(menu.parentNode!==container)container.append(menu);
     menu._toggle=()=>setSnapEnabled(!snapEnabled);
     menu._button.textContent=snapEnabled?"吸着をオフにする":"吸着をオンにする";
