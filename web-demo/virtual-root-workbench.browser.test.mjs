@@ -66,14 +66,14 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#vr-details",el=>el.open),true);
       assert.equal(await page.$$eval("#vr-preview [role=listitem]",els=>els.length),8);
       assert.match(await page.$eval("#vr-preview",el=>el.textContent),/0Hz折返し/);
-      assert.equal(await page.$eval(".vr-counter,.vr-digit-picker",els=>els.length),0,
+      assert.equal(await page.evaluate(()=>document.querySelectorAll(".vr-counter,.vr-digit-picker").length),0,
         "V5 detached steppers and dropdown collections must be absent");
       assert.equal(await page.$eval("#vr-step-m",el=>el.type),"number");
       if(width<=390){
         await page.click('[data-vr-digit="first-index"]');
         assert.equal(await page.$eval("#vr-wheel-overlay",el=>el.hidden),false);
-        assert.equal(await page.$eval("#vr-wheel-overlay select",els=>els.length),0);
-        assert.equal(await page.$eval(".vr-wheel-track",els=>els.length),4);
+        assert.equal(await page.evaluate(()=>document.querySelectorAll("#vr-wheel-overlay select").length),0);
+        assert.equal(await page.evaluate(()=>document.querySelectorAll(".vr-wheel-track").length),4);
         await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
         await page.$eval('.vr-wheel-track[data-wheel-place="sign"]',el=>{
           el.scrollTop=0;el.dispatchEvent(new Event("scroll"));
@@ -83,7 +83,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         await page.click("[data-wheel-cancel]");
         assert.equal(await page.$eval("#vr-first-index",el=>el.value),"-5");
         await page.click('[data-vr-digit="target-h"]');
-        assert.equal(await page.$eval(".vr-wheel-track",els=>els.length),7);
+        assert.equal(await page.evaluate(()=>document.querySelectorAll(".vr-wheel-track").length),7);
         await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
         await page.$eval('.vr-wheel-track[data-wheel-place="-2"]',el=>{
           el.scrollTop=6*42;el.dispatchEvent(new Event("scroll"));
