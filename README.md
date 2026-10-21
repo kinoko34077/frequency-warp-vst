@@ -1,6 +1,16 @@
 # Frequency Warp — VST3 / Web shared DSP research
 
-## 2026-10-15 Web UI release scope
+## Current source / contribution entry — 2026-10-21
+
+**Accepted Web main:** `769727696168fe62d62bd14abce0bb8c94111030` ([PR #289](https://github.com/kinoko34077/frequency-warp-vst/pull/289)). On this exact commit the [Browser/Rust/WASM/Chrome](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/39515770022), [offline reference](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/39515769602) and [Pages build/deploy/live-entry](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/39515769407) checks passed. This does **not** establish real iOS Safari device, FL Studio DAW or unimplemented research model acceptance.
+
+**Before implementing/changing an input or shared capability:** follow [devflow AGENTS.md](https://github.com/kinoko34077/devflow/blob/main/AGENTS.md) and [mandatory source index #734](https://github.com/kinoko34077/devflow/issues/734), then consult this repo's [Capability/API Catalog](docs/CAPABILITY_API_CATALOG.md) and [numeric parameter binding specification](docs/PARAMETER_BINDING_SPEC.md). Reuse an existing owner/export/test; extend the owner or add a thin adapter for a justified variation instead of duplicating parsing, canonical parameter state or UI. The [structural reuse guard](web-demo/capability-reuse-check.mjs) runs in [Web CI](.github/workflows/web-preview-tests.yml); negative tests detect supported duplicate patterns, not every semantic duplicate.
+
+**Independent current owners:** [Web units #79](https://github.com/kinoko34077/frequency-warp-vst/issues/79) has released shared frequency F/H binding, unit icons and five typed-% editors via PRs #287–#289; M2 coordinate/count and M3 remaining legacy state retirement remain OPEN. [Web user/device #183](https://github.com/kinoko34077/frequency-warp-vst/issues/183)/[#276](https://github.com/kinoko34077/frequency-warp-vst/issues/276) remain physically unverified on iPhone; [realtime model integration #273](https://github.com/kinoko34077/frequency-warp-vst/issues/273) is not completed by the former Lab audition; [VST3 #172](https://github.com/kinoko34077/frequency-warp-vst/issues/172) remains a separate native/host acceptance path. Historical dated status notes below preserve release chronology and must not override these owning Issues.
+
+---
+
+## Historical 2026-10-15 Web UI release scope
 
 The source includes responsive graph views (2k/20k/0.001–20Hz theoretical zoom), compact Hz/note/rail unit controls, auxiliary sine gain and bounded live-audio setting validation. PRs [#184](https://github.com/kinoko34077/frequency-warp-vst/pull/184), [#185](https://github.com/kinoko34077/frequency-warp-vst/pull/185) and [#186](https://github.com/kinoko34077/frequency-warp-vst/pull/186) retain implementation/CI history; consult the linked main branch and Pages workflow for live release state. Above 20kHz actual processing is reserved for **possible later oversampling**, not current DSP support. Real failing physical iOS Safari audio-file/codec reproduction remains unverified; staged Chrome tests must not be described as proof on that device. Unit-family migration M2/M3 stays open in #79; native DAW/engine R3C2 remains independently owned by #172.
 
