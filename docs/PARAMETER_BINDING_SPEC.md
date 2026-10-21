@@ -1,4 +1,14 @@
-# Frequency Warp — Common numeric parameter and unit contract (proposal #77)
+# Frequency Warp — Common numeric parameter and unit contract (#77 / #79)
+
+## Current accepted Web state — 2026-10-21 (supersedes earlier staged notes)
+
+The Web source uses `web-demo/parameter-units.mjs` as the dimensional codec, `parameter-binding.mjs` for canonical Float64 value/unit ownership, and `frequency-unit-field.mjs` for the common input/UI adapters. [PR #287](https://github.com/kinoko34077/frequency-warp-vst/pull/287) integrated virtual-root F/H into the canonical binding and introduced a [capability/API catalog](CAPABILITY_API_CATALOG.md) plus structural negative tests. [PR #288](https://github.com/kinoko34077/frequency-warp-vst/pull/288) standardized the actual unit-icon component. [PR #289](https://github.com/kinoko34077/frequency-warp-vst/pull/289) standardized Wet, A-reverb, zero-reflect, zero-decay and invert's typed percent-input lifecycle via `mountPercentParameterField`, retaining their separate DSP/WebAudio callbacks.
+
+**Verified release:** exact main `769727696168fe62d62bd14abce0bb8c94111030`; [Browser/Rust/WASM/Chrome](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/39515770022), [offline](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/39515769602), [Pages/public entry](https://github.com/kinoko34077/frequency-warp-vst/actions/runs/39515769407) all SUCCESS. The implementation is **still partial overall**: #79's M2 coordinate/count families and M3 remaining legacy `state.precise`/panel state consolidation remain OPEN. No browser CI, public Pages verification, or unit-notation change proves real iPhone Safari or native DAW automation.
+
+**Read order for agents:** [repo capability/API catalog](CAPABILITY_API_CATALOG.md) → the owning source API and tests → this specification's current/superseding requirements → older dated milestone history only when relevant. Sections below include historical phrases such as "not yet wired" and "staged/unmerged"; those claims describe the state **at that milestone**, not current public main. Reuse the established API instead of implementing a semantically identical control, unless a documented purpose-specific adapter is genuinely required.
+
+# Frequency Warp — Common numeric parameter and unit contract (historical #77 outline)
 
 Status (2026-10-15): **partial implementation**. Shared pure codec and M1 frequency bindings, compact three-icon UI and semitone/cents subunit controls are implemented in the Web release changes recorded by PRs #184/#185/#186. Verify the target main/Pages state before claiming a particular deployment; CI success alone is not a physical iOS test. M2 dimension migration and M3 legacy state consolidation remain open under #79; browser unit changes do not authorize native DAW automation.
 
@@ -224,7 +234,7 @@ Each unit icon's `title` and `aria-label` must continue to convey its actual uni
 The same `createParameterUnitSwitch` exported by `web-demo/frequency-unit-field.mjs` now owns the visible Hz / ♪ / % button elements in both `mountParameterUnitField` and the V5 virtual-root controls. It owns glyphs, accessible titles/labels, selected `aria-pressed` and semitone/cent alternate action. Specialized consumers supply their **binding**, allowed unit choices and `onSelect` adapter; they must not copy icon markup or preserve a second unit-state store. The older hidden `select` remains a compatibility bridge for standard controls only. Virtual-root F/H use their shared `createParameterBinding`; specialized linear rail, digit wheel and number stepper remain separately owned because gesture behavior differs. Existing browser tests cover unit clicks, unit contents, ratio toggling, normal field/snap behavior and mobile virtual-root gestures; static negative fixtures detect new bespoke icon-unit widgets. No Rust/native DSP or DAW host ABI change.
 
 
-## 2026-10-21 M3 typed fraction field reuse candidate (#79)
+## 2026-10-21 M3 typed fraction field reuse — RELEASED (#79 / PR #289)
 
 **Scope:** the five already-bound scalar fractions `wet`, `a-reverb`, `zero-reflect`, `zero-decay`, and `invert` previously repeated identical numeric input/focus/blur/error controller logic in `web-demo/app.mjs`. The owner is now `web-demo/frequency-unit-field.mjs::mountPercentParameterField({field,binding,refresh,onChanged})`, with a repository catalog entry `fw.parameter.percent-field`.
 
@@ -236,4 +246,4 @@ The same `createParameterUnitSwitch` exported by `web-demo/frequency-unit-field.
 - Returned `dispose()` removes all bound field listeners. The coarse range sliders continue to use existing canonical bindings, not alternate percentage state.
 - The module is a local browser ES module API, not a HTTP API or a change to Rust/WASM/VST3 host ABI.
 
-**Evidence gates:** `web-demo/percent-parameter-field.test.mjs` (valid/invalid/precision/focus/change/disposal), `capability-reuse-check.test.mjs` (negative duplicated-controller fixtures), full Web/Chrome/Rust/WASM + offline regression, formal PR review, main readback and Pages only if all required gates pass. This entry describes the intended change until the exact PR/main CI is accepted. The remaining M2 coordinate/count and M3 `state.precise` migration stay OPEN; this is not full #79 completion.
+**Evidence gates:** `web-demo/percent-parameter-field.test.mjs` (valid/invalid/precision/focus/change/disposal), `capability-reuse-check.test.mjs` (negative duplicated-controller fixtures), full Web/Chrome/Rust/WASM + offline regression, formal PR review, main readback and Pages only if all required gates pass. This entry is implemented and accepted on exact main `769727696168fe62d62bd14abce0bb8c94111030`, with Browser/Rust/WASM/Chrome #39515770022, Offline #39515769602 and Pages/public-entry #39515769407 all SUCCESS. The remaining M2 coordinate/count and M3 `state.precise` migration stay OPEN; this is not full #79 completion.
