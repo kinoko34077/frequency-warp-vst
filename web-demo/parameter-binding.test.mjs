@@ -269,8 +269,9 @@ test("default percent gestures snap to integer rail% while typed values and unit
   const typed=logRail.fromPosition(.42375);
   p.setView("42.375",{unit:"percent",notify:false});
   assert.ok(Math.abs(p.value-typed)<1e-9,"typed decimal percent retains precision");
+  const stored=p.value;
   p.selectUnit("note");
-  assert.equal(p.value,p.value,"unit switch does not commit");
+  assert.equal(p.value,stored,"unit switch does not commit");
   p.setCanonical(440*2**(4/1200),{origin:"slider",snap:true,railPixels:350,notify:false});
   assert.equal(p.value,440,"note mode defaults to nearest semitone");
   p.selectUnit("hz");
@@ -286,7 +287,7 @@ test("per-unit snapByUnit overrides take precedence without changing other unit 
       note:false
     }});
   const p=createParameterBinding(d,{initialUnit:"percent"});
-  p.setPosition(.432,{railPixels:350,notify:false});
+  p.setPosition(.438,{railPixels:350,notify:false});
   assert.ok(Math.abs(logRail.toPosition(p.value)-.45)<1e-10,
     "custom 5%-step override applies in percent view");
   p.selectUnit("note");
