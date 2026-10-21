@@ -24,7 +24,7 @@ test("allow a UI that adapts a shared canonical binding",()=>{
 });
 test("reject a copied unit icon UI even if it imports the value binding",()=>{
   const duplicated='<div class="unit-switch"><button data-vr-unit="hz">Hz</button></div> const binding = createParameterBinding(descriptor); function fromText(){return binding.value;}';
-  assert.match(auditUnitConsumer("bespoke-units.mjs",duplicated).join("\\n"),/icon UI must reuse/);
+  assert.match(auditUnitConsumer("bespoke-units.mjs",duplicated).join("\n"),/icon UI must reuse/);
 });
 
 test("reject duplicated percent-input focus/commit logic or absent shared owner in Web app",()=>{
