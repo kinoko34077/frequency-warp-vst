@@ -52,6 +52,18 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.match(await page.$eval("#vr-target-h",el=>el.value),/^[A-G]/);
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.25");
+      // #291: switching to note is display-only; dragging in note mode
+      // must use the shared nearest-semitone magnetic gesture snap.
+      await page.click('[data-vr-unit-for="target-h"][data-vr-unit="note"]');
+      await page.$eval("#vr-target-h-rail",el=>{
+        el.value="90";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
+      const snappedHz=Number(await page.$eval("#vr-target-h",el=>el.value));
+      assert.ok(Math.abs(snappedHz-92.5)<0.05,"expected nearest F#2 pitch: "+snappedHz);
+      await page.$eval("#vr-target-h",el=>{
+        el.value="87.25";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
       await page.$eval("#vr-step-m-rail",el=>{
         el.value="4";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
