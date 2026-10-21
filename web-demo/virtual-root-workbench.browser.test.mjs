@@ -64,6 +64,39 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.$eval("#vr-target-h",el=>{
         el.value="87.25";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
+      // #293 percent mode is integer RAIL-% snapping, not whole-Hz snapping.
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.dataset.fwSnap),"on");
+      await page.click('[data-vr-unit-for="target-h"][data-vr-unit="percent"]');
+      await page.$eval("#vr-target-h-rail",el=>{
+        el.value="90";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"45",
+        "90Hz gesture snaps to 45% of 1..200Hz actual physical rail");
+      await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"90.55");
+      // Shared snap OFF context menu is usable on special virtual-root rails.
+      await page.$eval("#vr-target-h-rail",el=>el.dispatchEvent(new MouseEvent(
+        "contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:100})));
+      assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+      assert.match(await page.$eval("#fw-unit-snap-menu button",el=>el.textContent),/オフ/);
+      await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.dataset.fwSnap),"off");
+      assert.equal(await page.$eval("#vr-source-f-rail",el=>el.dataset.fwSnap),"on",
+        "F has an independent default ON snap preference");
+      await page.click('[data-vr-unit-for="target-h"][data-vr-unit="percent"]');
+      await page.$eval("#vr-target-h-rail",el=>{
+        el.value="90";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"90",
+        "snap OFF preserves the integer-Hz gesture without snapping rail percent");
+      await page.$eval("#vr-target-h-rail",el=>el.dispatchEvent(new MouseEvent(
+        "contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:100})));
+      assert.match(await page.$eval("#fw-unit-snap-menu button",el=>el.textContent),/オン/);
+      await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+      await page.$eval("#vr-target-h",el=>{
+        el.value="87.25";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
       await page.$eval("#vr-step-m-rail",el=>{
         el.value="4";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
