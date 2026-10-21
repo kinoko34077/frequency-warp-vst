@@ -34,3 +34,9 @@ test("reject duplicated percent-input focus/commit logic or absent shared owner 
   const missing=`const wetBinding={value:.5}; const wetField={};`;
   assert.match(auditUnitConsumer("app.mjs",missing).join("\n"),/must reuse mountPercentParameterField/);
 });
+
+test("reject virtual-root bindings that omit the shared snap preference adapter",()=>{
+  const incomplete='createParameterBinding(descriptor); createParameterUnitSwitch(options); frequencyBindings.F.value; frequencyBindings.H.value;';
+  assert.match(auditUnitConsumer("virtual-root-workbench.mjs",incomplete).join("\\n"),
+    /snap interactions must reuse attachParameterSnapControls/);
+});
