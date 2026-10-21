@@ -24,7 +24,7 @@ test("allow a UI that adapts a shared canonical binding",()=>{
 });
 test("reject a copied unit icon UI even if it imports the value binding",()=>{
   const duplicated='<div class="unit-switch"><button data-vr-unit="hz">Hz</button></div> const binding = createParameterBinding(descriptor); function fromText(){return binding.value;}';
-  assert.match(auditUnitConsumer("bespoke-units.mjs",duplicated).join("\\n"),/icon UI must reuse/);
+  assert.match(auditUnitConsumer("bespoke-units.mjs",duplicated).join("\n"),/icon UI must reuse/);
 });
 
 test("reject duplicated percent-input focus/commit logic or absent shared owner in Web app",()=>{
@@ -33,4 +33,10 @@ test("reject duplicated percent-input focus/commit logic or absent shared owner 
   assert.match(auditUnitConsumer("app.mjs",repeated).join("\n"),/copied typed-percent/);
   const missing=`const wetBinding={value:.5}; const wetField={};`;
   assert.match(auditUnitConsumer("app.mjs",missing).join("\n"),/must reuse mountPercentParameterField/);
+});
+
+test("reject virtual-root bindings that omit the shared snap preference adapter",()=>{
+  const incomplete='createParameterBinding(descriptor); createParameterUnitSwitch(options); frequencyBindings.F.value; frequencyBindings.H.value;';
+  assert.match(auditUnitConsumer("virtual-root-workbench.mjs",incomplete).join("\\n"),
+    /snap interactions must reuse attachParameterSnapControls/);
 });

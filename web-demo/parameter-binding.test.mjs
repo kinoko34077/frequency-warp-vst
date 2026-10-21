@@ -259,3 +259,42 @@ test("inversion M3 fraction: typed precision, .005 shape rail, A/B and zero rese
   p.reset({notify:false});assert.equal(p.value,0);
   assert.deepEqual(changes,[],"silent A/B and reset must not duplicate DSP callbacks");
 });
+
+test("default percent gestures snap to integer rail% while typed values and unit switches remain exact",()=>{
+  const d=defineParameter({id:"fundamental",min:20,max:20000,defaultValue:440,
+    units:["hz","note","percent"],rail:logRail,digits:5});
+  const p=createParameterBinding(d,{initialUnit:"percent"});
+  p.setPosition(.4235,{railPixels:350,notify:false});
+  assert.ok(Math.abs(p.value-logRail.fromPosition(.42))<1e-9);
+  const typed=logRail.fromPosition(.42375);
+  p.setView("42.375",{unit:"percent",notify:false});
+  assert.ok(Math.abs(p.value-typed)<1e-9,"typed decimal percent retains precision");
+  const stored=p.value;
+  p.selectUnit("note");
+  assert.equal(p.value,stored,"unit switch does not commit");
+  p.setCanonical(440*2**(4/1200),{origin:"slider",snap:true,railPixels:350,notify:false});
+  assert.equal(p.value,440,"note mode defaults to nearest semitone");
+  p.selectUnit("hz");
+  assert.equal(p.value,440);
+});
+
+test("per-unit snapByUnit overrides take precedence without changing other unit policies",()=>{
+  const d=defineParameter({id:"fundamental",min:20,max:20000,defaultValue:440,
+    units:["hz","note","percent"],rail:logRail,
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6},
+    snapByUnit:{
+      percent:{unit:"percent",mode:"step",step:5,thresholdPx:6},
+      note:false
+    }});
+  const p=createParameterBinding(d,{initialUnit:"percent"});
+  p.setPosition(.438,{railPixels:350,notify:false});
+  assert.ok(Math.abs(logRail.toPosition(p.value)-.45)<1e-10,
+    "custom 5%-step override applies in percent view");
+  p.selectUnit("note");
+  const near=440*2**(3/1200);
+  p.setCanonical(near,{origin:"slider",snap:true,railPixels:350,notify:false});
+  assert.equal(p.value,near,"explicit note:false bypasses default note snap");
+  assert.throws(()=>defineParameter({id:"fundamental",min:20,max:20000,defaultValue:440,
+    units:["hz","note","percent"],rail:logRail,
+    snapByUnit:{coordinate:false}}),RangeError);
+});

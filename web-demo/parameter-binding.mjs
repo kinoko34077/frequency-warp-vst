@@ -31,7 +31,7 @@ export const UNIT_REGISTRY = Object.freeze({
  * caller-provided rail functions, never by treating % as percentage of Hz.
  */
 export function defineParameter({id, min, max, defaultValue, units, rail,
-    digits=3, snap=null}) {
+    digits=3, snap=null, snapByUnit=null}) {
   const compatible = compatibleUnits(id); // typed authority from #77
   requireFinite(min, "min"); requireFinite(max, "max");
   requireFinite(defaultValue, "defaultValue");
@@ -47,32 +47,42 @@ export function defineParameter({id, min, max, defaultValue, units, rail,
     throw new TypeError("rail requires toPosition and fromPosition");
   if (units.includes("percent") && !rail)
     throw new RangeError("percentage requires the parameter's actual rail transfer");
-  let snapConfig = null;
-  if (snap != null) {
+  const parseSnapSpec=(config)=>{
+    if(config===false || config===null)return null;
     const {unit, mode, step, origin=0, targets, thresholdPx=6, enabled=true,
-      during=["slider"]} = snap;
-    if (typeof enabled !== "boolean") throw new TypeError("snap enabled must be boolean");
-    if (!units.includes(unit)) throw new RangeError("snap unit must be enabled for this parameter");
-    if (!rail) throw new RangeError("snap needs physical rail transfer");
-    if (!finite(thresholdPx) || thresholdPx < 0)
-      throw new RangeError("snap thresholdPx must be nonnegative");
-    if (!Array.isArray(during) || during.some(v => !["slider", "typed"].includes(v)) ||
-        new Set(during).size !== during.length)
+      during=["slider"]} = config;
+    if(typeof enabled!=="boolean")throw new TypeError("snap enabled must be boolean");
+    if(!units.includes(unit))throw new RangeError("snap unit must be enabled for this parameter");
+    if(!rail)throw new RangeError("snap needs physical rail transfer");
+    if(!finite(thresholdPx)||thresholdPx<0)throw new RangeError("snap thresholdPx must be nonnegative");
+    if(!Array.isArray(during)||during.some(v=>!["slider","typed"].includes(v))||
+        new Set(during).size!==during.length)
       throw new RangeError("invalid snap input modes");
-    if (mode === "step") {
-      if (!finite(step) || step <= 0 || !finite(origin))
+    if(mode==="step"){
+      if(!finite(step)||step<=0||!finite(origin))
         throw new RangeError("step snap needs positive step and finite origin");
-    } else if (mode === "targets") {
-      if (!Array.isArray(targets) || !targets.length || targets.some(v => !finite(v)))
+    }else if(mode==="targets"){
+      if(!Array.isArray(targets)||!targets.length||targets.some(v=>!finite(v)))
         throw new RangeError("targets snap needs numeric target values");
-    } else throw new RangeError("unknown snap mode");
-    snapConfig = Object.freeze({unit, mode, step, origin, enabled,
-      targets:targets ? Object.freeze([...targets]) : undefined,
-      thresholdPx, during:Object.freeze([...during])});
+    }else throw new RangeError("unknown snap mode");
+    return Object.freeze({unit,mode,step,origin,enabled,
+      targets:targets?Object.freeze([...targets]):undefined,
+      thresholdPx,during:Object.freeze([...during])});
+  };
+  const snapConfig=parseSnapSpec(snap);
+  if(snapByUnit!==null&&(typeof snapByUnit!=="object"||Array.isArray(snapByUnit)))
+    throw new TypeError("snapByUnit must be a per-unit options object");
+  const unitSnaps=Object.create(null);
+  for(const [unit,rule] of Object.entries(snapByUnit||{})){
+    if(!units.includes(unit)||rule===null)throw new RangeError("invalid per-unit snap declaration");
+    if(rule===false){unitSnaps[unit]=null;continue;}
+    // Every override is keyed by active display unit, but may snap on any
+    // compatible axis (e.g. percent view with custom Hz target anchors).
+    unitSnaps[unit]=parseSnapSpec(rule);
   }
   return Object.freeze({id, min, max, defaultValue, units:Object.freeze([...units]),
     rail:rail ? Object.freeze({toPosition:rail.toPosition,fromPosition:rail.fromPosition}) : null,
-    digits, snap:snapConfig});
+    digits, snap:snapConfig, snapByUnit:Object.freeze(unitSnaps)});
 }
 
 function toSnapCoordinate(value, unit, descriptor) {
@@ -102,9 +112,28 @@ function checkedRailPosition(descriptor, value) {
 /** Snap by actual pixel distance, NOT raw Hz/cent distance.
  * Nearby grid values are separately projected onto the physical rail.
  */
-export function snappedValue(descriptor, value, {origin="slider", railPixels}={}) {
+/** Shared default gesture policy: 1% of the actual rail and 1 musical
+ * semitone in note view; individual snapByUnit rules override this.
+ * Other views retain their explicitly declared historical snap policy.
+ * This determines a gesture's target; it does not mutate the preference. */
+export function snapPolicyForUnit(descriptor, unit){
+  if(unit==null)return descriptor.snap;
+  if(!descriptor.units.includes(unit))throw new RangeError("snap view is incompatible");
+  if(Object.prototype.hasOwnProperty.call(descriptor.snapByUnit||{},unit))
+    return descriptor.snapByUnit[unit];
+  if(unit==="percent")return Object.freeze({
+    unit:"percent",mode:"step",step:1,origin:0,enabled:true,
+    targets:undefined,thresholdPx:6,during:Object.freeze(["slider"])
+  });
+  if(unit==="note")return descriptor.snap?.unit==="note"?descriptor.snap:Object.freeze({
+    unit:"note",mode:"step",step:1,origin:0,enabled:true,
+    targets:undefined,thresholdPx:6,during:Object.freeze(["slider"])
+  });
+  return descriptor.snap;
+}
+export function snappedValue(descriptor, value, {origin="slider", railPixels, unit=null}={}) {
   requireFinite(value, "value");
-  const spec = descriptor.snap;
+  const spec = snapPolicyForUnit(descriptor,unit);
   if (!spec || !spec.enabled || !spec.during.includes(origin)) return value;
   if (!finite(railPixels) || railPixels <= 0)
     throw new RangeError("snapping requires positive railPixels");
@@ -139,14 +168,15 @@ export function createParameterBinding(descriptor, {initialValue=descriptor.defa
     throw new RangeError("initial value outside bounds");
   let notifying = false;
   const commit = (next, {origin="program", notify=true, snap=false,
-      railPixels, overflow="clamp"}={}) => {
+      railPixels, overflow="clamp", snapUnit}={}) => {
     if (notifying) throw new Error("reentrant parameter update");
     requireFinite(next, "parameter value");
     if (!["clamp", "reject"].includes(overflow)) throw new RangeError("invalid overflow policy");
     if (overflow === "reject" && (next < descriptor.min || next > descriptor.max))
       throw new RangeError("parameter value outside bounds");
     next = clamp(next, descriptor.min, descriptor.max);
-    if (snap) next = snappedValue(descriptor, next, {origin, railPixels});
+    if (snap) next = snappedValue(descriptor, next, {origin, railPixels,
+      unit:snapUnit??(origin==="slider"?unit:null)});
     if (Object.is(next, canonical)) return canonical;
     const previous = canonical;
     canonical = next;
@@ -183,11 +213,11 @@ export function createParameterBinding(descriptor, {initialValue=descriptor.defa
       });
       return commit(next,{origin,notify,snap,railPixels,overflow});
     },
-    setPosition(pos,{railPixels,notify=true,snap=true,origin="slider"}={}) {
+    setPosition(pos,{railPixels,notify=true,snap=true,origin="slider",snapUnit}={}) {
       if (!descriptor.rail) throw new RangeError("parameter has no physical rail");
       requireFinite(pos,"slider position");
       if (pos < 0 || pos > 1) throw new RangeError("slider position outside [0,1]");
-      return commit(descriptor.rail.fromPosition(pos),{origin,notify,snap,railPixels});
+      return commit(descriptor.rail.fromPosition(pos),{origin,notify,snap,railPixels,snapUnit});
     },
     reset({notify=true}={}) {return commit(descriptor.defaultValue,{origin:"reset",notify});}
   });

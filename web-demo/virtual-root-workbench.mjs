@@ -6,7 +6,7 @@ import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.m
 import {parseView} from "./parameter-units.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {createDigitWheelPicker} from "./digit-wheel-picker.mjs";
-import {createParameterUnitSwitch} from "./frequency-unit-field.mjs";
+import {createParameterUnitSwitch,attachParameterSnapControls} from "./frequency-unit-field.mjs";
 const $=selector=>document.querySelector(selector);
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
 const fmt=(v,digits=3)=>finite(v)?Number(v.toFixed(digits)).toString():"—";
@@ -58,6 +58,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     min:Number.MIN_VALUE,max:Number.MAX_VALUE,defaultValue:initialValue,
     units:["hz","note","percent"],digits:2,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]},
+    // The integer-Hz rail remains the intentionally coarse Hz gesture;
+    // note and % use their shared per-unit magnetic snap policies.
+    snapByUnit:{hz:false},
     rail:{
       fromPosition:t=>1+(scopes[key]-1)*t,
       toPosition:v=>clamp((v-1)/(scopes[key]-1),0,1)
@@ -82,7 +85,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   // Both the standard numeric inputs and this specialized lab consume the
   // same icon/label/ARIA unit-switch component. Only the rail and digit
   // gestures remain lab-specific.
-  const unitSwitches={};
+  const unitSwitches={},snapControllers={};
   for(const [key,id,title] of [["F","source-f","元基音 F"],["H","target-h","仮想基音 H"]]){
     const slot=root.querySelector('[data-vr-unit-slot="'+id+'"]');
     const view=createParameterUnitSwitch({
@@ -104,6 +107,12 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     });
     view.element.classList.add("vr-unit-switch");
     slot.replaceWith(view.element);unitSwitches[key]=view;
+    // One shared snap menu/interaction contract for all canonical bindings,
+    // including specialized harmonic rails; never reimplement its handlers.
+    snapControllers[key]=attachParameterSnapControls({
+      doc:root.ownerDocument,defaultEnabled:true,
+      targets:[controls[key],rails[key],...view.element.querySelectorAll("button[data-unit]")]
+    });
   }
   function fromText(key,raw){
     if(!String(raw).trim())return null;
@@ -210,7 +219,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         // Reuse the shared canonical binding's rail-aware pitch grid.
         // Gesture-only snap; direct cents input and unit switch never quantize Hz.
         const binding=frequencyBindings[key];
-        const snap=getUnit(key)==="note"&&!event.altKey&&!event.ctrlKey;
+        const snap=snapControllers[key].gestureEnabled(event);
+        // A display-unit switch never edits the numeric value; only gestures
+        // choose a unit-specific grid (♪ semitones, % integer rail position).
         binding.setCanonical(hzFromVirtualRootRail(raw),{
           origin:"slider",snap,
           railPixels:Math.max(1,rails[key].getBoundingClientRect().width),
