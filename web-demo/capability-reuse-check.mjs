@@ -41,6 +41,8 @@ export function auditUnitConsumer(file,source){
   }
   if(file==="virtual-root-workbench.mjs"){
     if(!usesSharedSwitch)errors.push(file+": virtual-root unit icons must use the common component");
+    if(!/\\battachParameterSnapControls\\s*\\(/.test(source))
+      errors.push(file+": virtual-root snap interactions must reuse attachParameterSnapControls");
     if(!/\bcreateParameterBinding\s*\(/.test(source))
       errors.push(file+": F/H must be owned by shared canonical bindings");
     if(/const\s+units\s*=\s*\{\s*F\s*:/.test(source))
