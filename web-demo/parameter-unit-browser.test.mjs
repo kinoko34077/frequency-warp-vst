@@ -72,6 +72,22 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     const half=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(half-(20*Math.exp(Math.log(1000)*(.5-.2)/.8)))<1e-8);
 
+    // #293 standard shared control: percent mode snaps to an integer
+    // physical rail percentage (not an integer frequency).
+    await page.$eval("#low-value",el=>el.blur());
+    await page.select("#low-unit","percent");
+    await page.$eval("#low",el=>{
+      el.value="553";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),55);
+    await page.$eval("#low-value",el=>{
+      el.value="50";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.select("#low-unit","hz");
+    await page.focus("#low-value");
+    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical))-half)<1e-8,
+      "typed 50% restores exact canonical frequency without gesture snap");
+
     // Invalid musical text must never turn the current accepted DSP value to zero.
     await page.$eval("#low-value",el=>el.blur());
     await page.select("#low-unit","note");
