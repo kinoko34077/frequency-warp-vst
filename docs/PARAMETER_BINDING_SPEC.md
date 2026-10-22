@@ -1,3 +1,9 @@
+## M2/M3 incremental integer-count migration — PR #296 / Issue #295 (in review)
+
+The harmonic denominator m (1..64, default 4), signed numerator n (-128..128, default -3) and harmonic index q (1..32, default 1) use shared `mountIntegerParameterField` over their existing `createParameterBinding` descriptor when this PR is accepted. This does **not** add a pitch or percent view: there is no user-authorized semantic need for those count conversions. The intrinsic integer number editor and integer slider retain the existing appearance; their input, slider, capture/restore and math must agree on one accepted integer value. Empty/incomplete number text cannot change the canonical integer, and a valid new number generates at most one application event. Reset and A/B restores are silent, while readouts and derived H/P always use canonical integers rather than the in-progress raw DOM text.
+
+Acceptance: Node fake-input and Chrome actual-browser negative regression; same-head Rust/WASM/AudioWorklet/Offline, formal Review and existing Pages entry. This is a bounded slice of #79, not completion of the separate nonlinear coordinate u or other remaining `app.mjs::state.precise` migrations.
+
 ## Current contract: default unit-sensitive snap and per-instance overrides (#293; 2026-10-22)
 
 The later default-ON user decision in section 16 supersedes earlier staged text that described opt-in/OFF snapping. **Default application behavior** in shared Web parameter bindings:
