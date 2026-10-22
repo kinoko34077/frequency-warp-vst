@@ -53,6 +53,7 @@ pub struct Stream {
     complement:Vec<Complex>,
     relocated:Vec<Complex>,
     synthesized_peak_mask:Vec<bool>,
+    neutral_original_mix:f64, // #301 real-time-safe no-op crossfade
 }
 
 impl Stream {
@@ -74,7 +75,7 @@ impl Stream {
         let q=quality(settings.quality).ok_or("invalid streaming quality")?;
         let hop=q.n / hop_div as usize;
         // Per-block processing has no persistent large file buffer.
-        Ok(Self{
+        let mut stream=Self{
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_enabled:engine==2,axis_shift:0.0,
@@ -102,7 +103,18 @@ impl Stream {
             complement:vec![Complex::ZERO;q.n],
             relocated:vec![Complex::ZERO;q.n],
             synthesized_peak_mask:vec![false;q.n/2+1],
-        })
+            neutral_original_mix:0.0,
+        };
+        stream.neutral_original_mix=if stream.strict_a_identity(){1.0}else{0.0};
+        Ok(stream)
+    }
+    /// No bypass of creative FX, B/C/D, or outside Kill. A zero mapping
+    /// should be sample-identical once its existing N-1 latency is applied.
+    fn strict_a_identity(&self)->bool{
+        self.engine==0 && self.settings.invert==0.0 && self.outside==1 &&
+        self.axis_shift==0.0 && self.axis_slope==1.0 &&
+        !self.ring_enabled && !self.rational_enabled &&
+        self.a_reverb_amount==0.0 && self.crusher_bits==0
     }
     pub fn latency(&self)->usize{self.n-1} // all engines now use the shared warp stage
     pub fn configure(&mut self,settings:Settings,outside:u32)->Result<(),&'static str>{
@@ -121,9 +133,13 @@ impl Stream {
            !shift_hz.is_finite()||shift_hz.abs()>20000.0||
            !carrier_hz.is_finite()||carrier_hz< -1.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
         self.configure(settings,outside)?;
-        if self.engine!=engine {self.reset();}
+        let changed_engine=self.engine!=engine;
+        if changed_engine {self.reset();}
         self.engine=engine;self.pitch_ratio=pitch_ratio;self.shift_hz=shift_hz;
         self.carrier_hz=carrier_hz;self.zero_mode=zero_mode;
+        if changed_engine {
+            self.neutral_original_mix=if self.strict_a_identity(){1.0}else{0.0};
+        }
         Ok(())
     }
     pub fn set_transform(&mut self,shift:f64,reference:f64,ring_enabled:u32,
@@ -268,6 +284,7 @@ impl Stream {
         for x in &mut self.previous{x.fill(Complex::ZERO);}
         self.weights.fill(0.0);
         self.tracks.clear();self.next_tracks.clear();
+        self.neutral_original_mix=if self.strict_a_identity(){1.0}else{0.0};
     }
     pub fn process(&mut self,input:&[f32],output:&mut [f32],frames:usize)->Result<(),&'static str>{
         if frames==0||frames>2048||input.len()!=frames*self.channels||output.len()!=input.len(){
@@ -275,6 +292,15 @@ impl Stream {
         }
         // Input and output layout: [channel0 frames][channel1 frames].
         for i in 0..frames {
+            let target=if self.strict_a_identity(){1.0}else{0.0};
+            // A change of eligibility follows a bounded 10 ms linear ramp,
+            // keeping the original and spectral outputs time-aligned.
+            let step=(100.0/self.sample_rate).min(1.0);
+            if self.neutral_original_mix<target {
+                self.neutral_original_mix=(self.neutral_original_mix+step).min(target);
+            }else if self.neutral_original_mix>target {
+                self.neutral_original_mix=(self.neutral_original_mix-step).max(target);
+            }
             let t=self.received as usize;
             let write=t%self.n;
             for c in 0..self.channels {self.input[c][write]=input[c*frames+i] as f64;}
@@ -286,7 +312,10 @@ impl Stream {
                 let slot=pos%(self.n*2);
                 let w=self.weights[slot];
                 for c in 0..self.channels{
-                    output[c*frames+i]=if w>1e-9 {(self.output[c][slot]/w) as f32} else {0.0};
+                    let processed=if w>1e-9 {(self.output[c][slot]/w) as f32} else {0.0};
+                    let original=self.input[c][pos%self.n] as f32;
+                    let mix=self.neutral_original_mix as f32;
+                    output[c*frames+i]=processed*(1.0-mix)+original*mix;
                     self.output[c][slot]=0.0;
                 }
                 self.weights[slot]=0.0;
