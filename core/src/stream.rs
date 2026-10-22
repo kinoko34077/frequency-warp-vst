@@ -1088,6 +1088,52 @@ mod tests{
         }
     }
     #[test]
+    fn neutral_a_only_crossfades_into_real_dsp_and_never_silently_bypasses_fx(){
+        let rate=8192.0;
+        let neutral=Settings{invert:0.0,..settings()};
+        let active=Settings{invert:0.45,..neutral};
+        let mut st=Stream::new_extended(rate,1,neutral,1,0,1.0,0.0,350.0,0,4).unwrap();
+        assert!(st.strict_a_identity());
+        assert_eq!(st.neutral_original_mix,1.0);
+        let input=[0.2f32];let mut output=[0.0f32];
+        st.configure(active,1).unwrap();
+        assert!(!st.strict_a_identity());
+        st.process(&input,&mut output,1).unwrap();
+        assert!(st.neutral_original_mix>0.0&&st.neutral_original_mix<1.0,
+            "active A switch must ramp rather than hard-toggle");
+        let zeros=[0.0f32;128];let mut result=[0.0f32;128];
+        st.process(&zeros,&mut result,128).unwrap();
+        assert_eq!(st.neutral_original_mix,0.0);
+        st.configure(neutral,1).unwrap();
+        st.process(&input,&mut output,1).unwrap();
+        assert!(st.neutral_original_mix>0.0&&st.neutral_original_mix<1.0,
+            "returning to original must ramp");
+        st.process(&zeros,&mut result,128).unwrap();
+        assert_eq!(st.neutral_original_mix,1.0);
+        assert!(st.strict_a_identity());
+        st.configure(neutral,0).unwrap();
+        assert!(!st.strict_a_identity(),"outside Kill is an intentional effect");
+        st.configure(neutral,1).unwrap();
+        st.set_a_options(20.0,.5).unwrap();
+        assert!(!st.strict_a_identity(),"A reverb must not be erased");
+        st.set_a_options(20.0,0.0).unwrap();
+        st.set_crusher(4,1).unwrap();
+        assert!(!st.strict_a_identity(),"Crusher must not be erased");
+        st.set_crusher(0,1).unwrap();
+        st.set_transform(.2,350.0,0,0).unwrap();
+        assert!(!st.strict_a_identity(),"nonzero axis move must not bypass");
+        st.set_transform(0.0,350.0,1,0).unwrap();
+        assert!(!st.strict_a_identity(),"Ring must not bypass");
+        st.set_transform(0.0,350.0,0,1).unwrap();
+        assert!(!st.strict_a_identity(),"Rational model must not bypass");
+        st.set_transform(0.0,350.0,0,0).unwrap();
+        st.set_geometry(350.0,.5).unwrap();
+        assert!(!st.strict_a_identity(),"nonunit frequency slope must not bypass");
+        st.set_geometry(350.0,1.0).unwrap();
+        assert!(st.strict_a_identity(),"true neutral eligibility not restored");
+        assert_eq!(st.latency(),1023);
+    }
+    #[test]
     fn continuous_blocks_shift_tone_with_bounded_latency(){
         let fs=8192.0;
         let mut st=Stream::new(fs,1,settings(),0).unwrap();
