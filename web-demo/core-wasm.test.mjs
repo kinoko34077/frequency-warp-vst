@@ -1,6 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
+import {fullReferenceQuality,qualityGate,baselineNeutralContract} from "./acoustic-quality.mjs";
 
 async function load() {
   const binary=await readFile("web-demo/dsp_core.wasm");
@@ -544,8 +545,24 @@ test("Engine A neutral transform: actual PCM fidelity vs engine B across tonal/n
           assert.ok(output.every(Number.isFinite),"non-finite output");
           const score=metrics(input,output);
           assert.ok(Number.isFinite(score.rmsGain)&&Number.isFinite(score.normalizedRmse));
+          // Evaluate ACTUAL common Rust-WASM PCM, not a mocked filter.
+          // A's known open defect is measured and reported as a red product
+          // quality finding. B is the negative control for the evaluator.
+          const objective=fullReferenceQuality(input,output,{start,end,blockSize:400});
+          const gate=qualityGate(objective,baselineNeutralContract);
+          if(engine===1){
+            assert.ok(gate.pass,"neutral Engine B must meet existing waveform reference: "+JSON.stringify({kind,qualityIndex,gate}));
+          }else if(qualityIndex===0 && peakBins===1 && kind==="wideband_noise"){
+            assert.equal(gate.pass,false,
+              "current A peak-only loss must not be misreported as quality PASS");
+          }
           rows.push({kind,qualityIndex,engine:engine===0?"A_peaks":"B_bins",
-            peakBins,...score});
+            peakBins,...score,
+            objectiveAxes:{nrmse:objective.nrmse,gainDb:objective.gainDb,
+              correlation:objective.correlation,clippedSamples:objective.clippedSamples,
+              outputSilent:objective.outputSilent},
+            qualityGate:gate.pass?"PASS":"FAIL_KNOWN_PRODUCT_DEFECT",
+            qualityFailures:gate.failures});
         }
       }
     }
@@ -688,6 +705,10 @@ test("Experimental A mapped residual: neutral fidelity gain across broadband, mi
         }
         const row={kind,quality,nrmse:Math.sqrt(e2/x2),
           rmsGain:Math.sqrt(y2/x2),correlation:xy/Math.sqrt(x2*y2),ms};
+        const q=fullReferenceQuality(input,output,{start:4200,end:10000});
+        const verdict=qualityGate(q,baselineNeutralContract);
+        row.neutralQualityVerdict=verdict.pass?"PASS_NEUTRAL_AXES":"FAIL_OR_INCONCLUSIVE";
+        row.neutralQualityFailures=verdict.failures;
         rows.push(row);outputs.push(row);
       }
       assert.ok(outputs[1].nrmse<outputs[0].nrmse*.95,
