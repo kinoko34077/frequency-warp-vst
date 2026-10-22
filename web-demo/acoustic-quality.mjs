@@ -129,3 +129,61 @@ export const baselineNeutralContract=Object.freeze({
   clippedSamples:{max:0},
   correlation:{min:.995}
 });
+
+/** #305 Known gated-onset oracle for an intentionally *frequency-warped*
+ * source. Deliberately compares envelope/timing, not dry PCM samples.
+ * Output is the *already latency-compensated* WAV; caller must report
+ * processor latency separately if running live blocks.
+ */
+export function transientOnsetQuality(reference,rendered,{
+  sampleRate,onsetSample,preSamples=512,attackSamples=512,
+  blockSamples=16,onsetThreshold=0.15
+}={}){
+  if(!valid(sampleRate)||sampleRate<=0||
+    !Number.isInteger(onsetSample)||!Number.isInteger(preSamples)||
+    !Number.isInteger(attackSamples)||!Number.isInteger(blockSamples)||
+    onsetSample<preSamples||preSamples<=0||attackSamples<=0||
+    blockSamples<=0||!valid(onsetThreshold)||onsetThreshold<=0||
+    onsetThreshold>=1||onsetSample+attackSamples>reference.length)
+    throw new RangeError("invalid gated onset window or parameters");
+  const start=onsetSample-preSamples,end=onsetSample+attackSamples;
+  verifyPair(reference,rendered,start,end);
+  const power=(signal,a,b)=>{
+    let total=0;
+    for(let i=a;i<b;i++)total+=signal[i]*signal[i];
+    return total/(b-a);
+  };
+  const refPre=power(reference,start,onsetSample);
+  const refAttack=power(reference,onsetSample,end);
+  if(refAttack<1e-12)
+    throw new RangeError("silent source attack: onset oracle undefined");
+  if(refPre>refAttack*1e-10)
+    throw new RangeError("source before declared onset is not silent");
+  const outPre=power(rendered,start,onsetSample);
+  const outAttack=power(rendered,onsetSample,end);
+  const ratio=Math.sqrt(outAttack/refAttack);
+  const active=outAttack>refAttack*1e-12;
+  const detectFloor=Math.sqrt(refAttack)*onsetThreshold;
+  let detected=null;
+  // Detect first sustained short-block energy at an actual sample. The
+  // onsets are quantized by blockSamples; do not infer exact perceptual
+  // onset from the non-overlapping energy proxy.
+  for(let i=start;i+blockSamples<=end;i+=blockSamples){
+    if(Math.sqrt(power(rendered,i,i+blockSamples))>=detectFloor){
+      detected=i;break;
+    }
+  }
+  return {
+    referenceClass:"known-gated-onset",
+    sampleRate,onsetSample,blockSamples,preSamples,attackSamples,
+    referenceAttackRms:Math.sqrt(refAttack),
+    outputAttackRms:Math.sqrt(outAttack),
+    attackRmsRatio:ratio,
+    preEchoDb:active?10*Math.log10(Math.max(tiny,outPre)/outAttack):null,
+    onsetOffsetMs:detected===null?null:(detected-onsetSample)*1000/sampleRate,
+    onsetDetected:detected!==null,
+    // The algorithm cannot distinguish intentional spatial predelay,
+    // ringing and spectral pre-echo. Diagnose, do not invent causality.
+    caveat:"Short-block energy proxy; known gated source and latency-compensated output only"
+  };
+}
