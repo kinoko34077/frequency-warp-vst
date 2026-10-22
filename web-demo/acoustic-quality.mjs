@@ -76,6 +76,60 @@ export function stereoImageQuality(inputL,inputR,outputL,outputR,
     sideEnergyRatio:output.sidePower/Math.max(tiny,source.sidePower),
     source,output};
 }
+/** Known-envelope transient diagnostics. A gated source supplies only
+ * expected onset/end times, NOT a unique warped waveform. Measure leakage
+ * in the preceding/following windows and a 32-sample short-time RMS onset.
+ * For aligned offline PCM the expected onset is the original source onset;
+ * real-time stream callers MUST supply/declare their latency separately.
+ */
+export function transientEnvelopeQuality(signal,{
+  sampleRate,onsetSample,endSample,windowMs=70,rmsWindow=32,
+  rmsHop=8,thresholdRatio=.22
+}={}){
+  if(!signal||!valid(sampleRate)||sampleRate<=0||
+    !Number.isInteger(onsetSample)||!Number.isInteger(endSample)||
+    !(0<onsetSample&&onsetSample<endSample&&endSample<signal.length)||
+    !valid(windowMs)||windowMs<=0||!Number.isInteger(rmsWindow)||
+    rmsWindow<2||!Number.isInteger(rmsHop)||rmsHop<1||
+    !valid(thresholdRatio)||thresholdRatio<=0||thresholdRatio>=1)
+    throw new RangeError("invalid known-envelope transient timing");
+  const span=Math.max(rmsWindow,Math.round(sampleRate*windowMs/1000));
+  const first=Math.max(0,onsetSample-span),last=Math.min(signal.length,endSample+span);
+  const energy=(begin,end)=>{
+    let square=0;
+    for(let i=begin;i<end;i++){
+      const x=signal[i];
+      if(!valid(x))throw new RangeError("nonfinite transient PCM");
+      square+=x*x;
+    }
+    return square;
+  };
+  const before=energy(first,onsetSample),active=energy(onsetSample,endSample),
+    after=energy(endSample,last);
+  const preRms=rms(before,onsetSample-first),
+    activeRms=rms(active,endSample-onsetSample),
+    tailRms=rms(after,last-endSample);
+  if(active<=tiny)return {
+    referenceClass:"known-envelope",outputSilent:true,onsetOffsetSamples:null,
+    preToActiveDb:null,tailToActiveDb:null,activeRms:0,preRms,tailRms,
+    declaredAlignmentSamples:0
+  };
+  const threshold=thresholdRatio*activeRms;
+  let firstCrossing=null;
+  const stop=Math.min(endSample,signal.length-rmsWindow);
+  for(let i=Math.max(0,first);i<=stop;i+=rmsHop){
+    const level=rms(energy(i,i+rmsWindow),rmsWindow);
+    if(level>=threshold){firstCrossing=i;break;}
+  }
+  return {
+    referenceClass:"known-envelope",outputSilent:false,
+    onsetOffsetSamples:firstCrossing===null?null:firstCrossing-onsetSample,
+    preToActiveDb:db(preRms/activeRms),
+    tailToActiveDb:db(tailRms/activeRms),
+    activeRms,preRms,tailRms,
+    declaredAlignmentSamples:0
+  };
+}
 /** Lock-in projection is a *diagnostic* at specified frequencies. It is not
  * a general pitch estimator, and can be contaminated by off-bin leakage.
  */
