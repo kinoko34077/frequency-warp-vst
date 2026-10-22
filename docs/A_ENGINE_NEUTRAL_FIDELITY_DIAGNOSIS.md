@@ -1,3 +1,11 @@
+## F0 accepted behavior contract after Issue #301
+
+The real Rust streaming Engine A must output **latency-matched original PCM** under strictly neutral settings: inversion=0, coordinate shift=0, frequency slope=1, outside=Pass, ring/rational OFF, crusher OFF and A-reverb OFF. Do not mask a real effect. A bounded 10ms interpolation between original and processed paths protects transitions while retaining normal DSP state; it is **not** a claim that no possible listener will perceive a transition. Source and exact native/Chrome CI evidence, review and deployment belong to [Issue #301](https://github.com/kinoko34077/frequency-warp-vst/issues/301) / [PR #302](https://github.com/kinoko34077/frequency-warp-vst/pull/302). These are the **required current behavior** after F0 is merged.
+
+All loss numbers and "unfixed product defect" labels below are **historical pre-F0 measurements** on main `c6d8db4` or the #299 pre-F0 evaluation run. They must NOT be assumed to describe an eventual post-F0 main. Neutral bypass does not solve **nonneutral** transformed-A residual/partial quality; see [research #5](https://github.com/kinoko34077/frequency-warp-vst/issues/5). Routine quality CI is defined in [ACOUSTIC_QUALITY_GATES.md](ACOUSTIC_QUALITY_GATES.md), not a human MOS guarantee.
+
+---
+
 # Engine A: identity-map spectral loss and user-reported "ショワショワ"
 
 Evidence owner: [Issue #48](https://github.com/kinoko34077/frequency-warp-vst/issues/48). Linked, **independently incomplete** research: [R2.2 #5](https://github.com/kinoko34077/frequency-warp-vst/issues/5), web candidate [#17](https://github.com/kinoko34077/frequency-warp-vst/issues/17). Evaluated main base `c6d8db40846027c8ff49448e09c2b323493e738c` (2026-10-14).

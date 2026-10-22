@@ -53,6 +53,7 @@ pub struct Stream {
     complement:Vec<Complex>,
     relocated:Vec<Complex>,
     synthesized_peak_mask:Vec<bool>,
+    neutral_original_mix:f64, // #301 real-time-safe no-op crossfade
 }
 
 impl Stream {
@@ -74,7 +75,7 @@ impl Stream {
         let q=quality(settings.quality).ok_or("invalid streaming quality")?;
         let hop=q.n / hop_div as usize;
         // Per-block processing has no persistent large file buffer.
-        Ok(Self{
+        let mut stream=Self{
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_enabled:engine==2,axis_shift:0.0,
@@ -102,7 +103,18 @@ impl Stream {
             complement:vec![Complex::ZERO;q.n],
             relocated:vec![Complex::ZERO;q.n],
             synthesized_peak_mask:vec![false;q.n/2+1],
-        })
+            neutral_original_mix:0.0,
+        };
+        stream.neutral_original_mix=if stream.strict_a_identity(){1.0}else{0.0};
+        Ok(stream)
+    }
+    /// No bypass of creative FX, B/C/D, or outside Kill. A zero mapping
+    /// should be sample-identical once its existing N-1 latency is applied.
+    fn strict_a_identity(&self)->bool{
+        self.engine==0 && self.settings.invert==0.0 && self.outside==1 &&
+        self.axis_shift==0.0 && self.axis_slope==1.0 &&
+        !self.ring_enabled && !self.rational_enabled &&
+        self.a_reverb_amount==0.0 && self.crusher_bits==0
     }
     pub fn latency(&self)->usize{self.n-1} // all engines now use the shared warp stage
     pub fn configure(&mut self,settings:Settings,outside:u32)->Result<(),&'static str>{
@@ -121,9 +133,13 @@ impl Stream {
            !shift_hz.is_finite()||shift_hz.abs()>20000.0||
            !carrier_hz.is_finite()||carrier_hz< -1.0||carrier_hz>20000.0{return Err("invalid engine parameters");}
         self.configure(settings,outside)?;
-        if self.engine!=engine {self.reset();}
+        let changed_engine=self.engine!=engine;
+        if changed_engine {self.reset();}
         self.engine=engine;self.pitch_ratio=pitch_ratio;self.shift_hz=shift_hz;
         self.carrier_hz=carrier_hz;self.zero_mode=zero_mode;
+        if changed_engine {
+            self.neutral_original_mix=if self.strict_a_identity(){1.0}else{0.0};
+        }
         Ok(())
     }
     pub fn set_transform(&mut self,shift:f64,reference:f64,ring_enabled:u32,
@@ -268,6 +284,7 @@ impl Stream {
         for x in &mut self.previous{x.fill(Complex::ZERO);}
         self.weights.fill(0.0);
         self.tracks.clear();self.next_tracks.clear();
+        self.neutral_original_mix=if self.strict_a_identity(){1.0}else{0.0};
     }
     pub fn process(&mut self,input:&[f32],output:&mut [f32],frames:usize)->Result<(),&'static str>{
         if frames==0||frames>2048||input.len()!=frames*self.channels||output.len()!=input.len(){
@@ -275,6 +292,15 @@ impl Stream {
         }
         // Input and output layout: [channel0 frames][channel1 frames].
         for i in 0..frames {
+            let target=if self.strict_a_identity(){1.0}else{0.0};
+            // A change of eligibility follows a bounded 10 ms linear ramp,
+            // keeping the original and spectral outputs time-aligned.
+            let step=(100.0/self.sample_rate).min(1.0);
+            if self.neutral_original_mix<target {
+                self.neutral_original_mix=(self.neutral_original_mix+step).min(target);
+            }else if self.neutral_original_mix>target {
+                self.neutral_original_mix=(self.neutral_original_mix-step).max(target);
+            }
             let t=self.received as usize;
             let write=t%self.n;
             for c in 0..self.channels {self.input[c][write]=input[c*frames+i] as f64;}
@@ -286,7 +312,10 @@ impl Stream {
                 let slot=pos%(self.n*2);
                 let w=self.weights[slot];
                 for c in 0..self.channels{
-                    output[c*frames+i]=if w>1e-9 {(self.output[c][slot]/w) as f32} else {0.0};
+                    let processed=if w>1e-9 {(self.output[c][slot]/w) as f32} else {0.0};
+                    let original=self.input[c][pos%self.n] as f32;
+                    let mix=self.neutral_original_mix as f32;
+                    output[c*frames+i]=processed*(1.0-mix)+original*mix;
                     self.output[c][slot]=0.0;
                 }
                 self.weights[slot]=0.0;
@@ -1010,6 +1039,129 @@ mod tests{
     fn settings()->Settings{
         Settings{low:20.0,high:3000.0,curvature:1.0,invert:1.0,
             mode:Progression::FoldHigh,quality:0}
+    }
+    #[test]
+    fn neutral_engine_a_preserves_stereo_pcm_under_128_frame_io(){
+        // #301: true source↔output identity, WITH declared N-1 latency, must
+        // not peak-select away noise. The current pre-fix implementation
+        // intentionally fails this regression; no test-only fake sound.
+        let rate=8192.0;
+        let neutral=Settings{invert:0.0,..settings()};
+        let mut engine=Stream::new_extended(rate,2,neutral,1,0,1.0,0.0,350.0,0,4).unwrap();
+        let latency=engine.latency();
+        assert_eq!(latency,1023);
+        let total=8192usize;
+        let mut state=3141592653u32;
+        let mut noise=||{state=state.wrapping_mul(1664525).wrapping_add(1013904223);
+            (state as f64/u32::MAX as f64)*2.0-1.0};
+        let left:Vec<f32>=(0..total).map(|i|
+            (0.32*(TAU*440.0*i as f64/rate).cos() +0.15*noise()) as f32).collect();
+        let right:Vec<f32>=(0..total).map(|i|
+            (0.64*left[i] as f64 + 0.07*(TAU*760.0*i as f64/rate).sin()) as f32).collect();
+        let sources=[left,right];
+        let mut observed=[vec![0.0f32;total],vec![0.0f32;total]];
+        for block in 0..total/128 {
+            let mut input=vec![0.0f32;256];
+            let mut output=vec![0.0f32;256];
+            for channel in 0..2 {
+                input[channel*128..channel*128+128].copy_from_slice(
+                    &sources[channel][block*128..(block+1)*128]);
+            }
+            engine.process(&input,&mut output,128).unwrap();
+            for channel in 0..2 {
+                observed[channel][block*128..(block+1)*128].copy_from_slice(
+                    &output[channel*128..channel*128+128]);
+            }
+        }
+        for channel in 0..2 {
+            let mut source2=0.0f64;let mut output2=0.0;let mut error2=0.0;
+            for t in 2200..total {
+                let x=sources[channel][t-latency] as f64;
+                let y=observed[channel][t] as f64;
+                assert!(y.is_finite());
+                source2+=x*x;output2+=y*y;error2+=(x-y)*(x-y);
+            }
+            let nrmse=(error2/source2).sqrt();
+            let ratio=(output2/source2).sqrt();
+            assert!(nrmse<0.08 && (0.93..=1.07).contains(&ratio),
+                "neutral A stereo channel {channel} still alters PCM: nrmse={nrmse}, rmsGain={ratio}");
+        }
+    }
+    #[test]
+    fn neutral_a_only_crossfades_into_real_dsp_and_never_silently_bypasses_fx(){
+        let rate=8192.0;
+        let neutral=Settings{invert:0.0,..settings()};
+        let active=Settings{invert:0.45,..neutral};
+        let mut st=Stream::new_extended(rate,1,neutral,1,0,1.0,0.0,350.0,0,4).unwrap();
+        assert!(st.strict_a_identity());
+        assert_eq!(st.neutral_original_mix,1.0);
+        let input=[0.2f32];let mut output=[0.0f32];
+        st.configure(active,1).unwrap();
+        assert!(!st.strict_a_identity());
+        st.process(&input,&mut output,1).unwrap();
+        assert!(st.neutral_original_mix>0.0&&st.neutral_original_mix<1.0,
+            "active A switch must ramp rather than hard-toggle");
+        let zeros=[0.0f32;128];let mut result=[0.0f32;128];
+        st.process(&zeros,&mut result,128).unwrap();
+        assert_eq!(st.neutral_original_mix,0.0);
+        st.configure(neutral,1).unwrap();
+        st.process(&input,&mut output,1).unwrap();
+        assert!(st.neutral_original_mix>0.0&&st.neutral_original_mix<1.0,
+            "returning to original must ramp");
+        st.process(&zeros,&mut result,128).unwrap();
+        assert_eq!(st.neutral_original_mix,1.0);
+        assert!(st.strict_a_identity());
+        st.configure(neutral,0).unwrap();
+        assert!(!st.strict_a_identity(),"outside Kill is an intentional effect");
+        st.configure(neutral,1).unwrap();
+        st.set_a_options(20.0,0.5).unwrap();
+        assert!(!st.strict_a_identity(),"A reverb must not be erased");
+        st.set_a_options(20.0,0.0).unwrap();
+        st.set_crusher(4,1).unwrap();
+        assert!(!st.strict_a_identity(),"Crusher must not be erased");
+        st.set_crusher(0,1).unwrap();
+        st.set_transform(0.2,350.0,0,0).unwrap();
+        assert!(!st.strict_a_identity(),"nonzero axis move must not bypass");
+        st.set_transform(0.0,350.0,1,0).unwrap();
+        assert!(!st.strict_a_identity(),"Ring must not bypass");
+        st.set_transform(0.0,350.0,0,1).unwrap();
+        assert!(!st.strict_a_identity(),"Rational model must not bypass");
+        st.set_transform(0.0,350.0,0,0).unwrap();
+        st.set_geometry(350.0,0.5).unwrap();
+        assert!(!st.strict_a_identity(),"nonunit frequency slope must not bypass");
+        st.set_geometry(350.0,1.0).unwrap();
+        assert!(st.strict_a_identity(),"true neutral eligibility not restored");
+        assert_eq!(st.latency(),1023);
+    }
+    #[test]
+    fn neutral_to_active_and_back_does_not_emit_transition_sample_click(){
+        // Actual processed audio, not only the fade coefficient. Measure a
+        // bounded local derivative at each parameter-change boundary.
+        let fs=8192.0;
+        let neutral=Settings{invert:0.0,..settings()};
+        let active=Settings{invert:0.4,..neutral};
+        let mut st=Stream::new_extended(fs,1,neutral,1,0,1.0,0.0,350.0,0,4).unwrap();
+        let mut samples=Vec::new();
+        for block in 0..140usize {
+            if block==45 { st.configure(active,1).unwrap(); }
+            if block==85 { st.configure(neutral,1).unwrap(); }
+            let x=(0..128).map(|i|{
+                let n=block*128+i;
+                (0.15*(TAU*170.0*n as f64/fs).sin()) as f32
+            }).collect::<Vec<_>>();
+            let mut y=vec![0.0f32;128];
+            st.process(&x,&mut y,128).unwrap();
+            assert!(y.iter().all(|s|s.is_finite()&&s.abs()<1.0),
+                "finite/bounded audio required across mid-play toggles");
+            samples.extend(y);
+        }
+        for boundary in [45*128usize,85*128]{
+            let jump=(boundary-8..boundary+16)
+                .map(|i|(samples[i]-samples[i-1]).abs())
+                .fold(0.0f32,f32::max);
+            assert!(jump<0.12,
+                "large discontinuity across A neutral eligibility at {boundary}: {jump}");
+        }
     }
     #[test]
     fn continuous_blocks_shift_tone_with_bounded_latency(){

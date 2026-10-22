@@ -546,22 +546,22 @@ test("Engine A neutral transform: actual PCM fidelity vs engine B across tonal/n
           const score=metrics(input,output);
           assert.ok(Number.isFinite(score.rmsGain)&&Number.isFinite(score.normalizedRmse));
           // Evaluate ACTUAL common Rust-WASM PCM, not a mocked filter.
-          // A's known open defect is measured and reported as a red product
-          // quality finding. B is the negative control for the evaluator.
+          // #301: neutral A and B must now both pass the same source
+          // reference. Nonneutral A residual/partial quality is separate #5.
           const objective=fullReferenceQuality(input,output,{start,end,blockSize:400});
           const gate=qualityGate(objective,baselineNeutralContract);
           if(engine===1){
             assert.ok(gate.pass,"neutral Engine B must meet existing waveform reference: "+JSON.stringify({kind,qualityIndex,gate}));
-          }else if(qualityIndex===0 && peakBins===1 && kind==="wideband_noise"){
-            assert.equal(gate.pass,false,
-              "current A peak-only loss must not be misreported as quality PASS");
+          }else{
+            assert.ok(gate.pass,"neutral A must reproduce source: "+
+              JSON.stringify({kind,qualityIndex,peakBins,gate}));
           }
           rows.push({kind,qualityIndex,engine:engine===0?"A_peaks":"B_bins",
             peakBins,...score,
             objectiveAxes:{nrmse:objective.nrmse,gainDb:objective.gainDb,
               correlation:objective.correlation,clippedSamples:objective.clippedSamples,
               outputSilent:objective.outputSilent},
-            qualityGate:gate.pass?"PASS":"FAIL_KNOWN_PRODUCT_DEFECT",
+            qualityGate:gate.pass?"PASS_NEUTRAL":"FAIL_PRODUCT_FIDELITY",
             qualityFailures:gate.failures});
         }
       }
@@ -590,7 +590,7 @@ test("Engine A quality slider controls true native/WASM peak budget and real off
     const render=quality=>{
       const before=performance.now();
       const status=e.warp_stream_render_f32_a_quality_ext(
-        src,dst,n,1,fs,20,5500,1,0,1,0,1,0,1,0,0,0,4,0,1,
+        src,dst,n,1,fs,20,5500,1,.25,1,0,1,0,1,0,0,0,4,0,1,
         0,350,0,0,350,1,20,0,1,quality);
       assert.equal(status,0,"offline A quality "+quality);
       timings.push(Number((performance.now()-before).toFixed(3)));
@@ -602,7 +602,7 @@ test("Engine A quality slider controls true native/WASM peak budget and real off
     assert.ok(delta(middle,full)>1e-4,"quality 100 must change actual native A audio");
     assert.ok([zero,middle,full].every(x=>x.every(Number.isFinite)),"finite output across all settings");
     const bad=e.warp_stream_render_f32_a_quality_ext(
-      src,dst,n,1,fs,20,5500,1,0,1,0,1,0,1,0,0,0,4,0,1,
+      src,dst,n,1,fs,20,5500,1,.25,1,0,1,0,1,0,0,0,4,0,1,
       0,350,0,0,350,1,20,0,1,101);
     assert.equal(bad,-2);
     const stream=e.warp_stream_create_ext(fs,1,20,5500,1,0,1,0,1,0,1,0,0,0,4);
@@ -671,7 +671,7 @@ test("Engine B actual Rust/WASM bin shift keeps phase coherent at hop N/4 and N/
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
 
-test("Experimental A mapped residual: neutral fidelity gain across broadband, mixed and transient PCM",async()=>{
+test("Strict-neutral Engine A transparent at any residual-quality setting",async()=>{
   const e=await load();
   const rate=12000,n=12000,src=e.warp_alloc_f32(n),dst=e.warp_alloc_f32(n);
   assert.ok(src&&dst);
@@ -711,11 +711,13 @@ test("Experimental A mapped residual: neutral fidelity gain across broadband, mi
         row.neutralQualityFailures=verdict.failures;
         rows.push(row);outputs.push(row);
       }
-      assert.ok(outputs[1].nrmse<outputs[0].nrmse*.95,
-        "A residual is not an accepted quality improvement on "+kind+": "+
-          JSON.stringify(outputs));
+      for(const result of outputs){
+        assert.ok(result.nrmse<.08 && result.neutralQualityVerdict==="PASS_NEUTRAL_AXES",
+          "neutral A must not color sound at any experimental quality: "+
+            JSON.stringify({kind,result}));
+      }
     }
-    console.log("A_MAPPED_RESIDUAL_PCM_ACTUAL "+JSON.stringify(rows));
+    console.log("A_NEUTRAL_QUALITY_INVARIANCE_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
 
