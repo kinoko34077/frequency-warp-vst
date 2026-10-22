@@ -546,8 +546,8 @@ test("Engine A neutral transform: actual PCM fidelity vs engine B across tonal/n
           const score=metrics(input,output);
           assert.ok(Number.isFinite(score.rmsGain)&&Number.isFinite(score.normalizedRmse));
           // Evaluate ACTUAL common Rust-WASM PCM, not a mocked filter.
-          // A's known open defect is measured and reported as a red product
-          // quality finding. B is the negative control for the evaluator.
+          // #301: neutral A and B must now both pass the same source
+          // reference. Nonneutral A residual/partial quality is separate #5.
           const objective=fullReferenceQuality(input,output,{start,end,blockSize:400});
           const gate=qualityGate(objective,baselineNeutralContract);
           if(engine===1){
@@ -717,7 +717,7 @@ test("Strict-neutral Engine A transparent at any residual-quality setting",async
             JSON.stringify({kind,result}));
       }
     }
-    console.log("A_MAPPED_RESIDUAL_PCM_ACTUAL "+JSON.stringify(rows));
+    console.log("A_NEUTRAL_QUALITY_INVARIANCE_PCM_ACTUAL "+JSON.stringify(rows));
   }finally{e.warp_free_f32(src,n);e.warp_free_f32(dst,n);}
 });
 
