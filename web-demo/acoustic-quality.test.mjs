@@ -105,7 +105,7 @@ test("gated-onset proxy calibrates clean, pre-echo, lag, transient-loss and sile
   assert.equal(mute.verdict.pass,false,
     "missing onset must not be rewarded as zero pre-echo");
   assert.throws(()=>transientOnsetQuality(
-    Float32Array.from(ref,(v,i)=>i===1000?.1:v),ref,options),
+    Float32Array.from(ref,(v,i)=>i===onset-200?.1:v),ref,options),
     /before declared onset is not silent/);
   console.log("ONSET_SCORER_ADVERSARIAL "+JSON.stringify({
     dry:dry.axes,echo:echo.axes,delay:lag.axes,quiet:quiet.axes,mute:mute.axes
