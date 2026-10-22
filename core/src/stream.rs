@@ -1025,10 +1025,10 @@ mod tests{
         let mut state=3141592653u32;
         let mut noise=||{state=state.wrapping_mul(1664525).wrapping_add(1013904223);
             (state as f64/u32::MAX as f64)*2.0-1.0};
-        let left:(Vec<f32>)=(0..total).map(|i|
-            (.32*(TAU*440.0*i as f64/rate).cos()+.15*noise()) as f32).collect();
-        let right:(Vec<f32>)=(0..total).map(|i|
-            (.64*left[i] as f64 + .07*(TAU*760.0*i as f64/rate).sin()) as f32).collect();
+        let left:Vec<f32>=(0..total).map(|i|
+            (0.32*(TAU*440.0*i as f64/rate).cos() +0.15*noise()) as f32).collect();
+        let right:Vec<f32>=(0..total).map(|i|
+            (0.64*left[i] as f64 + 0.07*(TAU*760.0*i as f64/rate).sin()) as f32).collect();
         let sources=[left,right];
         let mut observed=[vec![0.0f32;total],vec![0.0f32;total]];
         for block in 0..total/128 {
