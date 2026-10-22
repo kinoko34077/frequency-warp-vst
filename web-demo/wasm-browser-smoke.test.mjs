@@ -702,6 +702,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.setViewport(desktopViewport);
 
     // U5: short real WAV render belongs to one source+DSP+Wet configuration.
+    // Prepare exactly-zero u before rendering: pressing zero again later
+    // must not falsely invalidate the generated DSP-owned WAV.
+    await page.$eval("#axis-shift-value",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
     await page.click("#export-jump");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "Source → WAV action must expand the offline tool directly");
@@ -711,6 +716,34 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});
     assert.equal(await page.$eval("#progress",el=>Number(el.value)),100);
+    // #297: merely focusing and confirming a coordinate input is not a
+    // DSP change. WAV ownership is source+canonical settings, not DOM events.
+    await page.select("#axis-shift-unit","coordinate");
+    await page.$eval("#axis-shift-value",el=>{
+      el.focus();
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+      el.blur();
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),false,
+      "no-op coordinate input/change/blur must preserve frozen WAV");
+    // Changing only notation of u and reconfirming the same projection is
+    // likewise a non-DSP action, including a signed 0 reference coordinate.
+    await page.select("#axis-shift-unit","percent");
+    await page.$eval("#axis-shift-value",el=>{
+      el.focus();
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+      el.blur();
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),false,
+      "unchanged percent view must not reapply an already-exported value");
+    await page.$eval("#axis-zero",el=>el.click());
+    assert.equal(await page.$eval("#download",el=>el.disabled),false,
+      "zero action when u is already zero must retain frozen WAV");
+    // The remainder of this existing end-to-end test expects raw u
+    // (not a percent presentation) after A/B restores.
+    await page.select("#axis-shift-unit","coordinate");
     await page.$eval("#wet",el=>{
       el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
     });

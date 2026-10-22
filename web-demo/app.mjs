@@ -142,6 +142,7 @@ const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="zero-reflect"?zeroReflectBinding.value:
   name==="zero-decay"?zeroDecayBinding.value:
   name==="invert"?invertBinding.value:(state.precise[name]??fallback());
+let lastRenderedAxisShiftView=null;
 function refreshAxisShiftView(p,force=false){
   const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
   const allowed=axisShiftUnits(p.curvature);
@@ -151,7 +152,12 @@ function refreshAxisShiftView(p,force=false){
   const toView=u=>axisShiftView(u,unit,p.curvature,ref);
   const min=toView(-2),max=toView(2);
   field.min=String(min);field.max=String(max);field.step=unit==="coordinate"?"0.001":"any";
-  if(force||document.activeElement!==field)field.value=String(Number(toView(p.axisShift).toFixed(displayDigits())));
+  if(force||document.activeElement!==field){
+    field.value=String(Number(toView(p.axisShift).toFixed(displayDigits())));
+    // A formatted coordinate/percent/Hz/ratio view is never the Float64
+    // authority. Reconfirming an unchanged presentation is not a DSP edit.
+    lastRenderedAxisShiftView=field.value;
+  }
   field.setAttribute("aria-label","移動量 "+unit+"（内部座標u="+concise3(p.axisShift)+"）");
 }
 function showNumber(id,value){
@@ -1350,8 +1356,17 @@ for(const [id,binding,refresh,onChanged] of typedPercentEditors)
    const p=settings();
    try{
      const u=axisShiftCanonical(value,moveUnit.value,p.curvature,p.axisReference);
+     const accepted=scalar("axis-shift",()=>Number($("#axis-shift").value));
+     // The untouched formatted text may have lost several decimal places;
+     // do not parse it back into the DSP as a newly edited canonical value.
+     // Also make input/change/blur idempotent after the first valid commit.
+     if(moveField.value===lastRenderedAxisShiftView || Object.is(u,accepted)){
+       delete moveField.dataset.invalid;
+       return;
+     }
      state.precise["axis-shift"]=u;
      $("#axis-shift").value=String(round3(u));
+     lastRenderedAxisShiftView=moveField.value;
      updateParams("axis-shift");updateEngineInfo();
    }catch{moveField.dataset.invalid="true";return;}
    delete moveField.dataset.invalid;
@@ -1359,7 +1374,7 @@ for(const [id,binding,refresh,onChanged] of typedPercentEditors)
  moveField.addEventListener("input",parseMove);
  moveField.addEventListener("change",parseMove);
  moveField.addEventListener("focus",()=>{refreshAxisShiftView(settings(),true);moveField.select();});
- moveField.addEventListener("blur",()=>{parseMove();refreshAxisShiftView(settings(),true);});
+ moveField.addEventListener("blur",()=>{parseMove();refreshAxisShiftView(settings(),true);delete moveField.dataset.invalid;});
  moveField.addEventListener("keydown",e=>{if(e.key==="Enter")moveField.blur();});
  moveUnit.addEventListener("change",()=>refreshAxisShiftView(settings(),true));
  $("#pivot-follow-low").addEventListener("change",()=>{updateParams("low");updateEngineInfo();});
@@ -1455,8 +1470,15 @@ $("#slope-one").addEventListener("click",()=>{
   updateParams("axis-slope");updateEngineInfo();
 });
 $("#axis-zero").addEventListener("click",()=>{
+  const wasZero=Object.is(scalar("axis-shift",()=>Number($("#axis-shift").value)),0);
   delete state.precise["axis-shift"];
   $("#axis-shift").value="0";
+  if(wasZero){
+    // Zero is already the canonical DSP value: restore the display only.
+    // An idempotent action must not invalidate a frozen WAV or bump Worklet.
+    refreshAxisShiftView(settings(),true);
+    return;
+  }
   updateParams("axis-shift");
   updateEngineInfo();
 });
