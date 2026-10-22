@@ -45,7 +45,7 @@ export function fullReferenceQuality(input,output,{start=0,end=input.length,bloc
     gainDb:db(ratio),
     rmsGain:ratio,
     nrmse:Math.sqrt(err/source),
-    correlation:actual<=tiny?null:cross/Math.sqrt(source*actual),
+    correlation:actual<=tiny?null:Math.max(-1,Math.min(1,cross/Math.sqrt(source*actual))),
     clippedSamples:clip,
     sourceBlockRmsCV:variation(sourceBlocks),
     outputBlockRmsCV:variation(actualBlocks),
@@ -82,6 +82,7 @@ export function stereoImageQuality(inputL,inputR,outputL,outputR,
 export function toneComponentQuality(signal,{sampleRate,targetHz,sourceHz=null,
   start=0,end=signal.length}={}){
   if(!valid(sampleRate)||sampleRate<=0||!valid(targetHz)||targetHz<=0||
+    !Number.isInteger(start)||!Number.isInteger(end)||start<0||end-start<2||
     targetHz>=sampleRate/2||end<=start||end>signal.length)
     throw new RangeError("invalid tone oracle");
   if(sourceHz!==null&&(!valid(sourceHz)||sourceHz<=0||sourceHz>=sampleRate/2))
