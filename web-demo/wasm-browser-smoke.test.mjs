@@ -741,6 +741,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#axis-zero",el=>el.click());
     assert.equal(await page.$eval("#download",el=>el.disabled),false,
       "zero action when u is already zero must retain frozen WAV");
+    // The remainder of this existing end-to-end test expects raw u
+    // (not a percent presentation) after A/B restores.
+    await page.select("#axis-shift-unit","coordinate");
     await page.$eval("#wet",el=>{
       el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
