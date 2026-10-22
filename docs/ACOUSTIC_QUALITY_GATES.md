@@ -1,3 +1,12 @@
+## M3a transformed-source onset, pre-echo and attack envelope (#305)
+
+The existing known-partial 480→504Hz steady-state scorecard is **not** an attack-quality test. In #305, the same actual Rust/WASM render function transforms a precisely gated 480Hz sinusoid to 504Hz, retaining an explicit silence pre-window and latency-compensated offline PCM at 8192Hz. The shared `transientOnsetQuality` helper adds *three independent diagnostic axes*:
+- **`preEchoDb`**: power before the oracle onset relative to power in the after-onset attack window, in dB. Smaller (more negative) indicates less pre-onset energy. This is measured only for an oracle with a quiet pre-window; the metric returns `null` rather than rewarding all-zero output.
+- **`onsetOffsetMs`**: first detected short-block energy relative to the declared onset, preserving its sign (negative=early; positive=late). Detector resolution depends on the configured `blockSamples` and sample rate, and does not infer audible onset exactly.
+- **`attackRmsRatio`**: the measured after-onset RMS compared with the source attack RMS, so quiet/destructively faded results do not pass merely by avoiding pre-echo. Because the output is deliberately pitch-warped, this envelope comparison is distinct from identity waveform error.
+
+The provisional fixture thresholds (-25dB pre-echo, ±8ms attack displacement, RMS gain 0.7..1.3) are **engineering diagnostic thresholds chosen to detect injected artifacts**, not researched just-noticeable-difference values or proof of listener preference. `acoustic-quality.test.mjs` checks a genuine quiet→gated signal (PASS) and injected early echo, late gate, gain loss and all-silent output (FAIL on appropriate axes); `transformed-quality.test.mjs` then prints real A_peak, A_partial+residual and B_fft_bins measurements under **identical** settings, preserving failures as product findings without hiding them in an averaged score. No unique target waveform is presumed for broadband noise; no physical iPhone/DAW claims follow from this test.
+
 # Automated acoustic quality evidence (Issue #299)
 
 **Status:** M1 test-only calibration / source-under-review. These measurements do not certify human preference, identity at arbitrary host sample rates, or realtime CPU deadlines.
