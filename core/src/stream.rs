@@ -1134,6 +1134,36 @@ mod tests{
         assert_eq!(st.latency(),1023);
     }
     #[test]
+    fn neutral_to_active_and_back_does_not_emit_transition_sample_click(){
+        // Actual processed audio, not only the fade coefficient. Measure a
+        // bounded local derivative at each parameter-change boundary.
+        let fs=8192.0;
+        let neutral=Settings{invert:0.0,..settings()};
+        let active=Settings{invert:0.4,..neutral};
+        let mut st=Stream::new_extended(fs,1,neutral,1,0,1.0,0.0,350.0,0,4).unwrap();
+        let mut samples=Vec::new();
+        for block in 0..140usize {
+            if block==45 { st.configure(active,1).unwrap(); }
+            if block==85 { st.configure(neutral,1).unwrap(); }
+            let x=(0..128).map(|i|{
+                let n=block*128+i;
+                (0.15*(TAU*170.0*n as f64/fs).sin()) as f32
+            }).collect::<Vec<_>>();
+            let mut y=vec![0.0f32;128];
+            st.process(&x,&mut y,128).unwrap();
+            assert!(y.iter().all(|s|s.is_finite()&&s.abs()<1.0),
+                "finite/bounded audio required across mid-play toggles");
+            samples.extend(y);
+        }
+        for boundary in [45*128usize,85*128]{
+            let jump=(boundary-8..boundary+16)
+                .map(|i|(samples[i]-samples[i-1]).abs())
+                .fold(0.0f32,f32::max);
+            assert!(jump<0.12,
+                "large discontinuity across A neutral eligibility at {boundary}: {jump}");
+        }
+    }
+    #[test]
     fn continuous_blocks_shift_tone_with_bounded_latency(){
         let fs=8192.0;
         let mut st=Stream::new(fs,1,settings(),0).unwrap();
