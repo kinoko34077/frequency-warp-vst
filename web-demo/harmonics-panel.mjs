@@ -1,6 +1,6 @@
 import {deriveHarmonics} from "./harmonics.mjs";
 import {defineParameter} from "./parameter-binding.mjs";
-import {mountFrequencyUnitField,mountParameterUnitField} from "./frequency-unit-field.mjs";
+import {mountFrequencyUnitField,mountParameterUnitField,mountIntegerParameterField} from "./frequency-unit-field.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
@@ -9,11 +9,12 @@ const $=id=>document.querySelector(id);
 const precision=()=>Number($("#decimal-digits")?.value||3);
 const fmt=value=>Number.isFinite(value)?Number(value.toFixed(precision())).toString():"—";
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
-const integerFields=new Set(["denominator","numerator","harmonic-index"]);
 const preciseFields=new Map();
+const integerBindings=new Map();
 let fundamentalUnitControl=null,carrierUnitControl=null,ratioUnitControl=null;
 const round3=v=>Math.round((v+Number.EPSILON)*1000)/1000;
-const read=id=>id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl.value:
+const read=id=>integerBindings.has(id)?integerBindings.get(id).value:
+  id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl.value:
   id==="carrier"&&carrierUnitControl?carrierUnitControl.value:
   id==="pitch-ratio"&&ratioUnitControl?ratioUnitControl.value:
   preciseFields.has(id)?preciseFields.get(id):Number($("#"+id).value);
@@ -23,7 +24,7 @@ const sliderFromCarrierHz=hz=>hz<=0?0:1+999*Math.log(clamp(hz,1,20000))/Math.log
 // Match the existing pivot's piecewise octave rail, including the 0Hz
 // endpoint. A linked F maps its virtual H=rF/m onto that SAME rail.
 const harmonicRailFactors=()=>({
-  m:clamp(Math.round(Number($("#denominator")?.value)||4),1,64),
+  m:clamp(read("denominator")||4,1,64),
   r:clamp(ratioUnitControl?.value||Number($("#pitch-ratio")?.value)||1,.25,4)
 });
 const commonHzToRail=hz=>hz<=0?0:hz<=20?
@@ -50,6 +51,7 @@ export function resetHarmonicControls(){
   for(const [id,value] of Object.entries({
     denominator:4,numerator:-3,"harmonic-index":1
   })){
+    integerBindings.get(id)?.reset();
     preciseFields.delete(id);
     $("#"+id).value=String(value);
     $("#"+id+"-range").value=String(value);
@@ -84,7 +86,8 @@ export function restoreHarmonicConfiguration(v){
   carrierUnitControl.setCanonical(v.carrier);
   ratioUnitControl.setCanonical(v.r);
   for(const [id,value] of [["denominator",v.m],["numerator",v.n],["harmonic-index",v.q]]){
-    preciseFields.set(id,value);
+    integerBindings.get(id)?.setCanonical(value);
+    preciseFields.delete(id);
     $("#"+id).value=String(value);
     syncPair(id);
   }
@@ -97,9 +100,9 @@ export function linkedCarrierRequested(){
 }
 export function harmonicParameters(){
   const F=clamp(read("fundamental")||350,.001,5_120_000);
-  const m=clamp(Math.round(Number($("#denominator").value)||4),1,64);
-  const n=clamp(Math.round(Number($("#numerator").value)||0),-128,128);
-  const q=clamp(Math.round(Number($("#harmonic-index").value)||1),1,32);
+  const m=clamp(read("denominator")||4,1,64);
+  const n=clamp(read("numerator"),-128,128);
+  const q=clamp(read("harmonic-index")||1,1,32);
   const r=clamp(read("pitch-ratio")||1,.25,4);
   const manualCarrier=clamp(read("carrier")||0,0,20000);
   const foldMode=["fold-l","fold-h"].includes($("#mode").value);
@@ -290,41 +293,24 @@ export function attachHarmonicPanel(onChange,foldPoint,axisMarker,resolveSetting
     onValueChange:()=>respond("pitch-ratio")
   });
   $("#pitch-ratio-range").addEventListener("input",()=>ratioUnitControl.fromSlider());
-  for(const id of IDS){
-    if(id==="fundamental"||id==="carrier"||id==="pitch-ratio")continue;
-    const number=$("#"+id),range=$("#"+id+"-range");
-    // Preserve direct typing for exact values while making typical changes
-    // a one-finger drag; invalid numbers are clamped on change.
-    range.addEventListener("input",()=>{
-      preciseFields.delete(id);
-      number.value=id==="carrier"?String(Math.round(carrierHzFromSlider(Number(range.value)))):range.value;
-      respond(id);
+  // m/n/q share one canonical integer binding and one generic editor lifecycle.
+  // Incomplete number text does not change the value used by harmonic math.
+  for(const [id,min,max,defaultValue] of [
+    ["denominator",1,64,4],
+    ["numerator",-128,128,-3],
+    ["harmonic-index",1,32,1]
+  ]){
+    const binding=mountIntegerParameterField({
+      descriptor:defineParameter({
+        id,min,max,defaultValue,units:["integer"],digits:0,
+        rail:{toPosition:v=>(v-min)/(max-min),
+          fromPosition:pos=>min+pos*(max-min)}
+      }),
+      field:$("#"+id),slider:$("#"+id+"-range"),
+      onValueChange:()=>respond(id)
     });
-    number.addEventListener("focus",()=>{
-      if(preciseFields.has(id))number.value=String(preciseFields.get(id));
-      number.select();
-    });
-    number.addEventListener("input",()=>{
-      if(number.value===""||!Number.isFinite(Number(number.value)))return;
-      const value=clamp(Number(number.value),Number(number.min),Number(number.max));
-      preciseFields.set(id,integerFields.has(id)?Math.round(value):round3(value));
-      syncPair(id);respond(id);
-    });
-    number.addEventListener("change",()=>{
-      const min=Number(number.min),max=Number(number.max);
-      const raw=Number(number.value);
-      const v=Number.isFinite(raw)&&number.value!==""?clamp(raw,min,max):Number(number.defaultValue);
-      const stored=integerFields.has(id)?Math.round(v):round3(v);
-      preciseFields.set(id,stored);
-      // A range is approximate; retain the exact typed 3-decimal value.
-      syncPair(id);respond(id);
-    });
-    number.addEventListener("blur",()=>{
-      const value=read(id);
-      if(Number.isFinite(value))number.value=integerFields.has(id)?
-        String(value):String(Number(value.toFixed(precision())));
-    });
-    syncPair(id);
+    integerBindings.set(id,binding);
+    preciseFields.delete(id);
   }
   $("#carrier-link").addEventListener("change",()=>respond("carrier-link"));
   $("#harmonic-count").addEventListener("change",()=>renderHarmonicPanel(foldPoint,axisMarker,resolveSettings));

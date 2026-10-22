@@ -365,3 +365,58 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
 
 // Backward-compatible name retained for the frequency M1 adapters.
 export const mountFrequencyUnitField=mountParameterUnitField;
+
+/** #79 M2/M3: integer-count control bound to one canonical numeric owner.
+ * Existing native number + integer slider remain the UI (no fake Hz or %
+ * view); partially typed values cannot contaminate harmonic/audio state.
+ */
+export function mountIntegerParameterField({descriptor,field,slider,onValueChange=()=>{}}){
+  if(!field||!slider||typeof onValueChange!=="function"||
+     descriptor?.units?.length!==1||descriptor.units[0]!=="integer"||
+     !Number.isInteger(descriptor.min)||!Number.isInteger(descriptor.max)||
+     !Number.isInteger(descriptor.defaultValue))
+    throw new TypeError("integer parameter requires compatible descriptor and controls");
+  const binding=createParameterBinding(descriptor);
+  const reflect=(showField=true)=>{
+    slider.value=String(binding.value);
+    if(showField)field.value=String(binding.value);
+  };
+  const commit=(raw,origin)=>{
+    if(raw===""||raw===null||!Number.isFinite(Number(raw)))return false;
+    const previous=binding.value;
+    binding.setCanonical(Math.round(Number(raw)),{origin,notify:false});
+    reflect(origin!=="typed");
+    if(!Object.is(previous,binding.value))onValueChange(binding.value,previous,origin);
+    return true;
+  };
+  const onTyped=()=>{field.dataset.invalid=commit(field.value,"typed")?"false":"true";};
+  const onChange=()=>{
+    if(!commit(field.value,"typed"))reflect();
+    else reflect();
+    delete field.dataset.invalid;
+  };
+  const onBlur=()=>{reflect();delete field.dataset.invalid;};
+  const onFocus=()=>field.select?.();
+  const onSlider=()=>{commit(slider.value,"slider");};
+  const onKey=event=>{if(event.key==="Enter")field.blur?.();};
+  const listeners=[
+    [field,"focus",onFocus],[field,"input",onTyped],
+    [field,"change",onChange],[field,"blur",onBlur],
+    [field,"keydown",onKey],[slider,"input",onSlider]
+  ];
+  for(const [node,event,fn] of listeners)node.addEventListener(event,fn);
+  reflect();
+  return Object.freeze({
+    get value(){return binding.value;},
+    setCanonical(value){
+      if(!Number.isInteger(value))throw new RangeError("count must be an integer");
+      binding.setCanonical(value,{origin:"restore",overflow:"reject",notify:false});
+      reflect();
+    },
+    reset(){
+      binding.reset({notify:false});reflect();
+    },
+    refresh:()=>reflect(),
+    dispose:()=>{for(const [node,event,fn] of listeners)node.removeEventListener(event,fn);}
+  });
+}

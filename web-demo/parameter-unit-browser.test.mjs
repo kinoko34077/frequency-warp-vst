@@ -812,6 +812,42 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.click("#settings-done");
     assert.equal(Number(await page.$eval("#low-value",el=>el.value)),20);
     assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16000);
+    // #295: m/n/q have one canonical integer owner, even while a number
+    // input is temporarily empty or incomplete. A sibling update must not
+    // recompute the harmonic model from the stale/empty DOM fallback.
+    const harmonicModule=await page.evaluate(async()=>typeof (await import(
+      "./harmonics-panel.mjs")).captureHarmonicConfiguration==="function");
+    assert.equal(harmonicModule,true);
+    const initialHarmonic=await page.evaluate(async()=>
+      (await import("./harmonics-panel.mjs")).captureHarmonicConfiguration());
+    assert.equal(initialHarmonic.m,4);
+    await page.$eval("#denominator",el=>{
+      el.value="7";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#denominator",el=>{
+      el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await page.$eval("#numerator",el=>{
+      el.value="-9";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    const liveHarmonic=await page.evaluate(async()=>
+      (await import("./harmonics-panel.mjs")).captureHarmonicConfiguration());
+    assert.equal(liveHarmonic.m,7,"incomplete m editor must preserve canonical m");
+    assert.equal(liveHarmonic.n,-9);
+    assert.equal(await page.$eval("#denominator-range",el=>el.value),"7");
+    assert.match(await page.$eval("#mini-fundamental",el=>el.textContent),
+      /H 50(?:\.0+)?/,"other harmonic edits must use canonical m=7");
+    await page.$eval("#denominator",el=>el.dispatchEvent(new Event(
+      "change",{bubbles:true})));
+    assert.equal(await page.$eval("#denominator",el=>el.value),"7");
+    await page.evaluate(async saved=>{
+      (await import("./harmonics-panel.mjs")).restoreHarmonicConfiguration(saved);
+    },initialHarmonic);
+    assert.equal(await page.$eval("#denominator",el=>el.value),"4");
+    assert.equal(await page.$eval("#numerator",el=>el.value),"-3");
+    assert.equal(await page.$eval("#harmonic-index",el=>el.value),"1");
+    assert.equal((await page.evaluate(async()=>
+      (await import("./harmonics-panel.mjs")).captureHarmonicConfiguration())).m,4);
     // Opt-in layout editor coexists: it must NOT hijack snap menus on
     // a recognized parameter, but retains its context menu elsewhere.
     await page.goto("http://127.0.0.1:8774/index.html?legacy_lab=1&layout_editor=1",{
