@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {fullReferenceQuality,stereoImageQuality,toneComponentQuality,
-  qualityGate,baselineNeutralContract} from "./acoustic-quality.mjs";
+  qualityGate,baselineNeutralContract,transientEnvelopeQuality} from "./acoustic-quality.mjs";
 
 const N=4096,rate=8192;
 const clean=Float32Array.from({length:N},(_,i)=>
@@ -66,4 +66,41 @@ test("criteria cannot silently pass missing data or unknown metric names",()=>{
   assert.equal(qualityGate({...q,correlation:null},
     {correlation:{min:.999}}).pass,false);
   assert.throws(()=>qualityGate(q,{invented:{min:5}}),/unknown metric/);
+});
+
+test("known-onset metric rejects pre-echo, delayed attack and unnatural tail",()=>{
+  const fs=8192,frames=8192,onset=2048,end=3072;
+  const burst=Float32Array.from({length:frames},(_,i)=>
+    (i>=onset&&i<end)?0.45*Math.sin(2*Math.PI*704*(i-onset)/fs):0);
+  const measure=signal=>transientEnvelopeQuality(signal,
+    {sampleRate:fs,onsetSample:onset,endSample:end,windowMs:70});
+  const base=measure(burst);
+  assert.equal(base.outputSilent,false);
+  assert.ok(Math.abs(base.onsetOffsetSamples)<32,
+    "calibration: undistorted signal has onset near the declared sample");
+  assert.ok(base.preToActiveDb< -80&&base.tailToActiveDb< -80);
+  const precursor=Float32Array.from(burst);
+  for(let i=onset-240;i<onset;i++)precursor[i]=
+    0.24*Math.sin(2*Math.PI*704*(i-onset)/fs);
+  const early=measure(precursor);
+  assert.ok(early.preToActiveDb>base.preToActiveDb+30);
+  assert.ok(early.onsetOffsetSamples< -120,"pre-echo must move measured onset earlier");
+  const late=Float32Array.from({length:frames},(_,i)=>
+    i>=120?burst[i-120]:0);
+  const delayed=measure(late);
+  assert.ok(delayed.onsetOffsetSamples>60,"late onset cannot pass as on-time");
+  const tail=Float32Array.from(burst);
+  for(let i=end;i<end+450;i++)tail[i]=
+    0.23*Math.sin(2*Math.PI*704*(i-end)/fs);
+  assert.ok(measure(tail).tailToActiveDb>base.tailToActiveDb+30,
+    "tail leakage must be measurable separately");
+  const silent=measure(new Float32Array(frames));
+  assert.equal(silent.outputSilent,true);
+  assert.equal(silent.onsetOffsetSamples,null);
+  assert.equal(qualityGate(silent,{onsetOffsetSamples:{min:-32,max:32}}).pass,false,
+    "silence can never pass as a correctly timed attack");
+  assert.throws(()=>measure(Float32Array.from(burst,(v,i)=>i===onset?NaN:v)),
+    /nonfinite/);
+  assert.throws(()=>transientEnvelopeQuality(burst,{sampleRate:fs,onsetSample:end,endSample:onset}),
+    /invalid/);
 });
