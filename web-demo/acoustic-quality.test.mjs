@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {fullReferenceQuality,stereoImageQuality,toneComponentQuality,
-  qualityGate,baselineNeutralContract} from "./acoustic-quality.mjs";
+  qualityGate,baselineNeutralContract,transientOnsetQuality} from "./acoustic-quality.mjs";
 
 const N=4096,rate=8192;
 const clean=Float32Array.from({length:N},(_,i)=>
@@ -66,4 +66,48 @@ test("criteria cannot silently pass missing data or unknown metric names",()=>{
   assert.equal(qualityGate({...q,correlation:null},
     {correlation:{min:.999}}).pass,false);
   assert.throws(()=>qualityGate(q,{invented:{min:5}}),/unknown metric/);
+});
+
+test("gated-onset proxy calibrates clean, pre-echo, lag, transient-loss and silence separately",()=>{
+  const fs=8192,n=8192,onset=2048;
+  const ref=Float32Array.from({length:n},(_,i)=>
+    i<onset?0:.4*Math.cos(2*Math.PI*480*i/fs));
+  const options={sampleRate:fs,onsetSample:onset,
+    preSamples:512,attackSamples:512,blockSamples:16};
+  const condition={
+    preEchoDb:{max:-35},
+    onsetOffsetMs:{min:-2,max:2},
+    attackRmsRatio:{min:.85,max:1.15}
+  };
+  const check=rendered=>{
+    const axes=transientOnsetQuality(ref,rendered,options);
+    return {axes,verdict:qualityGate(axes,condition)};
+  };
+  const dry=check(ref);
+  assert.equal(dry.verdict.pass,true,JSON.stringify(dry));
+  const before=Float32Array.from(ref);
+  for(let i=onset-128;i<onset;i++)
+    before[i]=.2*Math.cos(2*Math.PI*480*i/fs);
+  const echo=check(before);
+  assert.ok(echo.axes.onsetOffsetMs< -10);
+  assert.ok(echo.axes.preEchoDb> -35);
+  assert.equal(echo.verdict.pass,false);
+  const delayed=Float32Array.from(ref,(_,i)=>
+    i<onset+128?0:ref[i-128]);
+  const lag=check(delayed);
+  assert.ok(lag.axes.onsetOffsetMs>10);
+  assert.equal(lag.verdict.pass,false);
+  const quiet=check(Float32Array.from(ref,v=>v*.5));
+  assert.ok(quiet.axes.attackRmsRatio<.6);
+  assert.equal(quiet.verdict.pass,false);
+  const mute=check(new Float32Array(n));
+  assert.equal(mute.axes.onsetOffsetMs,null);
+  assert.equal(mute.verdict.pass,false,
+    "missing onset must not be rewarded as zero pre-echo");
+  assert.throws(()=>transientOnsetQuality(
+    Float32Array.from(ref,(v,i)=>i===1000?.1:v),ref,options),
+    /before declared onset is not silent/);
+  console.log("ONSET_SCORER_ADVERSARIAL "+JSON.stringify({
+    dry:dry.axes,echo:echo.axes,delay:lag.axes,quiet:quiet.axes,mute:mute.axes
+  }));
 });
