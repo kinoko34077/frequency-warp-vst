@@ -711,6 +711,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});
     assert.equal(await page.$eval("#progress",el=>Number(el.value)),100);
+    // #297: merely focusing and confirming a coordinate input is not a
+    // DSP change. WAV ownership is source+canonical settings, not DOM events.
+    await page.select("#axis-shift-unit","coordinate");
+    await page.$eval("#axis-shift-value",el=>{
+      el.focus();
+      el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+      el.blur();
+    });
+    assert.equal(await page.$eval("#download",el=>el.disabled),false,
+      "no-op coordinate input/change/blur must preserve frozen WAV");
     await page.$eval("#wet",el=>{
       el.value=".8";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
