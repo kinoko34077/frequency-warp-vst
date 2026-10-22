@@ -1012,6 +1012,53 @@ mod tests{
             mode:Progression::FoldHigh,quality:0}
     }
     #[test]
+    fn neutral_engine_a_preserves_stereo_pcm_under_128_frame_io(){
+        // #301: true source↔output identity, WITH declared N-1 latency, must
+        // not peak-select away noise. The current pre-fix implementation
+        // intentionally fails this regression; no test-only fake sound.
+        let rate=8192.0;
+        let neutral=Settings{invert:0.0,..settings()};
+        let mut engine=Stream::new_extended(rate,2,neutral,1,0,1.0,0.0,350.0,0,4).unwrap();
+        let latency=engine.latency();
+        assert_eq!(latency,1023);
+        let total=8192usize;
+        let mut state=3141592653u32;
+        let mut noise=||{state=state.wrapping_mul(1664525).wrapping_add(1013904223);
+            (state as f64/u32::MAX as f64)*2.0-1.0};
+        let left:(Vec<f32>)=(0..total).map(|i|
+            (.32*(TAU*440.0*i as f64/rate).cos()+.15*noise()) as f32).collect();
+        let right:(Vec<f32>)=(0..total).map(|i|
+            (.64*left[i] as f64 + .07*(TAU*760.0*i as f64/rate).sin()) as f32).collect();
+        let sources=[left,right];
+        let mut observed=[vec![0.0f32;total],vec![0.0f32;total]];
+        for block in 0..total/128 {
+            let mut input=vec![0.0f32;256];
+            let mut output=vec![0.0f32;256];
+            for channel in 0..2 {
+                input[channel*128..channel*128+128].copy_from_slice(
+                    &sources[channel][block*128..(block+1)*128]);
+            }
+            engine.process(&input,&mut output,128).unwrap();
+            for channel in 0..2 {
+                observed[channel][block*128..(block+1)*128].copy_from_slice(
+                    &output[channel*128..channel*128+128]);
+            }
+        }
+        for channel in 0..2 {
+            let mut source2=0.0f64;let mut output2=0.0;let mut error2=0.0;
+            for t in 2200..total {
+                let x=sources[channel][t-latency] as f64;
+                let y=observed[channel][t] as f64;
+                assert!(y.is_finite());
+                source2+=x*x;output2+=y*y;error2+=(x-y)*(x-y);
+            }
+            let nrmse=(error2/source2).sqrt();
+            let ratio=(output2/source2).sqrt();
+            assert!(nrmse<0.08 && (0.93..=1.07).contains(&ratio),
+                "neutral A stereo channel {channel} still alters PCM: nrmse={nrmse}, rmsGain={ratio}");
+        }
+    }
+    #[test]
     fn continuous_blocks_shift_tone_with_bounded_latency(){
         let fs=8192.0;
         let mut st=Stream::new(fs,1,settings(),0).unwrap();
