@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {toneComponentQuality,stereoImageQuality,qualityGate} from "./acoustic-quality.mjs";
+import {toneComponentQuality,stereoImageQuality,qualityGate,transientOnsetQuality} from "./acoustic-quality.mjs";
 
 /** #299 M3 bounded transformed-domain scorecard.
  * Unlike an identity waveform test, the oracle here KNOWS a constant
@@ -81,6 +81,60 @@ test("same actual Rust/WASM mapped stereo fixture distinguishes target, ghost an
     assert.ok(scorecards.every(row=>row.tone.targetAmplitude>=0),
       "all candidates must actually be evaluated");
     console.log("TRANSFORMED_RUST_WASM_QUALITY_AXES "+JSON.stringify(scorecards));
+  }finally{
+    e.warp_free_f32(src,count);e.warp_free_f32(dst,count);
+  }
+});
+
+test("same real Rust/WASM rendered mapped gated onset reports attack, pre-echo and lag",async()=>{
+  const binary=await readFile("web-demo/dsp_core.wasm");
+  const {instance}=await WebAssembly.instantiate(binary,{});
+  const e=instance.exports,fs=8192,frames=8192,onset=2048,channels=2,count=frames*channels;
+  assert.equal(typeof e.warp_stream_render_f32_a_quality_ext,"function");
+  const src=e.warp_alloc_f32(count),dst=e.warp_alloc_f32(count);
+  assert.ok(src&&dst);
+  const signal=new Float32Array(count);
+  for(let i=onset;i<frames;i++){
+    const v=.38*Math.cos(2*Math.PI*480*i/fs);
+    signal[i]=v;signal[frames+i]=v*.6;
+  }
+  const cfg={sampleRate:fs,onsetSample:onset,preSamples:512,
+    attackSamples:512,blockSamples:16};
+  const dry=transientOnsetQuality(signal.subarray(0,frames),
+    signal.subarray(0,frames),cfg);
+  const threshold={onsetOffsetMs:{min:-8,max:8},
+    preEchoDb:{max:-25},attackRmsRatio:{min:.7,max:1.3}};
+  assert.equal(qualityGate(dry,threshold).pass,true,
+    "known good original must pass the transformed-onset diagnostic baseline");
+  const rows=[];
+  try{
+    for(const candidate of [
+      {engine:0,aQuality:0,name:"A_peak_only"},
+      {engine:0,aQuality:100,name:"A_partial_residual"},
+      {engine:1,aQuality:0,name:"B_fft_bins"}
+    ]){
+      new Float32Array(e.memory.buffer,src,count).set(signal);
+      const status=e.warp_stream_render_f32_a_quality_ext(
+        src,dst,frames,channels,fs,20,3000,1,0,1,0,1,
+        candidate.engine,1,24,0,0,4,0,1,0,350,0,1,350,1,20,0,1,candidate.aQuality);
+      assert.equal(status,0,"Rust/WASM gated transform failed "+candidate.name);
+      const out=Float32Array.from(new Float32Array(e.memory.buffer,dst,count));
+      assert.ok(out.every(Number.isFinite),candidate.name+" generated nonfinite PCM");
+      const channelAxes=[0,1].map(channel=>transientOnsetQuality(
+        signal.subarray(channel*frames,(channel+1)*frames),
+        out.subarray(channel*frames,(channel+1)*frames),cfg));
+      const verdicts=channelAxes.map(axes=>qualityGate(axes,threshold));
+      rows.push({candidate:candidate.name,sampleRate:fs,channels,
+        map:{sourceHz:480,targetHz:504,shiftHz:24},
+        latencyCompensatedOffline:true,
+        sourceGate:onset,
+        measured:channelAxes,transientVerdicts:verdicts,
+        limitations:"Known isolated gated source only; no universal pre-echo audibility or human preference score"});
+    }
+    assert.equal(rows.length,3);
+    assert.ok(rows.every(v=>v.measured.length===2&&
+      v.measured.every(x=>Number.isFinite(x.attackRmsRatio))));
+    console.log("TRANSFORMED_RUST_WASM_ONSET_QUALITY "+JSON.stringify(rows));
   }finally{
     e.warp_free_f32(src,count);e.warp_free_f32(dst,count);
   }
