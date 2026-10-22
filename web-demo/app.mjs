@@ -1470,8 +1470,15 @@ $("#slope-one").addEventListener("click",()=>{
   updateParams("axis-slope");updateEngineInfo();
 });
 $("#axis-zero").addEventListener("click",()=>{
+  const wasZero=Object.is(scalar("axis-shift",()=>Number($("#axis-shift").value)),0);
   delete state.precise["axis-shift"];
   $("#axis-shift").value="0";
+  if(wasZero){
+    // Zero is already the canonical DSP value: restore the display only.
+    // An idempotent action must not invalidate a frozen WAV or bump Worklet.
+    refreshAxisShiftView(settings(),true);
+    return;
+  }
   updateParams("axis-shift");
   updateEngineInfo();
 });
