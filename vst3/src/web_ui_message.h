@@ -11,7 +11,7 @@
 #include <string_view>
 
 namespace fw {
-enum class UiWireKind { Hello, Begin, Perform, End, SelectBinding, ConfirmBinding };
+enum class UiWireKind { Hello, Begin, Perform, End, SelectBinding, ConfirmBinding, UiSelect, UiBack };
 struct UiWireMessage {
     UiWireKind kind;
     uint32_t id=0;
@@ -34,6 +34,12 @@ inline std::optional<UiWireMessage> parseUiWireMessage(std::wstring_view json) {
         if(tail.back()!=L'}'||tail.size()<33)return std::nullopt;
         return UiWireMessage{UiWireKind::Hello,0,0.0};
     }
+    // The UI requests an OS-only action; its payload never includes a path,
+    // trust claim, authorization token or file descriptor.
+    if(kind==L"ui-select" && tail==L"}")
+        return UiWireMessage{UiWireKind::UiSelect};
+    if(kind==L"ui-back" && tail==L"}")
+        return UiWireMessage{UiWireKind::UiBack};
     // JS supplies no path, engine identity, permission or ticket.
     if(kind==L"binding-select" && tail==L"}")
         return UiWireMessage{UiWireKind::SelectBinding,0,0.0};
