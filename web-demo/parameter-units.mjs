@@ -58,6 +58,11 @@ export function parseView(value,unit,{id,fromRail,sampleRate}={}){
   if(x<0||x>100||typeof fromRail!=="function")throw RangeError("percent needs slider scale");
   return fromRail(x/100);
  }
+ if(unit==="samples"){
+  if(!finite(sampleRate)||sampleRate<=0||!Number.isSafeInteger(x)||x<0)
+   throw RangeError("sample interval requires a nonnegative integer and sample rate");
+  return x===0?0:sampleRate/x;
+ }
  if(unit==="semitones"||unit==="cents")return semitonesToRatio(x/(unit==="cents"?100:1));
  return x;
 }
