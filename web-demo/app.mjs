@@ -436,6 +436,7 @@ function switchSoundConfiguration(slot){
     validateSoundConfiguration(saved,{
       sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate
     });
+    if(saved.view?.interface)validateComparisonView($(".workspace-grid"),saved.view.interface);
     const preflight=prepareStreamSettings({
       ...saved.audio,sampleRate:state.ctx?.sampleRate||state.decoded.sampleRate
     });
