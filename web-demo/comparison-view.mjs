@@ -6,11 +6,12 @@ export const COMPARISON_UNIT_SELECTS=Object.freeze([
   "carrier-unit","crusher-hold-unit","fundamental-unit","pitch-ratio-unit",
   "sine-unit"
 ]);
-export function captureComparisonView(root,{graphMax,graphAlphaBeforeZoom,sineFrequency}){
+export function captureComparisonView(root,{graphMax,graphAlphaBeforeZoom,sineFrequency,snaps}){
   const doc=root.ownerDocument;
   return {
     units:Object.fromEntries(COMPARISON_UNIT_SELECTS.map(id=>[id,doc.getElementById(id).value])),
     disclosures:[...root.querySelectorAll("details")].map(node=>node.open),
+    ...(snaps?{snaps:{...snaps}}:{}),
     graph:{max:graphMax,previousAlpha:graphAlphaBeforeZoom,
       log:Number(doc.getElementById("graph-log").value),
       tab:doc.getElementById("tab-math").getAttribute("aria-selected")==="true"?"math":"map"},
@@ -27,6 +28,9 @@ export function validateComparisonView(root,view){
     if(![...node.options].some(option=>option.value===view.units[id]))
       throw Error("Invalid interface unit "+id);
   }
+  if(view.snaps && (typeof view.snaps!=="object"||
+    !Object.values(view.snaps).every(value=>typeof value==="boolean")))
+    throw Error("Invalid A/B snap states");
   const details=[...root.querySelectorAll("details")];
   if(view.disclosures.length!==details.length||
     !view.disclosures.every(x=>typeof x==="boolean"))throw Error("Invalid A/B disclosure state");
@@ -39,7 +43,7 @@ export function validateComparisonView(root,view){
     typeof view.sine.enabled!=="boolean")throw Error("Invalid A/B sine view");
   return view;
 }
-export function restoreComparisonView(root,view,{showTab,setGraph,restoreSine}){
+export function restoreComparisonView(root,view,{showTab,setGraph,restoreSine,restoreSnaps}){
   validateComparisonView(root,view);
   const doc=root.ownerDocument;
   for(const id of COMPARISON_UNIT_SELECTS){
@@ -55,4 +59,5 @@ export function restoreComparisonView(root,view,{showTab,setGraph,restoreSine}){
   setGraph(view.graph.max,view.graph.previousAlpha);
   showTab(view.graph.tab);
   restoreSine(view.sine);
+  if(view.snaps&&restoreSnaps)restoreSnaps(view.snaps);
 }
