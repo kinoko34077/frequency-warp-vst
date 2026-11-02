@@ -406,8 +406,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pitch-ratio-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
       100*(ratioExact-.25)/3.75)<.051, "ratio% uses the physical linear rail");
-    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-
-      ratioExact*440/4)<.001, "r edit still updates linked P");
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.dataset.fwCanonical))-
+      ratioExact*440/4)<.001, "r edit still updates linked P exactly, regardless of display digits");
     await page.select("#pitch-ratio-unit","ratio");
     await page.$eval("#pitch-ratio",el=>{
       el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
