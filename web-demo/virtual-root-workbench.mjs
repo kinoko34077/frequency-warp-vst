@@ -288,7 +288,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       const first=old.m+old.n;
       if(Number.isSafeInteger(first)&&first>=-129&&first<=129){
         Object.assign(state,{F:old.F,H:old.F*old.r/old.m,m:old.m,h1:first});
-        $("#vr-placement").value="target";
+        // Do not override the user-selected placement during external state restore.
       }
     }
     render(); // Loading A/B/Reset is already an existing DSP transaction; never write again.
