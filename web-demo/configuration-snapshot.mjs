@@ -91,12 +91,21 @@ export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values
   const c={version:1,sourceToken,sampleRate,
     harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags},audio:{...audio},
     ...(view?{view:{virtualRoot:{...view.virtualRoot,
-      scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}}}}:{})};
+      scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}},
+      ...(view.interface?{interface:{...view.interface,units:{...view.interface.units},
+        disclosures:[...view.interface.disclosures],graph:{...view.interface.graph},
+        sine:{...view.interface.sine}}}:{})}}:{})};
   validateSoundConfiguration(c);
   for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio])Object.freeze(value);
   if(c.view){
     for(const value of [c.view.virtualRoot.scopes,c.view.virtualRoot.units,c.view.virtualRoot.snaps])Object.freeze(value);
-    Object.freeze(c.view.virtualRoot);Object.freeze(c.view);
+    Object.freeze(c.view.virtualRoot);
+    if(c.view.interface){
+      for(const node of [c.view.interface.units,c.view.interface.disclosures,
+        c.view.interface.graph,c.view.interface.sine])Object.freeze(node);
+      Object.freeze(c.view.interface);
+    }
+    Object.freeze(c.view);
   }
   return Object.freeze(c);
 }
