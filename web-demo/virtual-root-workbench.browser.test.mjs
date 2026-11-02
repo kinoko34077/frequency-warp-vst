@@ -84,7 +84,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.match(await page.$eval("#vr-target-h",el=>el.value),/^[A-G]/);
       // #309: in pitch mode, equal MIDI/cent distances occupy equal rail
       // distances, with 0.01 semitone gesture steps; Hz mode stays linear.
-      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.step),"0.01");
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>Number(el.step)),0.01);
       const noteRail=await page.$eval("#vr-target-h-rail",el=>({min:Number(el.min),max:Number(el.max)}));
       assert.ok(Math.abs((noteRail.max-noteRail.min)-12*Math.log2(200))<1e-6);
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
