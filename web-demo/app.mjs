@@ -1808,6 +1808,7 @@ $("#settings-reset").addEventListener("click",()=>{
   refreshZeroDecayView(true);
   refreshInvertView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
+  $("#vr-placement").value="keep-spacing"; // Reset restores the intended default mode.
   document.dispatchEvent(new Event("fw:virtual-root-external-change"));
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.
