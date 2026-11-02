@@ -702,10 +702,23 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pitch-ratio-unit","ratio");
 
     // Browser-only reference sine still has ONE physical Hz authority;
-    // the MIDI36..96 source track must keep its .01 semitone granularity.
+    // the MIDI36..20kHz track retains .01 semitone granularity.
     assert.equal(await page.$eval("#sine-unit",el=>el.getBoundingClientRect().height>0),true);
     assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#sine-pitch",el=>el.dataset.fwSnap),"on");
+    // #309: 8kHz was previously clamped to C7 (~2.09kHz). Unit switching
+    // and full-size note rail must not alter the exact canonical frequency.
+    assert.ok(Number(await page.$eval("#sine-pitch",el=>el.max))>135);
+    await page.$eval("#sine-hz",el=>{
+      el.value="8000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(Number(await page.$eval("#sine-hz",el=>el.dataset.fwCanonical)),8000);
+    await page.select("#sine-unit","note");
+    await page.select("#sine-unit","hz");
+    assert.equal(Number(await page.$eval("#sine-hz",el=>el.dataset.fwCanonical)),8000);
+    await page.$eval("#sine-hz",el=>{
+      el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
     await page.select("#sine-unit","note");
     await page.$eval("#sine-hz",el=>{
       el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -736,7 +749,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#sine-hz",el=>el.blur());
     await page.select("#sine-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
-      100*(69.25-36)/60)<.01);
+      100*(69.25-36)/(await page.$eval("#sine-pitch",el=>Number(el.max))-36))<.01);
     await page.select("#sine-unit","hz");
     await page.keyboard.down("Alt");
     await page.$eval("#sine-pitch",el=>{
