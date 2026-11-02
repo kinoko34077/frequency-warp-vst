@@ -1186,6 +1186,10 @@ function updateParams(changed){
   });
   // ACK/pending state is tracked internally; no per-gesture banner churn.
 }
+// In Hz view, snap to physical decades AND the previously supported notes.
+// This retains semitone behavior while making 2kHz reachable exactly.
+const frequencySnapTargets=[20,200,2000,20000,
+  ...Array.from({length:144},(_,m)=>440*2**((m-69)/12))];
 // #79 M1 first vertical slice: one physical-Hz control using the shared
 // canonical binding. The existing #low source remains the dual-thumb gesture
 // proxy, not a second physical/DSP authority.
@@ -1198,7 +1202,10 @@ lowUnitControl=mountFrequencyUnitField({
     units:["hz","note","percent"],
     rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
     digits:3,
-    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]},
+    // Exact physical markers on the nonlinear rail; typed values remain exact.
+    snapByUnit:{hz:{unit:"hz",mode:"targets",targets:frequencySnapTargets,
+      thresholdPx:9,during:["slider"]}}
   }),
   field:$("#low-value"),select:$("#low-unit"),
   slider:$("#low"),railRoot:$("#dual-range"),
@@ -1214,7 +1221,10 @@ highUnitControl=mountFrequencyUnitField({
     units:["hz","note","percent"],
     rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
     digits:3,
-    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
+    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]},
+    // Exact physical markers on the nonlinear rail; typed values remain exact.
+    snapByUnit:{hz:{unit:"hz",mode:"targets",targets:frequencySnapTargets,
+      thresholdPx:9,during:["slider"]}}
   }),
   field:$("#high-value"),select:$("#high-unit"),
   slider:$("#high"),railRoot:$("#dual-range"),

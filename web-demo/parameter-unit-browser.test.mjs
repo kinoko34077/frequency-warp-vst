@@ -41,6 +41,20 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$$eval("#low-unit + .unit-switch button",buttons=>buttons.length),3);
     assert.equal(await page.$eval("#low-unit + .unit-switch button[data-unit=hz]",b=>b.getAttribute("aria-pressed")),"true");
 
+    // #309: slider near the 2kHz physical landmark must snap to exactly
+    // 2,000Hz in canonical state, while typed values bypass gesture snap.
+    const near2k=Math.round(200+800*Math.log(2000/20)/Math.log(1000));
+    await page.$eval("#low", (el,step)=>{
+      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
+    },near2k);
+    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),2000);
+    await page.$eval("#low-value",el=>{
+      el.value="2000.125";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),2000.125);
+    await page.$eval("#low-value",el=>{
+      el.value="20";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
     // Existing start at L=20Hz. A unit-only view change must not change L.
     const original=await page.$eval("#low",el=>el.value);
     await page.select("#low-unit","note");
