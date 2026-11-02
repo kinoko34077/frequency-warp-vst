@@ -365,7 +365,8 @@ function captureCurrentConfiguration(){
     harmonic:h,audio:p,
     view:{virtualRoot:virtualRootWorkbench.captureView(),
       interface:captureComparisonView($(".workspace-grid"),{
-        graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value})},
+        graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value,
+        snaps:captureInterfaceSnaps()})},
     values:{
       low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
       axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
