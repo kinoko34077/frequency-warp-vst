@@ -384,6 +384,7 @@ function applyConfigurationSilently(c){
   pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
   aMinUnitControl.setCanonical(v.aMinHz);
   restoreHarmonicConfiguration(c.harmonic);
+  if(c.view?.virtualRoot)virtualRootWorkbench.restoreView(c.view.virtualRoot);
   wetBinding.setCanonical(v.wet,{notify:false});
   aReverbBinding.setCanonical(v.aReverb,{notify:false});
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
