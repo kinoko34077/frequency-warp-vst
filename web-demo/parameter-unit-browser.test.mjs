@@ -475,8 +475,10 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="A3+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#fundamental");
-    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical))-
-      4*220*2**(25/1200))<1e-9, "linked P→F fractional cents must stay exact");
+    const linkedExactF=Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical));
+    assert.ok(Math.abs(linkedExactF-4*220*2**(25/1200))<1e-9,
+      "linked P→F fractional cents must stay exact (actual F="+linkedExactF+
+      ", physical P="+await page.$eval("#axis-pivot-value",el=>el.dataset.fwCanonical)+")");
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#pivot-unit","hz");
 
