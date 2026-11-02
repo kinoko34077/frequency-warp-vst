@@ -187,6 +187,19 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       error.hidden=true;error.textContent="";
     }catch(e){activePlan=null;error.hidden=false;error.textContent="数値を確認してください";$("#vr-sequence").textContent="";$("#vr-preview").replaceChildren();}
   }
+  // Gesture span is not the canonical signed integer validity range.
+  // Keep both current and legacy fraction rails aligned with one preference.
+  const fractionSpanSelect=$("#fraction-slider-span");
+  const syncFractionGestureSpan=()=>{
+    const half=Number(fractionSpanSelect?.value)||16;
+    for(const rail of [rails.h1,$("#numerator-range")]){
+      if(!rail)continue;
+      rail.min=String(-half);rail.max=String(half);
+    }
+    render();
+  };
+  fractionSpanSelect?.addEventListener("change",syncFractionGestureSpan);
+  syncFractionGestureSpan();
   const applyRealtime=()=>{
     const version=++generation;
     const p=activePlan;
