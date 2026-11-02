@@ -412,6 +412,22 @@ function applyConfigurationSilently(c){
   refreshZeroDecayView(true);
   refreshInvertView(true);
   linkFeedback("");
+  if(c.view?.interface)restoreComparisonView($(".workspace-grid"),c.view.interface,{
+    setGraph:(max,previousAlpha)=>{graphMax=max;graphAlphaBeforeZoom=previousAlpha;drawCurve();},
+    showTab,
+    restoreSine:monitor=>{
+      sineUnitControl.setCanonical(monitor.frequency);
+      updateSineLabel();
+      const volume=$("#sine-volume");
+      volume.value=String(monitor.volume);
+      volume.dispatchEvent(new Event("input",{bubbles:true}));
+      const toggle=$("#sine-enabled");
+      if(toggle.checked!==monitor.enabled){
+        toggle.checked=monitor.enabled;
+        toggle.dispatchEvent(new Event("change",{bubbles:true}));
+      }
+    }
+  });
 }
 function switchSoundConfiguration(slot){
   const saved=comparisonSlots[slot];
