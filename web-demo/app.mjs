@@ -1767,7 +1767,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
-    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"3","graph-log":"0","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"1","graph-log":"0","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   wetBinding.reset({notify:false});
