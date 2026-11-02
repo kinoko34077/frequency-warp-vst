@@ -43,7 +43,24 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
       assert.equal(await page.$eval("#vr-target-h-scale",el=>el.value),"200");
       assert.equal(await page.$eval("#vr-step-m-rail",el=>el.step),"1");
-      assert.equal(await page.$eval("#vr-first-index-rail",el=>el.min),"-129");
+      assert.equal(await page.$eval("#vr-first-index-rail",el=>el.min),"-16");
+      assert.equal(await page.$eval("#vr-first-index-rail",el=>el.max),"16");
+      assert.equal(await page.$eval("#numerator-range",el=>el.max),"16");
+      // Values beyond the thumb travel stay canonical. Settings change only
+      // the gesture interval, not the signed integer used by harmonic math.
+      await page.$eval("#vr-first-index",el=>{
+        el.value="20";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      assert.equal(await page.$eval("#vr-first-index",el=>el.value),"20");
+      assert.equal(await page.$eval("#vr-first-index-rail",el=>el.value),"16");
+      await page.select("#fraction-slider-span","32");
+      assert.equal(await page.$eval("#vr-first-index-rail",el=>el.max),"32");
+      assert.equal(await page.$eval("#numerator-range",el=>el.max),"32");
+      assert.equal(await page.$eval("#vr-first-index",el=>el.value),"20");
+      await page.$eval("#vr-first-index",el=>{
+        el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.select("#fraction-slider-span","16");
       assert.equal(await page.$eval("#vr-details",el=>el.open),false);
       assert.equal(await page.$("#vr-apply"),null,"No mandatory Apply click");
       assert.equal(await page.$("#vr-mode"),null,"No explicit fold mode");

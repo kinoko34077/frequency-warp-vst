@@ -287,6 +287,11 @@
       <div><label for="overlap">重ね合わせ量</label><select id="overlap"><option value="4" selected>4× / hop N/4</option><option value="8">8× / hop N/8</option></select></div></div>
       <details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">FFT窓：大きいほど周波数を細かく調べますが、遅延が増えます。重ね合わせ：8×は分析回数が増え、処理が重くなります。変更すると処理状態を作り直します。</p></details>
     </fieldset>
+    <fieldset><legend>分数の操作範囲</legend>
+      <label for="fraction-slider-span">分子・初項のシークバー範囲（±）</label>
+      <select id="fraction-slider-span"><option value="16" selected>16</option><option value="32">32</option><option value="64">64</option><option value="128">128</option></select>
+      <p class="setting-help">バーの操作幅だけを変更します。直接入力・音声演算の整数範囲は変更せず、範囲外の値も保持します。</p>
+    </fieldset>
     <fieldset><legend>数値表示</legend><label for="decimal-digits">小数点以下の表示桁数</label><select id="decimal-digits"><option value="2">2桁</option><option value="3" selected>3桁</option></select><p class="setting-help">数値欄・倍音表の見た目を切り替えます。どちらでも直接入力した小数第3位まで音に反映されます。整数設定は整数のままです。</p></fieldset>
     <fieldset><legend>開発者向け</legend>
       <label class="setting-checkbox" for="debug-mode"><input id="debug-mode" type="checkbox">デバッグモード（レイアウト編集）</label>
