@@ -94,7 +94,8 @@ export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values
       scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}},
       ...(view.interface?{interface:{...view.interface,units:{...view.interface.units},
         disclosures:[...view.interface.disclosures],graph:{...view.interface.graph},
-        sine:{...view.interface.sine}}}:{})}}:{})};
+        sine:{...view.interface.sine},
+        ...(view.interface.snaps?{snaps:{...view.interface.snaps}}:{})}}:{})}}:{})};
   validateSoundConfiguration(c);
   for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio])Object.freeze(value);
   if(c.view){
@@ -102,7 +103,8 @@ export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values
     Object.freeze(c.view.virtualRoot);
     if(c.view.interface){
       for(const node of [c.view.interface.units,c.view.interface.disclosures,
-        c.view.interface.graph,c.view.interface.sine])Object.freeze(node);
+        c.view.interface.graph,c.view.interface.sine,
+        ...(c.view.interface.snaps?[c.view.interface.snaps]:[])])Object.freeze(node);
       Object.freeze(c.view.interface);
     }
     Object.freeze(c.view);
