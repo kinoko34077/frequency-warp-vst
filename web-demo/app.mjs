@@ -321,6 +321,28 @@ function settings(){
 
 // U4 comparison: two bounded, source-scoped coherent configurations.
 // A source generation changes ONLY after successful decode/commit.
+function comparisonSnapControls(){
+  return {low:lowUnitControl,high:highUnitControl,pivot:pivotUnitControl,
+    slope:slopeUnitControl,crusher:crusherUnitControl,sine:sineUnitControl};
+}
+function captureInterfaceSnaps(){
+  const result={};
+  for(const [key,control] of Object.entries(comparisonSnapControls()))
+    result[key]=control.snapEnabled;
+  const harmonic=captureHarmonicSnapState();
+  for(const [key,value] of Object.entries(harmonic))result["harmonic-"+key]=value;
+  return result;
+}
+function restoreInterfaceSnaps(values){
+  for(const [key,control] of Object.entries(comparisonSnapControls())){
+    if(typeof values?.[key]!=="boolean")throw Error("Invalid snap "+key);
+    control.setSnapEnabled(values[key]);
+  }
+  restoreHarmonicSnapState({
+    fundamental:values["harmonic-fundamental"],
+    carrier:values["harmonic-carrier"],ratio:values["harmonic-ratio"]
+  });
+}
 const comparisonSlots={A:null,B:null};
 let comparisonPending=null,comparisonCurrent=null,applyingConfiguration=false;
 function comparisonMessage(text,phase="idle"){
