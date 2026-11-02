@@ -19,6 +19,9 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       const errors=[];page.on("pageerror",err=>errors.push(err.message));
       await page.goto("http://127.0.0.1:8798/index.html",{waitUntil:"domcontentloaded"});
       await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.readOnly),true);
+      await page.select("#vr-placement","target");
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
       assert.equal(await page.$eval("#vr-target-h-rail",el=>[el.min,el.max,el.step].join("|")),"1|200|1");
       assert.equal(await page.$eval("#vr-source-f-rail",el=>el.max),"1000");
