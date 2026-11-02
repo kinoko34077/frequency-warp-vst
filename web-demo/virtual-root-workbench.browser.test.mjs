@@ -198,6 +198,13 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       });
       await page.waitForFunction(()=>document.querySelector("#numerator").value==="-1",{timeout:10000});
       await page.click("#compare-save-a");
+      // A retains the default ON preferences, B independently stores OFF.
+      for(const selector of ["#low","#fundamental-range"]){
+        await page.$eval(selector,el=>el.dispatchEvent(new MouseEvent(
+          "contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:100})));
+        await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+        assert.equal(await page.$eval(selector,el=>el.dataset.fwSnap),"off");
+      }
       await page.select("#vr-placement","keep-spacing");
       await page.select("#vr-source-f-scale","5000");
       await page.click('[data-vr-unit-for="source-f"][data-vr-unit="note"]');
