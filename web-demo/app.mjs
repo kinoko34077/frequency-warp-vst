@@ -1313,7 +1313,7 @@ const crusherSampleRate=()=>state.ctx?.sampleRate||state.decoded?.sampleRate||48
 crusherUnitControl=mountFrequencyUnitField({
   descriptor:defineParameter({
     id:"crusher-hold",min:0,max:192000,defaultValue:12000,
-    units:["hz","note","percent"],digits:3,
+    units:["hz","note","percent","samples"],sampleRate:crusherSampleRate,digits:3,
     rail:{toPosition:hz=>sliderPositionFromFrequency(hz,crusherSampleRate())/1000,
       fromPosition:t=>frequencyFromSlider(t*1000,crusherSampleRate())},
     snapByUnit:{hz:false}
