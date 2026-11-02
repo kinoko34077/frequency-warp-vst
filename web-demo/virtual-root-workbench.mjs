@@ -294,4 +294,31 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     render(); // Loading A/B/Reset is already an existing DSP transaction; never write again.
   });
   render(); // Initial mount never overwrites existing audio settings.
+  return Object.freeze({
+    captureView:()=>({
+      placement:$("#vr-placement").value,
+      scopes:{F:scopes.F,H:scopes.H},
+      units:{F:getUnit("F"),H:getUnit("H")},
+      snaps:{F:snapControllers.F.enabled,H:snapControllers.H.enabled}
+    }),
+    restoreView:view=>{
+      if(!view||!["target","keep-spacing"].includes(view.placement))
+        throw Error("Invalid workbench placement");
+      for(const key of ["F","H"]){
+        const allowed=[...$("#vr-"+keyIds[key]+"-scale").options].map(option=>Number(option.value));
+        if(!allowed.includes(view.scopes?.[key])||
+          !["hz","note","percent"].includes(view.units?.[key])||
+          typeof view.snaps?.[key]!=="boolean")
+          throw Error("Invalid workbench view "+key);
+      }
+      $("#vr-placement").value=view.placement;
+      for(const key of ["F","H"]){
+        scopes[key]=view.scopes[key];
+        const button=unitSwitches[key].element.querySelector('button[data-unit="'+view.units[key]+'"]');
+        if(getUnit(key)!==view.units[key])button.click();
+        snapControllers[key].setEnabled(view.snaps[key]);
+      }
+      render(); // View restore never writes DSP values.
+    }
+  });
 }
