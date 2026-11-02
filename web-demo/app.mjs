@@ -10,6 +10,7 @@ import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration} from "./harmonics-panel.mjs";
 import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
 import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
+import {captureComparisonView,restoreComparisonView,validateComparisonView} from "./comparison-view.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
