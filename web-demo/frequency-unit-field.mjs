@@ -254,8 +254,8 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
   field.addEventListener("focus",()=>{
     field.dataset.fwCanonical=String(binding.value);
     if(["hz","ratio","coordinate","integer"].includes(binding.unit))
-      field.value=String(Number(binding.value.toFixed(Math.min(3,getDigits()))));
-    else field.value=binding.value<=0&&binding.unit==="note"?"":String(binding.display(viewDigits(Math.min(3,getDigits()))));
+      field.value=String(Number(binding.value.toFixed(3)));
+    else field.value=binding.value<=0&&binding.unit==="note"?"":String(binding.display(binding.unit==="note"?3:Math.min(3,getDigits())));
     lastRendered=field.value;
     field.select();
   });
