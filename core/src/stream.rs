@@ -27,6 +27,7 @@ pub struct Stream {
     crusher_bits:u32,
     crusher_hold:u32,
     crusher_rate_hz:Option<f64>,
+    crusher_integer_period:Option<u32>,
     crusher_phase:f64,
     crusher_counter:u64,
     crusher_value:Vec<f32>,
@@ -81,7 +82,7 @@ impl Stream {
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_enabled:engine==2,axis_shift:0.0,
-            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_rate_hz:None,crusher_phase:0.0,crusher_counter:0,
+            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_rate_hz:None,crusher_integer_period:None,crusher_phase:0.0,crusher_counter:0,
             crusher_value:vec![0.0;channels],
             a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
