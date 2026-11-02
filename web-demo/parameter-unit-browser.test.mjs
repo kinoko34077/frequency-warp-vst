@@ -458,9 +458,14 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"any");
     await page.keyboard.up("Control");
     assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"0.05");
+    // Focus exposes the 3-digit edit value even when the at-rest label is
+    // rounded to one digit. A change-only event without focus isn't typing.
+    await page.focus("#pitch-ratio");
     await page.$eval("#pitch-ratio",el=>{
-      el.value="1";el.dispatchEvent(new Event("change",{bubbles:true}));
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
     });
+    await page.$eval("#pitch-ratio",el=>el.blur());
     assert.match(await page.$eval(
       "#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",el=>el.title),
       /半音|セント/,"unit tooltip must not be replaced by snap help");
