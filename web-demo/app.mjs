@@ -507,7 +507,7 @@ function labels(id=""){
   crusherUnitControl?.refresh();
   $("#crusher-rate-explainer").textContent=p.crusherHold===0?
     "指定 0 Hz → 標本更新停止（最初の量子化値を保持・ゼロHz/DC）":
-    "指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
+    "指定 "+displayNumber(p.crusherRateHz)+" Hz → 平均実効 "+displayNumber(p.crusherRateHz)+" Hz（小数周期に追従・サンプル毎の更新位置は離散）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
   const fxActive=p.crusherBits>0||p.ringEnabled;
   $("#fx-wave-preview").hidden=!fxActive;
   if(fxActive){
