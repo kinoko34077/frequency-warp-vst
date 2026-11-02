@@ -26,6 +26,8 @@ pub struct Stream {
     rational_enabled:bool,
     crusher_bits:u32,
     crusher_hold:u32,
+    crusher_rate_hz:Option<f64>,
+    crusher_phase:f64,
     crusher_counter:u64,
     crusher_value:Vec<f32>,
     a_min_hz:f64,
@@ -79,7 +81,7 @@ impl Stream {
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_enabled:engine==2,axis_shift:0.0,
-            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_counter:0,
+            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_rate_hz:None,crusher_phase:0.0,crusher_counter:0,
             crusher_value:vec![0.0;channels],
             a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
@@ -228,7 +230,27 @@ impl Stream {
         if (bits!=0 && !(2..=16).contains(&bits)) || hold>1_000_000_000 {
             return Err("invalid bit-crusher settings");
         }
-        self.crusher_bits=bits;self.crusher_hold=hold;Ok(())
+        self.crusher_bits=bits;self.crusher_hold=hold;
+        self.crusher_rate_hz=None;
+        Ok(())
+    }
+    /// Exact requested sample-update Hz. 0Hz means freeze the first sample.
+    /// Legacy integer-sample hold remains available via set_crusher.
+    pub fn set_crusher_rate_hz(&mut self,hz:f64)->Result<(),&'static str>{
+        if !hz.is_finite()||hz<0.0||hz>self.sample_rate{
+            return Err("invalid Crusher frequency");
+        }
+        if self.crusher_rate_hz!=Some(hz){self.crusher_phase=0.0;}
+        self.crusher_rate_hz=Some(hz);
+        Ok(())
+    }
+    /// Live updater changes bit depth without reinitializing an unchanged
+    /// fractional sample clock on unrelated UI edits.
+    pub fn set_crusher_exact(&mut self,bits:u32,hz:f64)->Result<(),&'static str>{
+        if bits!=0 && !(2..=16).contains(&bits){return Err("invalid bits");}
+        self.set_crusher_rate_hz(hz)?;
+        self.crusher_bits=bits;
+        Ok(())
     }
     fn post_process(&mut self,output:&mut[f32],frames:usize){
         // All engines share source L/H, Invert and Curvature mapping first.
@@ -237,6 +259,21 @@ impl Stream {
         let levels=(1u32<<self.crusher_bits.saturating_sub(1)) as f32;
         let feedback=[0.48f32,0.55,0.61];
         for i in 0..frames{
+            let crusher_tick=if let Some(hz)=self.crusher_rate_hz{
+                if hz==0.0{self.crusher_counter==0}
+                else if hz>=self.sample_rate{true}
+                else if self.crusher_counter==0{true}
+                else{
+                    self.crusher_phase+=hz/self.sample_rate;
+                    if self.crusher_phase>=1.0{
+                        self.crusher_phase-=1.0;true
+                    }else{false}
+                }
+            }else{
+                (self.crusher_hold==0 && self.crusher_counter==0)||
+                (self.crusher_hold>0 &&
+                 self.crusher_counter%(self.crusher_hold as u64)==0)
+            };
              for c in 0..self.channels{
                 let idx=c*frames+i;
                 let mut sample=output[idx];
@@ -253,9 +290,7 @@ impl Stream {
                         +tail/3.0*self.a_reverb_amount;
                 }
                  output[idx]=if self.crusher_bits==0{sample}else{
-                    if (self.crusher_hold==0 && self.crusher_counter==0) ||
-                        (self.crusher_hold>0 &&
-                         self.crusher_counter%(self.crusher_hold as u64)==0) {
+                    if crusher_tick {
                         self.crusher_value[c]=
                             (sample.clamp(-1.0,1.0)*levels).round()/levels;
                     }
@@ -274,6 +309,7 @@ impl Stream {
     pub fn reset(&mut self){
         self.received=0;
         self.crusher_counter=0;
+        self.crusher_phase=0.0;
         self.crusher_value.fill(0.0);self.a_reverb_pos=[0;3];
         for channel in &mut self.a_reverb_delays{
             for delay in channel{delay.fill(0.0);}
@@ -798,6 +834,16 @@ pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_crusher(bits,hold){Ok(())=>0,Err(_)=>-2}
 }
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_crusher_rate_hz(ptr:*mut Stream,hz:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_crusher_rate_hz(hz){Ok(())=>0,Err(_)=>-2}
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_crusher_exact(ptr:*mut Stream,bits:u32,hz:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_crusher_exact(bits,hz){Ok(())=>0,Err(_)=>-2}
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn warp_stream_set_transform(ptr:*mut Stream,shift:f64,
@@ -878,7 +924,7 @@ pub unsafe extern "C" fn warp_stream_render_f32_a_quality_ext(
     render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None,None)
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,None,None,None)
 }
 
 /// Unified native/WASM offline export with controllable negative-target
@@ -896,7 +942,7 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_gain_ext(
     render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
-        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain),None)
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,Some(zero_reflect_gain),None,None)
 }
 
 /// Reflection synthesis amount and frequency-distance decay for WAV export.
@@ -916,7 +962,27 @@ pub unsafe extern "C" fn warp_stream_render_f32_zero_controls_ext(
         outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
         crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
         axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,
-        Some(zero_reflect_gain),Some(zero_reflect_decay))
+        Some(zero_reflect_gain),Some(zero_reflect_decay),None)
+}
+
+/// Fractional-rate Web export. Earlier native integer-hold ABI is unchanged.
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_render_f32_zero_controls_rate_ext(
+    input:*const f32,output:*mut f32,frames:u32,channels:u32,rate:f64,
+    low:f64,high:f64,p:f64,amount:f64,mode:u32,quality_id:u32,
+    outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
+    zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
+    axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,
+    zero_reflect_gain:f64,zero_reflect_decay:f64,crusher_rate_hz:f64,
+)->i32{
+    if !zero_reflect_gain.is_finite()||!(0.0..=1.0).contains(&zero_reflect_gain)||
+       !zero_reflect_decay.is_finite()||!(0.0..=1.0).contains(&zero_reflect_decay){return -2;}
+    render_zero_gain_internal(input,output,frames,channels,rate,low,high,p,amount,mode,quality_id,
+        outside,engine,pitch_ratio,shift_hz,carrier_hz,zero_mode,hop_div,
+        crusher_bits,crusher_hold,axis_shift,axis_reference,ring,rational,
+        axis_pivot,axis_slope,a_min_hz,a_reverb,a_peak_band_bins,a_quality_percent,
+        Some(zero_reflect_gain),Some(zero_reflect_decay),Some(crusher_rate_hz))
 }
 
 unsafe fn render_zero_gain_internal(
@@ -925,7 +991,7 @@ unsafe fn render_zero_gain_internal(
     outside:u32,engine:u32,pitch_ratio:f64,shift_hz:f64,carrier_hz:f64,
     zero_mode:u32,hop_div:u32,crusher_bits:u32,crusher_hold:u32,
     axis_shift:f64,axis_reference:f64,ring:u32,rational:u32,axis_pivot:f64,axis_slope:f64,
-    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,zero_reflect_decay:Option<f64>,
+    a_min_hz:f64,a_reverb:f64,a_peak_band_bins:u32,a_quality_percent:u32,zero_reflect_gain:Option<f64>,zero_reflect_decay:Option<f64>,crusher_rate:Option<f64>,
 )->i32{
     if input.is_null()||output.is_null()||frames==0||!(1..=2).contains(&channels)
        ||(frames as usize).saturating_mul(channels as usize)>40_000_000{return -1;}
@@ -935,6 +1001,7 @@ unsafe fn render_zero_gain_internal(
         Ok(st)=>st,Err(_)=>return -2
     };
     if st.set_crusher(crusher_bits,crusher_hold).is_err()||
+       crusher_rate.is_some_and(|hz|st.set_crusher_rate_hz(hz).is_err())||
        st.set_transform(axis_shift,axis_reference,ring,rational).is_err()||
        st.set_geometry(axis_pivot,axis_slope).is_err()||
        st.set_a_options(a_min_hz,a_reverb).is_err()||
@@ -1270,6 +1337,28 @@ mod tests{
             assert_eq!(warp_stream_set_zero_reflect_gain(ptr,2.0),-2);
             warp_stream_free(ptr);
         }
+    }
+    #[test]
+    fn crusher_fractional_clock_matches_requested_frequency_without_integer_drift(){
+        let fs=48000.0;
+        let cfg=Settings{low:20.0,high:18000.0,curvature:1.0,invert:0.0,
+            mode:Progression::FoldHigh,quality:0};
+        let mut stream=Stream::new_extended(fs,1,cfg,1,1,1.0,0.0,0.0,0,4).unwrap();
+        stream.set_crusher(16,109).unwrap();
+        stream.set_crusher_rate_hz(440.0).unwrap();
+        let mut samples=(0..48000).map(|i|i as f32/48000.0).collect::<Vec<_>>();
+        stream.post_process(&mut samples,48000);
+        assert_eq!(samples.windows(2).filter(|x|x[0]!=x[1]).count(),439);
+        assert_eq!(stream.crusher_counter,48000);
+        let mut old=Stream::new_extended(fs,1,cfg,1,1,1.0,0.0,0.0,0,4).unwrap();
+        old.set_crusher(16,109).unwrap();
+        let mut legacy=(0..48000).map(|i|i as f32/48000.0).collect::<Vec<_>>();
+        old.post_process(&mut legacy,48000);
+        assert!(legacy.windows(2).filter(|x|x[0]!=x[1]).count()>439);
+        assert!(stream.set_crusher_rate_hz(fs+1.0).is_err());
+        assert!(stream.set_crusher_rate_hz(f64::NAN).is_err());
+        stream.reset();
+        assert_eq!(stream.crusher_phase,0.0);
     }
     #[test]
     fn crusher_zero_hz_freezes_sample_and_large_intervals_without_division_by_zero(){

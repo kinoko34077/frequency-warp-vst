@@ -26,7 +26,7 @@ async function fixture(){
     carrierHz:350,zeroMode:0,axisShift:0,axisReference:350,
     ringEnabled:false,rationalEnabled:false,axisPivot:350,axisSlope:1,
     aMinHz:20,aReverb:0,aBandBins:1,aQuality:0,
-    zeroReflectGain:1,zeroReflectDecay:0,crusherBits:0,crusherHold:1
+    zeroReflectGain:1,zeroReflectDecay:0,crusherBits:0,crusherHold:1,crusherRateHz:48000
   };
   processor.stream=7;processor.channels=1;
   processor.src=0;processor.dst=0;
@@ -56,6 +56,14 @@ async function fixture(){
     warp_stream_set_crusher:(_,crusherBits,crusherHold)=>{
       if(failEveryCrusher||crusherBits===rejectBits)return -2;
       Object.assign(state,{crusherBits,crusherHold});return 0;
+    },
+    warp_stream_set_crusher_rate_hz:(_,hz)=>{
+      if(!Number.isFinite(hz)||hz<0||hz>48000)return -2;
+      state.crusherRateHz=hz;return 0;
+    },
+    warp_stream_set_crusher_exact:(_,crusherBits,hz)=>{
+      if(failEveryCrusher||crusherBits===rejectBits||!Number.isFinite(hz))return -2;
+      Object.assign(state,{crusherBits,crusherRateHz:hz});return 0;
     },
     warp_stream_free:()=>{freed++;},
     warp_free_f32:()=>{}
