@@ -340,6 +340,7 @@ function captureCurrentConfiguration(){
   return createSoundConfiguration({
     sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
     harmonic:h,audio:p,
+    view:{virtualRoot:virtualRootWorkbench.captureView()},
     values:{
       low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
       axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
