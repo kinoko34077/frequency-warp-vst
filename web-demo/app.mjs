@@ -1801,12 +1801,16 @@ for(const [node,tab] of [["#tab-map","map"],["#tab-math","math"]]){
 const NOTE_NAMES=["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
 const sineHzAtMidi=midi=>440*2**((midi-69)/12);
 const sineMidiAtHz=hz=>69+12*Math.log2(hz/440);
+// A uniform-semitone MIDI rail, including the high-frequency region missing
+// from the old C7 limit. Preserve full canonical Hz across all unit views.
+const SINE_MIN_MIDI=36,SINE_MAX_HZ=20000,SINE_MAX_MIDI=sineMidiAtHz(SINE_MAX_HZ);
+$("#sine-pitch").max=String(SINE_MAX_MIDI);
 sineUnitControl=mountFrequencyUnitField({
   descriptor:defineParameter({
-    id:"sine-hz",min:sineHzAtMidi(36),max:sineHzAtMidi(96),
+    id:"sine-hz",min:sineHzAtMidi(SINE_MIN_MIDI),max:SINE_MAX_HZ,
     defaultValue:440,units:["hz","note","percent"],
-    rail:{toPosition:hz=>(sineMidiAtHz(hz)-36)/60,
-          fromPosition:t=>sineHzAtMidi(36+60*t)},
+    rail:{toPosition:hz=>(sineMidiAtHz(hz)-SINE_MIN_MIDI)/(SINE_MAX_MIDI-SINE_MIN_MIDI),
+          fromPosition:t=>sineHzAtMidi(SINE_MIN_MIDI+(SINE_MAX_MIDI-SINE_MIN_MIDI)*t)},
     digits:3,
     snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
   }),
@@ -1840,7 +1844,7 @@ $("#sine-cent").addEventListener("input",()=>{
   const cents=clamp(Number($("#sine-cent").value),-50,50);
   if(!Number.isFinite(cents))return;
   const root=Math.round(sinePitch());
-  const pitch=clamp(root+cents/100,36,96);
+  const pitch=clamp(root+cents/100,SINE_MIN_MIDI,SINE_MAX_MIDI);
   sineUnitControl.setCanonical(sineHzAtMidi(pitch));
   updateSineLabel();
 });
