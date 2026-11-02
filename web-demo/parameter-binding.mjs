@@ -17,6 +17,7 @@ const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 // Unit metadata does not own a parameter's limits/defaults/slider transfer.
 export const UNIT_REGISTRY = Object.freeze({
   hz: Object.freeze({label:"Hz", dimension:"frequency", snapAxis:"hz"}),
+  samples: Object.freeze({label:"サンプル数", dimension:"frequency", snapAxis:"samples"}),
   note: Object.freeze({label:"音名＋セント", dimension:"frequency", snapAxis:"midi"}),
   percent: Object.freeze({label:"%", dimension:"rail", snapAxis:"rail", requiresRail:true}),
   ratio: Object.freeze({label:"倍", dimension:"ratio-or-slope", snapAxis:"canonical"}),
@@ -31,7 +32,7 @@ export const UNIT_REGISTRY = Object.freeze({
  * caller-provided rail functions, never by treating % as percentage of Hz.
  */
 export function defineParameter({id, min, max, defaultValue, units, rail,
-    digits=3, snap=null, snapByUnit=null}) {
+    digits=3, snap=null, snapByUnit=null, sampleRate=null}) {
   const compatible = compatibleUnits(id); // typed authority from #77
   requireFinite(min, "min"); requireFinite(max, "max");
   requireFinite(defaultValue, "defaultValue");
@@ -45,6 +46,8 @@ export function defineParameter({id, min, max, defaultValue, units, rail,
   if (rail !== undefined && (typeof rail?.toPosition !== "function" ||
       typeof rail?.fromPosition !== "function"))
     throw new TypeError("rail requires toPosition and fromPosition");
+  if (units.includes("samples") && typeof sampleRate!=="function")
+    throw new TypeError("sample count unit requires sample rate provider");
   if (units.includes("percent") && !rail)
     throw new RangeError("percentage requires the parameter's actual rail transfer");
   const parseSnapSpec=(config)=>{
@@ -82,7 +85,7 @@ export function defineParameter({id, min, max, defaultValue, units, rail,
   }
   return Object.freeze({id, min, max, defaultValue, units:Object.freeze([...units]),
     rail:rail ? Object.freeze({toPosition:rail.toPosition,fromPosition:rail.fromPosition}) : null,
-    digits, snap:snapConfig, snapByUnit:Object.freeze(unitSnaps)});
+    digits, snap:snapConfig, snapByUnit:Object.freeze(unitSnaps),sampleRate});
 }
 
 function toSnapCoordinate(value, unit, descriptor) {
@@ -199,7 +202,8 @@ export function createParameterBinding(descriptor, {initialValue=descriptor.defa
     display(digits=descriptor.digits){
       return formatView(canonical, unit, {
         id:descriptor.id, digits,
-        toRail:descriptor.rail?.toPosition
+        toRail:descriptor.rail?.toPosition,
+        sampleRate:descriptor.sampleRate?.()
       });
     },
     setCanonical:commit,
@@ -209,7 +213,8 @@ export function createParameterBinding(descriptor, {initialValue=descriptor.defa
       if (typeof raw !== "string" && typeof raw !== "number") throw new TypeError("invalid input type");
       if (!String(raw).trim()) throw new RangeError("empty input");
       const next = parseView(raw, inputUnit, {
-        id:descriptor.id, fromRail:descriptor.rail?.fromPosition
+        id:descriptor.id, fromRail:descriptor.rail?.fromPosition,
+        sampleRate:descriptor.sampleRate?.()
       });
       return commit(next,{origin,notify,snap,railPixels,overflow});
     },
