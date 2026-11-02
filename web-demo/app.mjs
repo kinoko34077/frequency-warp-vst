@@ -1931,7 +1931,7 @@ attachHarmonicPanel(id=>{
 // The new user-goal workbench is separate from the retained legacy maths UI.
 // One validated transaction updates the existing canonical harmonic owners.
 // Theoretical H outside current DSP capability stays a draft, never a 0Hz P.
-mountVirtualRootWorkbench({
+const virtualRootWorkbench=mountVirtualRootWorkbench({
   onCurrent:()=>captureHarmonicConfiguration(),
   onApply:plan=>{
     if(!plan.capability.rationalStage)throw Error("現行DSPでは指定配置を再現できません");
