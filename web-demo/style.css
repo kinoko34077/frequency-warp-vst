@@ -839,3 +839,14 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
 .vr-linear-rail>select{min-width:59px;width:59px;max-width:59px;min-height:33px;
   padding:3px 2px;font-size:11px;background:#173831;color:#e5f5eb;
   border:1px solid #52786d;border-radius:5px}
+
+/* #309: numeric controls occupy their content scale, not eight reserved digits.
+   Musical note spelling remains a distinct wider editable unit. */
+.quick-panel .inline-value,.workspace-right .math-field>input[type=number],
+.quick-panel .math-field>input[type=number]{width:6.3ch!important;min-width:0;max-width:100%}
+.bounds-heading .unit-value-tools .inline-value{width:7ch!important;min-width:0!important;max-width:7ch!important}
+.sine-meta .inline-value{width:7ch!important;min-width:0!important}
+.unit-value-tools:has(.unit-switch button[data-unit="note"][aria-pressed="true"]) .inline-value{
+  width:13ch!important;min-width:0!important;max-width:100%!important;
+}
+.vr-number-row input{flex:0 1 auto;width:min(100%,10ch)}
