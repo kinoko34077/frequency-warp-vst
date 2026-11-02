@@ -675,10 +675,10 @@ function drawCurve(){
   const isCrushed=p.crusherBits>0&&p.crusherRateHz<p.sampleRate;
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=p.crusherBits===0;
-  if(p.crusherBits>0)$("#crusher-alias-note").textContent=p.crusherHold===0?
+  if(p.crusherBits>0)$("#crusher-alias-note").textContent=p.crusherRateHz===0?
     "更新 0 Hz：開始値を保持。出力はDCのみで元周波数の周期音は消えます。":
-    (p.crusherHold===1?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
-    "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝単一正弦波の標本保持から生じる理論スペクトル像、透明度＝理想応答ゲイン（振幅量子化でさらに変化）。");
+    (p.crusherRateHz>=p.sampleRate?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
+    "指定・平均実効更新 "+displayNumber(p.crusherRateHz)+" Hz。以下のスペクトル像は隣接整数 "+p.crusherHold+" サンプル固定の場合の比較モデルであり、実際の小数周期クロックのスペクトル予測ではありません。");
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===20?"0.001〜20Hz":graphMax===2000?"〜2kHz":"〜20kHz";
 }
