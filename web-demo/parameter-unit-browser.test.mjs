@@ -161,8 +161,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#low-value",el=>el.blur());
     assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c");
     await page.focus("#low-value");
-    assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c",
-      "focus must not reveal fractional cents");
+    assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25.375c",
+      "focused editor exposes fractional cents independently of display rounding");
     await page.select("#low-unit","hz");
     // Puppeteer's select() dispatches change without focusing the select.
     // Explicitly blur and refocus to expose the full canonical Hz editor.
