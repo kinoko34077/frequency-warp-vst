@@ -707,7 +707,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
     // #309 Crusher requested rate uses the existing shared frequency unit
     // icons and a Float64 canonical rate, not a separate 3-digit text store.
-    assert.deepEqual(await page.$eval("#crusher-hold-unit option",els=>els.map(x=>x.value)),["hz","note","percent"]);
+    assert.deepEqual(await page.$$eval("#crusher-hold-unit option",els=>els.map(x=>x.value)),["hz","note","percent"]);
     await page.$eval("#crusher-hold-value",el=>{
       el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
