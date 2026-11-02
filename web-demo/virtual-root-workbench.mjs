@@ -3,7 +3,7 @@
  */
 import {createVirtualRootPlan} from "./virtual-root-plan.mjs";
 import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.mjs";
-import {parseView} from "./parameter-units.mjs";
+import {parseView,hzToMidi,midiToHz} from "./parameter-units.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {createDigitWheelPicker} from "./digit-wheel-picker.mjs";
 import {createParameterUnitSwitch,attachParameterSnapControls} from "./frequency-unit-field.mjs";
@@ -55,6 +55,12 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   // A selected rail span is gesture-only state, never auto-grown by a typed
   // canonical value outside that span. Only the user's scale selector changes it.
   const scopes={F:1000,H:200};
+  const railToPosition=(key,v)=>getUnit(key)==="note"?
+    clamp((hzToMidi(v)-hzToMidi(1))/(hzToMidi(scopes[key])-hzToMidi(1)),0,1):
+    clamp((v-1)/(scopes[key]-1),0,1);
+  const railFromPosition=(key,t)=>getUnit(key)==="note"?
+    midiToHz(hzToMidi(1)+(hzToMidi(scopes[key])-hzToMidi(1))*t):
+    1+(scopes[key]-1)*t;
   const createFrequencyBinding=(key,initialValue)=>createParameterBinding(defineParameter({
     id:key==="F"?"virtual-root-f":"virtual-root-h",
     min:Number.MIN_VALUE,max:Number.MAX_VALUE,defaultValue:initialValue,
@@ -64,8 +70,8 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     // note and % use their shared per-unit magnetic snap policies.
     snapByUnit:{hz:false},
     rail:{
-      fromPosition:t=>1+(scopes[key]-1)*t,
-      toPosition:v=>clamp((v-1)/(scopes[key]-1),0,1)
+      fromPosition:t=>railFromPosition(key,t),
+      toPosition:v=>railToPosition(key,v)
     }
   }));
   const frequencyBindings={F:createFrequencyBinding("F",350),H:createFrequencyBinding("H",87.5)};
@@ -144,15 +150,19 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       if(key==="H"||key==="F"){
         const scopeSelect=$("#vr-"+keyIds[key]+"-scale");
         scopeSelect.value=String(scopes[key]);
-        rails[key].max=String(scopes[key]);
-        rails[key].setAttribute("aria-valuetext",fmt(state[key],2)+"Hz");
+        const noteRail=getUnit(key)==="note";
+        rails[key].min=String(noteRail?hzToMidi(1):1);
+        rails[key].max=String(noteRail?hzToMidi(scopes[key]):scopes[key]);
+        rails[key].step=noteRail?".01":"1";
+        rails[key].setAttribute("aria-valuetext",fmt(state[key],1)+"Hz");
       }
       const el=controls[key];
       if(key==="H"||key==="F")el.dataset.fwCanonical=String(state[key]);
       if(document.activeElement!==el)el.value=displayValue(key);
       el.setAttribute("aria-invalid","false");
       if(rails[key])rails[key].value=String(key==="H"||key==="F"?
-        Math.min(scopes[key],virtualRootRailFromHz(state[key]).position):state[key]);
+        (getUnit(key)==="note"?hzToMidi(Math.max(1,Math.min(scopes[key],state[key]))):
+        Math.min(scopes[key],virtualRootRailFromHz(state[key]).position)):state[key]);
       if(key==="H"||key==="F")unitSwitches[key].refresh();
     }
     try{
@@ -240,7 +250,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         const snap=snapControllers[key].gestureEnabled(event);
         // A display-unit switch never edits the numeric value; only gestures
         // choose a unit-specific grid (♪ semitones, % integer rail position).
-        binding.setCanonical(hzFromVirtualRootRail(raw),{
+        binding.setCanonical(getUnit(key)==="note"?midiToHz(raw):hzFromVirtualRootRail(raw),{
           origin:"slider",snap,
           railPixels:Math.max(1,rails[key].getBoundingClientRect().width),
           overflow:"reject",notify:false
@@ -256,8 +266,11 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       scopes[key]=requested;
       // Scale changes adjust only the gesture/percentage view, not stored Hz.
       // If the typed frequency lies above the gesture range, preserve it.
-      const slider=rails[key];slider.max=String(requested);
-      slider.value=String(Math.min(requested,virtualRootRailFromHz(state[key]).position));
+      const slider=rails[key];
+      const noteRail=getUnit(key)==="note";
+      slider.max=String(noteRail?hzToMidi(requested):requested);
+      slider.value=String(noteRail?hzToMidi(Math.max(1,Math.min(requested,state[key]))):
+        Math.min(requested,virtualRootRailFromHz(state[key]).position));
       // Manual range selection is a view change and must not trigger audio.
       if(getUnit(key)==="percent"&&document.activeElement!==controls[key])
         controls[key].value=displayValue(key);
