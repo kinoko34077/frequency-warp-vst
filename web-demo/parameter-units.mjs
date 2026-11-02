@@ -74,6 +74,10 @@ export function formatView(value,unit,{id,toRail,sampleRate,digits=3}={}){
   if(typeof toRail!=="function")throw RangeError("percent needs slider scale");
   return Number((100*toRail(value)).toFixed(digits));
  }
+ if(unit==="samples"){
+  if(!finite(sampleRate)||sampleRate<=0||value<0)throw RangeError("sample period needs rate and positive Hz");
+  return value===0?0:Number((sampleRate/value).toFixed(digits));
+ }
  if(unit==="semitones"||unit==="cents")
   return Number((ratioToSemitones(value)*(unit==="cents"?100:1)).toFixed(digits));
  return Number(value.toFixed(digits));
