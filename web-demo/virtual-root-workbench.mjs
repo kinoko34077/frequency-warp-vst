@@ -36,7 +36,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     <div class="vr-inputs">
       ${field("source-f","元基音 F",350,.01,5120000,.01)}
       <div class="vr-control"><label for="vr-placement">音程の配置</label><select id="vr-placement">
-        <option value="target">仮想基音を動かす</option><option value="keep-spacing">元の倍音間隔を維持</option>
+        <option value="target">仮想基音を動かす</option><option value="keep-spacing" selected>元の倍音間隔を維持</option>
       </select></div>
       ${field("target-h","仮想基音 H",87.5,.01,20000,.01)}
       ${field("step-m","番号間隔",4,1,64,1)}
