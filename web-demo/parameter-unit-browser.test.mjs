@@ -813,7 +813,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
 
     assert.equal(await page.$eval("#pivot-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#axis-pivot",el=>el.dataset.fwSnap),"on");
-    assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
+    // Earlier test gestures explicitly edited pivot to 350Hz; keep that exact
+    // user-selected anchor even though untouched defaults now start at 0Hz.
+    assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),350);
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
     assert.equal(await page.$eval("#high-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#high",el=>el.dataset.fwSnap),"on");
