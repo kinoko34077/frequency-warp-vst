@@ -31,3 +31,14 @@ test("display units are typed and never change the canonical DSP number",()=>{
  assert.throws(()=>parseView("50","percent",{id:"low"}),RangeError,
    "percent must not silently mean a linear share of Hz");
 });
+
+test("Crusher sample periods share one canonical frequency and never fake an exact integer at 440 Hz",()=>{
+ assert.deepEqual(compatibleUnits("crusher-hold"),["hz","note","percent","samples"]);
+ assert.equal(parseView("109","samples",{id:"crusher-hold",sampleRate:48000}),48000/109);
+ assert.equal(parseView("0","samples",{id:"crusher-hold",sampleRate:48000}),0);
+ assert.equal(formatView(0,"samples",{id:"crusher-hold",sampleRate:48000}),0);
+ assert.ok(Math.abs(formatView(440,"samples",{id:"crusher-hold",sampleRate:48000})-109.091)<.001);
+ assert.throws(()=>parseView("109.5","samples",{id:"crusher-hold",sampleRate:48000}),RangeError);
+ assert.throws(()=>parseView("-1","samples",{id:"crusher-hold",sampleRate:48000}),RangeError);
+ assert.throws(()=>parseView("109","samples",{id:"low",sampleRate:48000}),RangeError);
+});
