@@ -97,7 +97,7 @@
             <input id="wet" type="range" min="0" max="1" step=".005" value="1"><div class="ends"><span>原音</span><span>変換</span></div>
           </div>
           <div class="control"><div class="control-heading"><label for="axis-pivot">起点</label><details class="info-tip"><summary aria-label="起点の説明" title="起点の説明">ⓘ</summary><div class="info-body">傾きによる周波数の伸縮基準です。移動0では起点の周波数を固定します。</div></details><span class="unit-value-tools"><input class="inline-value" id="axis-pivot-value" type="text" value="350" spellcheck="false" autocapitalize="off" aria-label="起点の周波数・音名入力"><select id="pivot-unit" aria-label="起点の単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
-            <input id="axis-pivot" type="range" min="0" max="1000" step="1" value="531">
+            <input id="axis-pivot" type="range" min="0" max="1000" step="1" value="0">
             <div class="ends"><span>0 Hz</span><span>20 kHz</span></div>
           </div>
           <div class="control"><div class="control-heading"><label for="axis-slope">傾き</label><details class="info-tip"><summary aria-label="傾きの説明" title="傾きの説明">ⓘ</summary><div class="info-body">起点からのHz距離の倍率。正は元の向き、0は一点へ集中、負は周波数の並びを反転します。0Hz未満に進む成分は反射設定に従います。</div></details><span class="axis-value-tools unit-value-tools"><input class="inline-value" id="axis-slope-value" type="text" value="1" spellcheck="false" autocapitalize="off" aria-label="傾きの符号付き倍率・レール割合入力"><select id="axis-slope-unit" aria-label="傾きの単位"><option value="ratio">符号付き倍</option><option value="percent">レール%</option></select><button id="slope-one" type="button" class="zero-button" aria-label="傾きを1へ戻す">1へ</button></span></div>
