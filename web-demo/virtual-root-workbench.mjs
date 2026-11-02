@@ -148,6 +148,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         rails[key].setAttribute("aria-valuetext",fmt(state[key],2)+"Hz");
       }
       const el=controls[key];
+      if(key==="H"||key==="F")el.dataset.fwCanonical=String(state[key]);
       if(document.activeElement!==el)el.value=displayValue(key);
       el.setAttribute("aria-invalid","false");
       if(rails[key])rails[key].value=String(key==="H"||key==="F"?
@@ -280,7 +281,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       if(!key||controls[key].readOnly||getUnit(key)==="note")return;
       const percent=getUnit(key)==="percent";
       wheel.open({key,label:controls[key].getAttribute("aria-label"),
-        value:Number(displayValue(key)),
+        value:Number(key==="H"||key==="F"?displayValue(key,3):displayValue(key)),
         places:percent?[2,1,0,-1,-2]:hzPlaces[key],
         signed:key==="h1",trigger:button});
     });
