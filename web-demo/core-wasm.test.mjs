@@ -203,6 +203,7 @@ test("WAV export uses the same Rust stream and correct latency for Ring and FFT"
 test("fractional Crusher rate WASM ABI is available without breaking legacy hold",async()=>{
   const e=await load();
   assert.equal(typeof e.warp_stream_set_crusher_rate_hz,"function");
+  assert.equal(typeof e.warp_stream_set_crusher_exact,"function");
   assert.equal(typeof e.warp_stream_render_f32_zero_controls_rate_ext,"function");
 });
 test("shared Rust WASM crusher changes actual output and accepts live updates",async()=>{
