@@ -52,7 +52,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     <p id="vr-error" class="vr-error" role="status" hidden></p>`;
   // Shared canonical bindings own F/H; the special virtual-root rails and digit
   // controls only adapt gestures. No parallel frequency/unit store in this UI.
-  const scopes={F:1000,H:200}, choices=[200,1000,5000,20000];
+  // A selected rail span is gesture-only state, never auto-grown by a typed
+  // canonical value outside that span. Only the user's scale selector changes it.
+  const scopes={F:1000,H:200};
   const createFrequencyBinding=(key,initialValue)=>createParameterBinding(defineParameter({
     id:key==="F"?"virtual-root-f":"virtual-root-h",
     min:Number.MIN_VALUE,max:Number.MAX_VALUE,defaultValue:initialValue,
@@ -140,9 +142,6 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     root.querySelector('[data-vr-digit="target-h"]').disabled=keep;
     for(const key of Object.keys(controls)){
       if(key==="H"||key==="F"){
-        if(state[key]>scopes[key]){
-          scopes[key]=choices.find(value=>value>=state[key])||20000;
-        }
         const scopeSelect=$("#vr-"+keyIds[key]+"-scale");
         scopeSelect.value=String(scopes[key]);
         rails[key].max=String(scopes[key]);
