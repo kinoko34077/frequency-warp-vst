@@ -100,7 +100,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         const el=controls[key],selectedUnit=getUnit(key);
         el.type=selectedUnit==="note"?"text":"number";
         el.inputMode=selectedUnit==="note"?"text":"decimal";
-        el.step=selectedUnit==="note"?"any":".01";
+        el.step=selectedUnit==="note"?"any":".001";
         root.querySelector('[data-vr-digit="'+id+'"]').hidden=selectedUnit==="note";
         el.min=selectedUnit==="percent"?"0":".01";
         el.max=selectedUnit==="percent"?"100":String(key==="H"?20000:5120000);
@@ -119,7 +119,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   function fromText(key,raw){
     if(!String(raw).trim())return null;
     const unit=getUnit(key);
-    if(unit!=="note"&&!/^-?\d+(?:\.\d{0,2})?$/.test(String(raw)))return null;
+    if(unit!=="note"&&!/^-?\d+(?:\.\d{0,3})?$/.test(String(raw)))return null;
     try{
       const n=(key==="H"||key==="F")?
         parseView(raw,unit,percentOpts(key)):Number(raw);
@@ -131,8 +131,8 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       return n;
     }catch{return null;}
   }
-  const displayValue=key=>key==="H"||key==="F"?
-    String(frequencyBindings[key].display(2)):String(state[key]);
+  const displayValue=(key,digits=1)=>key==="H"||key==="F"?
+    String(frequencyBindings[key].display(digits)):String(state[key]);
   let activePlan=null,lastFingerprint="",generation=0;
   const error=$("#vr-error");
   function render(){
@@ -160,7 +160,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         placement:keep?"keep-spacing":"target",count:8
       });
       const p=activePlan;
-      const seq=p.outputs.map(row=>fmt(row.gridIndex,3)).join(", ");
+      const seq=p.outputs.map(row=>fmt(row.gridIndex,1)).join(", ");
       $("#vr-sequence").textContent="倍音列: "+seq+"…";
       $("#vr-formula").replaceChildren(document.createTextNode("aₖ = |"+state.h1+" + (k−1) × "+state.m+"| × "+fmt(p.H,2)+" Hz　 Δ = "),fraction(p.fraction),
         document.createTextNode(" × "+fmt(p.pitched,2)+" Hz"));
@@ -221,6 +221,11 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   }
   for(const key of Object.keys(controls)){
     const el=controls[key];
+    el.addEventListener("focus",()=>{
+      if((key==="F"||key==="H")&&getUnit(key)!=="note"){
+        el.value=displayValue(key,3);el.select();
+      }
+    });
     el.addEventListener("input",()=>changed(key));
     el.addEventListener("change",()=>{changed(key);if(document.activeElement!==el)el.value=displayValue(key);});
     el.addEventListener("blur",()=>{el.value=displayValue(key);el.setAttribute("aria-invalid","false");});
