@@ -244,6 +244,14 @@ impl Stream {
         self.crusher_rate_hz=Some(hz);
         Ok(())
     }
+    /// Live updater changes bit depth without reinitializing an unchanged
+    /// fractional sample clock on unrelated UI edits.
+    pub fn set_crusher_exact(&mut self,bits:u32,hz:f64)->Result<(),&'static str>{
+        if bits!=0 && !(2..=16).contains(&bits){return Err("invalid bits");}
+        self.set_crusher_rate_hz(hz)?;
+        self.crusher_bits=bits;
+        Ok(())
+    }
     fn post_process(&mut self,output:&mut[f32],frames:usize){
         // All engines share source L/H, Invert and Curvature mapping first.
         // Ring mode post-multiplies the *warped* signal and yields both
@@ -830,6 +838,11 @@ pub unsafe extern "C" fn warp_stream_set_crusher(ptr:*mut Stream,bits:u32,hold:u
 pub unsafe extern "C" fn warp_stream_set_crusher_rate_hz(ptr:*mut Stream,hz:f64)->i32{
     if ptr.is_null(){return -1;}
     match (&mut *ptr).set_crusher_rate_hz(hz){Ok(())=>0,Err(_)=>-2}
+}
+#[no_mangle]
+pub unsafe extern "C" fn warp_stream_set_crusher_exact(ptr:*mut Stream,bits:u32,hz:f64)->i32{
+    if ptr.is_null(){return -1;}
+    match (&mut *ptr).set_crusher_exact(bits,hz){Ok(())=>0,Err(_)=>-2}
 }
 
 #[no_mangle]
