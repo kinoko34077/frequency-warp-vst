@@ -4,6 +4,7 @@ const NOTES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const finite=x=>typeof x==="number"&&Number.isFinite(x);
 export const UNIT_KINDS=Object.freeze({
  frequency:Object.freeze(["hz","note","percent"]),
+ frequencySamples:Object.freeze(["hz","note","percent","samples"]),
  ratio:Object.freeze(["ratio","semitones","cents","percent"]),
  fraction:Object.freeze(["percent"]),
  signedRatio:Object.freeze(["ratio","percent"]),
