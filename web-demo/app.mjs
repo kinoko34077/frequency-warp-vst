@@ -438,6 +438,7 @@ function applyConfigurationSilently(c){
   if(c.view?.interface)restoreComparisonView($(".workspace-grid"),c.view.interface,{
     setGraph:(max,previousAlpha)=>{graphMax=max;graphAlphaBeforeZoom=previousAlpha;drawCurve();},
     showTab,
+    restoreSnaps:restoreInterfaceSnaps,
     restoreSine:monitor=>{
       sineUnitControl.setCanonical(monitor.frequency);
       updateSineLabel();
