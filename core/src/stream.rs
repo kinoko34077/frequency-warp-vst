@@ -1542,6 +1542,28 @@ mod tests{
         }
     }
     #[test]
+    fn exact_integer_sample_rate_is_never_jittered_by_fractional_clock(){
+        for (fs,n) in [(48000.0,109u32),(44100.0,100u32)]{
+            let mut st=Stream::new(fs,1,settings(),1).unwrap();
+            st.set_crusher_exact(8,fs/n as f64).unwrap();
+            assert_eq!(st.crusher_integer_period,Some(n));
+            let length=n as usize*4;
+            let mut output=(0..length).map(|i|i as f32/(length as f32))
+                .collect::<Vec<_>>();
+            st.post_process(&mut output,length);
+            for block in 0..4{
+                let offset=block*n as usize;
+                for sample in &output[offset..offset+n as usize]{
+                    assert_eq!(*sample,output[offset],
+                        "integer hold must update only every N frames");
+                }
+                if block>0{assert_ne!(output[offset],output[offset-1]);}
+            }
+            st.set_crusher_exact(8,440.0).unwrap();
+            if fs==48000.0{assert_eq!(st.crusher_integer_period,None);}
+        }
+    }
+    #[test]
     fn stream_parameter_changes_and_reset(){
         let mut st=Stream::new(48000.0,2,settings(),1).unwrap();
         let inp=vec![0.2;256];let mut out=vec![0.0;256];
