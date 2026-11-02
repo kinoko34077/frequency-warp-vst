@@ -6,6 +6,8 @@ export const COMPARISON_UNIT_SELECTS=Object.freeze([
   "carrier-unit","crusher-hold-unit","fundamental-unit","pitch-ratio-unit",
   "sine-unit"
 ]);
+export const COMPARISON_SNAP_KEYS=Object.freeze(["low","high","pivot","slope","crusher","sine",
+  "harmonic-fundamental","harmonic-carrier","harmonic-ratio"]);
 export function captureComparisonView(root,{graphMax,graphAlphaBeforeZoom,sineFrequency,snaps}){
   const doc=root.ownerDocument;
   return {
@@ -29,7 +31,7 @@ export function validateComparisonView(root,view){
       throw Error("Invalid interface unit "+id);
   }
   if(view.snaps && (typeof view.snaps!=="object"||
-    !Object.values(view.snaps).every(value=>typeof value==="boolean")))
+    COMPARISON_SNAP_KEYS.some(key=>typeof view.snaps[key]!=="boolean")))
     throw Error("Invalid A/B snap states");
   const details=[...root.querySelectorAll("details")];
   if(view.disclosures.length!==details.length||
