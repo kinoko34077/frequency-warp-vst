@@ -198,6 +198,9 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       });
       await page.waitForFunction(()=>document.querySelector("#numerator").value==="-1",{timeout:10000});
       await page.click("#compare-save-a");
+      await page.select("#vr-placement","keep-spacing");
+      await page.select("#vr-source-f-scale","5000");
+      await page.click('[data-vr-unit-for="source-f"][data-vr-unit="note"]');
       await page.$eval("#vr-first-index",el=>{
         el.value="-5";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
@@ -205,8 +208,13 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.click("#compare-save-b");
       await page.click("#compare-load-a");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"3");
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"target");
+      assert.equal(await page.$eval("#vr-source-f-scale",el=>el.value),"1000");
       await page.click("#compare-load-b");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"-5");
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
+      assert.equal(await page.$eval("#vr-source-f-scale",el=>el.value),"5000");
+      assert.equal(await page.$eval('[data-vr-unit-for="source-f"][data-vr-unit="note"]',el=>el.getAttribute("aria-pressed")),"true");
       // Live DSP acceptance: a slider edit must obtain a new Worklet ACK
       // while Wet is audible, with no separate Apply click.
       await page.click("#play-wet");
