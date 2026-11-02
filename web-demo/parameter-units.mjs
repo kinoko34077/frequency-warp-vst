@@ -18,7 +18,7 @@ export const PARAMETER_KIND=Object.freeze({
  invert:"fraction",curvature:"fraction","zero-reflect":"fraction",
  "zero-decay":"fraction",wet:"fraction","a-reverb":"fraction",
  "graph-log":"fraction","a-quality":"fraction",
- "axis-shift":"coordinate","crusher-bits":"integer","a-band":"integer",
+ "axis-shift":"coordinate","crusher-bits":"integer","crusher-hold":"frequency","a-band":"integer",
  denominator:"integer",numerator:"integer","harmonic-index":"integer"
 });
 export function compatibleUnits(parameter){

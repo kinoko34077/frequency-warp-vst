@@ -8,11 +8,16 @@ export function frequencyFromSlider(position,sampleRate){
   const t=Math.max(0,Math.min(1,Number(position)/1000));
   return t===0?0:rate*Math.pow(1e-5,1-t);
 }
+export function sliderPositionFromFrequency(hz,sampleRate){
+  const rate=Math.max(1,Number(sampleRate)||48000);
+  if(!(hz>0))return 0;
+  return 1000*Math.max(0,Math.min(1,
+    1+Math.log(Math.min(rate,hz)/rate)/Math.log(1e5)));
+}
 export function sliderFromFrequency(hz,sampleRate){
   const rate=Math.max(1,Number(sampleRate)||48000);
   if(!(hz>0))return 0;
-  return Math.round(1000*Math.max(0,Math.min(1,
-    1+Math.log(Math.min(rate,hz)/rate)/Math.log(1e5))));
+  return Math.round(sliderPositionFromFrequency(hz,rate));
 }
 export function holdFromFrequency(hz,sampleRate){
   const rate=Math.max(1,Number(sampleRate)||48000);
