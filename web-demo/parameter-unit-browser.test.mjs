@@ -721,7 +721,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
     // #309 Crusher requested rate uses the existing shared frequency unit
     // icons and a Float64 canonical rate, not a separate 3-digit text store.
-    assert.deepEqual(await page.$$eval("#crusher-hold-unit option",els=>els.map(x=>x.value)),["hz","note","percent"]);
+    assert.deepEqual(await page.$eval("#crusher-hold-unit option",els=>els.map(x=>x.value)),["hz","note","percent","samples"]);
     await page.$eval("#crusher-hold-value",el=>{
       el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -729,8 +729,17 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#crusher-hold-unit","note");
     assert.match(await page.$eval("#crusher-hold-value",el=>el.value),/^A4/);
     await page.select("#crusher-hold-unit","percent");
+    await page.select("#crusher-hold-unit","samples");
+    assert.ok(Math.abs(Number(await page.$eval("#crusher-hold-value",el=>el.value))-
+      48000/440)<.02,"fractional sample period must not mislabel a fixed 109 samples");
+    await page.$eval("#crusher-hold-value",el=>{
+      el.value="109";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.ok(Math.abs(Number(await page.$eval("#crusher-hold-value",el=>el.dataset.fwCanonical))-
+      48000/109)<1e-8);
     await page.select("#crusher-hold-unit","hz");
-    assert.equal(Number(await page.$eval("#crusher-hold-value",el=>el.dataset.fwCanonical)),440);
+    assert.ok(Math.abs(Number(await page.$eval("#crusher-hold-value",el=>el.dataset.fwCanonical))-
+      48000/109)<1e-8);
     await page.$eval("#crusher-hold-value",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
