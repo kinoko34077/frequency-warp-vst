@@ -25,6 +25,14 @@ export function compatibleUnits(parameter){
  const kind=PARAMETER_KIND[parameter];if(!kind)throw RangeError("unknown parameter");
  return UNIT_KINDS[kind];
 }
+export function midiToHz(midi,reference=440){
+  if(!finite(midi)||!finite(reference)||reference<=0)throw RangeError("invalid MIDI pitch");
+  return reference*2**((midi-69)/12);
+}
+export function hzToMidi(hz,reference=440){
+  if(!finite(hz)||hz<=0||!finite(reference)||reference<=0)throw RangeError("invalid frequency");
+  return 69+12*Math.log2(hz/reference);
+}
 export function noteCentsToHz(note,reference=440){
  if(!finite(reference)||reference<=0)throw RangeError("invalid tuning");
  const match=/^\s*([A-Ga-g])([#♯b♭]?)(-?\d+)(?:\s*([+-])\s*(\d+(?:\.\d+)?)\s*c?)?\s*$/.exec(String(note));
