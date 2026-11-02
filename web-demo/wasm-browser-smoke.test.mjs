@@ -1305,7 +1305,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       mirror:Number(el.dataset.crusherMirrorHz)
     }));
     assert.ok(info.rate>0 && Math.abs(info.mirror-info.rate/2)<.001);
-    assert.match(await page.$eval("#crusher-alias-note",el=>el.textContent),/y=.*Hz/);
+    assert.match(await page.$eval("#crusher-alias-note",el=>el.textContent),/平均実効更新 .* Hz/);
+    assert.match(await page.$eval("#crusher-alias-note",el=>el.textContent),/比較モデル/);
     const graphOn=await page.$eval("#curve",el=>el.toDataURL());
     await page.$eval("#crusher-hold",el=>{
       el.value="1000";el.dispatchEvent(new Event("input",{bubbles:true}));
