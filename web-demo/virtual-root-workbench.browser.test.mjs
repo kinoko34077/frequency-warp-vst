@@ -82,6 +82,11 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       // Native frequency-codec unit switch must not rewrite canonical H.
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="note"]');
       assert.match(await page.$eval("#vr-target-h",el=>el.value),/^[A-G]/);
+      // #309: in pitch mode, equal MIDI/cent distances occupy equal rail
+      // distances, with 0.01 semitone gesture steps; Hz mode stays linear.
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.step),"0.01");
+      const noteRail=await page.$eval("#vr-target-h-rail",el=>({min:Number(el.min),max:Number(el.max)}));
+      assert.ok(Math.abs((noteRail.max-noteRail.min)-12*Math.log2(200))<1e-6);
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.3");
       assert.equal(await page.$eval("#vr-target-h",el=>el.dataset.fwCanonical),"87.25");
@@ -89,7 +94,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       // must use the shared nearest-semitone magnetic gesture snap.
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="note"]');
       await page.$eval("#vr-target-h-rail",el=>{
-        el.value="90";el.dispatchEvent(new Event("input",{bubbles:true}));
+        el.value="41.5";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
       const snappedHz=Number(await page.$eval("#vr-target-h",el=>el.value));
