@@ -78,5 +78,9 @@ export function formatView(value,unit,{id,toRail,digits=3}={}){
  }
  if(unit==="semitones"||unit==="cents")
   return Number((ratioToSemitones(value)*(unit==="cents"?100:1)).toFixed(digits));
+ // Very small positive Hz must not be presented as 0 Hz: zero is a
+ // different physical state (crusher freeze / DC / unavailable note).
+ if(unit==="hz"&&value>0&&value<.05&&digits<=1)
+  return Number(value.toPrecision(3));
  return Number(value.toFixed(digits));
 }
