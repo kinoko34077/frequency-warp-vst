@@ -77,12 +77,14 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         el.value="87.25";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
       await page.waitForFunction(()=>document.querySelector("#vr-sequence").textContent.includes("1, 5, 9"));
-      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.25");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.3");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.dataset.fwCanonical),"87.25");
       // Native frequency-codec unit switch must not rewrite canonical H.
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="note"]');
       assert.match(await page.$eval("#vr-target-h",el=>el.value),/^[A-G]/);
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
-      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.25");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.3");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.dataset.fwCanonical),"87.25");
       // #291: switching to note is display-only; dragging in note mode
       // must use the shared nearest-semitone magnetic gesture snap.
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="note"]');
@@ -104,7 +106,8 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"45",
         "90Hz gesture snaps to 45% of 1..200Hz actual physical rail");
       await page.click('[data-vr-unit-for="target-h"][data-vr-unit="hz"]');
-      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"90.55");
+      assert.ok(Math.abs(Number(await page.$eval("#vr-target-h",el=>el.value))-90.55)<.11);
+      assert.ok(Math.abs(Number(await page.$eval("#vr-target-h",el=>el.dataset.fwCanonical))-90.55)<1e-8);
       // Shared snap OFF context menu is usable on special virtual-root rails.
       await page.$eval("#vr-target-h-rail",el=>el.dispatchEvent(new MouseEvent(
         "contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:100})));
@@ -164,7 +167,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         await page.$eval('.vr-wheel-track[data-wheel-place="-2"]',el=>{
           el.scrollTop=6*42;el.dispatchEvent(new Event("scroll"));
         });
-        await page.waitForFunction(()=>document.querySelector("#vr-target-h").value==="87.26",
+        await page.waitForFunction(()=>document.querySelector("#vr-target-h").dataset.fwCanonical==="87.26",
           {timeout:4000});
         await page.click("[data-wheel-done]");
         assert.equal(await page.$eval("#vr-wheel-overlay",el=>el.hidden),true);
