@@ -61,6 +61,10 @@ async function fixture(){
       if(!Number.isFinite(hz)||hz<0||hz>48000)return -2;
       state.crusherRateHz=hz;return 0;
     },
+    warp_stream_set_crusher_exact:(_,crusherBits,hz)=>{
+      if(failEveryCrusher||crusherBits===rejectBits||!Number.isFinite(hz))return -2;
+      Object.assign(state,{crusherBits,crusherRateHz:hz});return 0;
+    },
     warp_stream_free:()=>{freed++;},
     warp_free_f32:()=>{}
   };
