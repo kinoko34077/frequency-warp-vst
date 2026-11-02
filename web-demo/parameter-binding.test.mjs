@@ -298,3 +298,33 @@ test("per-unit snapByUnit overrides take precedence without changing other unit 
     units:["hz","note","percent"],rail:logRail,
     snapByUnit:{coordinate:false}}),RangeError);
 });
+
+test("Crusher samples display is a reversible view; direct integer edits set exact Fs/N",()=>{
+  let rate=48000,events=0;
+  const d=defineParameter({id:"crusher-hold",min:0,max:192000,defaultValue:440,
+    units:["hz","note","percent","samples"],sampleRate:()=>rate,
+    rail:lineRail(0,48000),digits:3});
+  const p=createParameterBinding(d,{onChange:()=>events++});
+  assert.equal(p.value,440);
+  p.selectUnit("samples");
+  assert.equal(p.value,440,"unit switch cannot quantize requested frequency");
+  assert.equal(p.display(3),109.091);
+  p.selectUnit("hz");
+  assert.equal(p.value,440);
+  p.selectUnit("samples");
+  p.setView("109");
+  assert.equal(p.value,rate/109);
+  assert.equal(p.display(3),109);
+  p.selectUnit("hz");
+  assert.equal(p.value,rate/109,"A/B unit switching keeps exact canonical rate");
+  rate=44100;
+  p.selectUnit("samples");
+  assert.equal(p.display(3),Number((44100/(48000/109)).toFixed(3)));
+  p.setView("1");
+  assert.equal(p.value,44100,"one sample updates every frame");
+  p.setView("0");
+  assert.equal(p.value,0,"zero is the explicit freeze state");
+  assert.throws(()=>p.setView("4.5"),RangeError);
+  assert.equal(p.value,0,"rejected fractional sample edits do not mutate DSP");
+  assert.equal(events,3);
+});
