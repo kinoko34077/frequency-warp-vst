@@ -1,5 +1,5 @@
 import {QUALITY,mixWet} from "./dsp.mjs";
-import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
+import {frequencyFromSlider,sliderFromFrequency,sliderPositionFromFrequency,holdFromFrequency,drawCrusherPreview} from "./crusher-visual.mjs";
 import {drawFrequencyGraph} from "./graph.mjs";
 import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
@@ -27,7 +27,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
-let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null;
+let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null,crusherUnitControl=null;
 // #79 M3: exactly one canonical Wet scalar; slider and typed % are views.
 const wetBinding=createParameterBinding(defineParameter({
   id:"wet",min:0,max:1,defaultValue:1,units:["percent"],
@@ -275,7 +275,7 @@ function settings(){
   const {low,high}=bounds();
   const qualityIndex=({eco:0,standard:1,high:2}[$("#quality").value]);
   const runtimeSampleRate=state.ctx?.sampleRate||state.decoded?.sampleRate||48000;
-  const crusherRateHz=clamp(scalar("crusher-hold",()=>frequencyFromSlider($("#crusher-hold").value,runtimeSampleRate)),0,runtimeSampleRate);
+  const crusherRateHz=clamp(crusherUnitControl?.value??scalar("crusher-hold",()=>frequencyFromSlider($("#crusher-hold").value,runtimeSampleRate)),0,runtimeSampleRate);
   const harmonic=harmonicParameters();
   const value={
     low,high,curvature:scalar("curvature",()=>Number($("#curvature").value)),
@@ -388,18 +388,18 @@ function applyConfigurationSilently(c){
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
   zeroDecayBinding.setCanonical(v.zeroReflectDecay,{notify:false});
   invertBinding.setCanonical(v.invert,{notify:false});
+  crusherUnitControl?.setCanonical(v.crusherRateHz);
   state.precise=Object.assign(Object.create(null),{
     curvature:v.curvature,
     "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
-    "crusher-bits":v.manualCrusherBits,"crusher-hold":v.crusherRateHz
+    "crusher-bits":v.manualCrusherBits
   });
   for(const [id,val] of Object.entries({
     curvature:v.curvature,
     "axis-shift":v.axisShift,
     "a-band":v.aBandBins,"a-quality":v.aQuality,
-    "crusher-bits":v.manualCrusherBits,
-    "crusher-hold":sliderFromFrequency(v.crusherRateHz,state.ctx?.sampleRate||state.decoded.sampleRate)
+    "crusher-bits":v.manualCrusherBits
   }))$("#"+id).value=String(val);
   refreshWetView(true);
   refreshAReverbView(true);
@@ -504,8 +504,7 @@ function labels(id=""){
   $("#a-quality-info").textContent="品質 "+p.aQuality+"/100 · 最大ピーク "+budget+"本/窓（基準 "+profile.count+"本）・候補閾値 "+floor+"%（窓内最大値比）。算術演算量の上限は基準の約 "+(budget/profile.count).toFixed(1)+"倍。実CPU時間は再生中のステータスへ表示。残差補完 "+p.aQuality+"%（実験）を適用。フォルマント・過渡の完全復元は未検証です。";
   showNumber("a-reverb-value",100*p.aReverb);
   showNumber("crusher-bits-value",p.crusherBits||Number($("#crusher-bits").value));
-  $("#crusher-hold-value").max=String(p.sampleRate);
-  showNumber("crusher-hold-value",p.crusherRateHz);
+  crusherUnitControl?.refresh();
   $("#crusher-rate-explainer").textContent=p.crusherHold===0?
     "指定 0 Hz → 標本更新停止（最初の量子化値を保持・ゼロHz/DC）":
     "指定 "+displayNumber(p.crusherRateHz)+" Hz → 実効 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz（"+p.crusherHold+"サンプル保持）"+(p.crusherBits?" · "+p.crusherBits+" bit 量子化":" · 加工OFF");
@@ -1275,14 +1274,31 @@ slopeUnitControl=mountParameterUnitField({
   railRoot:$("#axis-slope"),getDigits:displayDigits,initialValue:1,
   onValueChange:()=>{updateParams("axis-slope");updateEngineInfo();}
 });
+// #309: Crusher uses the same frequency notation/canonical value owner as
+// the other frequency inputs. Its DSP's integer sample interval is a distinct
+// physical effect and never used to round the requested frequency on input.
+const crusherSampleRate=()=>state.ctx?.sampleRate||state.decoded?.sampleRate||48000;
+crusherUnitControl=mountFrequencyUnitField({
+  descriptor:defineParameter({
+    id:"crusher-hold",min:0,max:192000,defaultValue:12000,
+    units:["hz","note","percent"],digits:3,
+    rail:{toPosition:hz=>sliderPositionFromFrequency(hz,crusherSampleRate())/1000,
+      fromPosition:t=>frequencyFromSlider(t*1000,crusherSampleRate())},
+    snapByUnit:{hz:false}
+  }),
+  field:$("#crusher-hold-value"),select:$("#crusher-hold-unit"),
+  slider:$("#crusher-hold"),railRoot:$("#crusher-hold"),
+  getDigits:displayDigits,initialValue:12000,
+  onValueChange:()=>{updateParams("crusher-hold");updateEngineInfo();}
+});
+$("#crusher-hold").addEventListener("input",()=>crusherUnitControl.fromSlider());
 // Other controls retain the legacy input binding until independently migrated.
 const inline={
   "a-band-value":["a-band",v=>v,"a-band",1,8],
   "a-quality-value":["a-quality",v=>v,"a-quality",0,100],
   "curvature-value":["curvature",v=>v,"curvature",0,1],
   "axis-shift-value":["axis-shift",v=>v,"axis-shift",-2,2],
-  "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16],
-  "crusher-hold-value":["crusher-hold",v=>sliderFromFrequency(v,state.ctx?.sampleRate||state.decoded?.sampleRate||48000),"crusher-hold",0,192000]
+  "crusher-bits-value":["crusher-bits",v=>v,"crusher-bits",2,16]
 };
 for(const [id,[range,convert,changed,min,max]] of Object.entries(inline)){
   if(id==="axis-shift-value")continue; // dynamic u/%/Hz/ratio projection below
@@ -1483,11 +1499,11 @@ $("#axis-zero").addEventListener("click",()=>{
   updateEngineInfo();
 });
 
-for(const id of ["crusher-enabled","crusher-bits","crusher-hold"]){
+for(const id of ["crusher-enabled","crusher-bits"]){
   $("#"+id).addEventListener("input",()=>{
     delete state.precise[id];
     $("#crusher-bits-value").value=$("#crusher-bits").value;
-    $("#crusher-hold-value").value=String(Math.round(frequencyFromSlider($("#crusher-hold").value,state.ctx?.sampleRate||state.decoded?.sampleRate||48000)));
+    crusherUnitControl.refresh();
     updateParams(id);updateEngineInfo();
   });
 }
@@ -1753,7 +1769,7 @@ $("#settings-reset").addEventListener("click",()=>{
   $("#crusher-enabled").checked=false;
   $("#crusher-bits").value="8";$("#crusher-hold").value="880";
   $("#crusher-bits-value").value="8";
-  $("#crusher-hold-value").value="12000";
+  crusherUnitControl?.setCanonical(12000);
   refreshWetView(true);
   refreshAReverbView(true);
   refreshZeroReflectView(true);
