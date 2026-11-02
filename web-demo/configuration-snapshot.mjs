@@ -69,6 +69,15 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
   if(c.flags.pivotFollowLow&&c.values.axisPivot>0&&
     c.values.axisPivot<c.values.low)
     throw Error("Pivot is below enabled lower bound");
+  if(c.view!==undefined){
+    const vr=c.view.virtualRoot;
+    if(!vr||!["target","keep-spacing"].includes(vr.placement))throw Error("Invalid virtual root placement");
+    for(const key of ["F","H"]){
+      if(!Number.isFinite(vr.scopes?.[key])||vr.scopes[key]<1||
+        !["hz","note","percent"].includes(vr.units?.[key])||
+        typeof vr.snaps?.[key]!=="boolean")throw Error("Invalid virtual root view");
+    }
+  }
   if(!c.audio||typeof c.audio!=="object")throw Error("Missing audio snapshot");
   const a=c.audio,h=c.harmonic;
   if(Math.abs(a.axisReference-h.r*h.F)>Math.max(1e-8,Math.abs(h.r*h.F)*1e-12)||
@@ -78,10 +87,16 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
     throw Error("DSP/harmonic canonical mismatch");
   return c;
 }
-export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio}){
+export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio,view}){
   const c={version:1,sourceToken,sampleRate,
-    harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags},audio:{...audio}};
+    harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags},audio:{...audio},
+    ...(view?{view:{virtualRoot:{...view.virtualRoot,
+      scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}}}}:{})};
   validateSoundConfiguration(c);
   for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio])Object.freeze(value);
+  if(c.view){
+    for(const value of [c.view.virtualRoot.scopes,c.view.virtualRoot.units,c.view.virtualRoot.snaps])Object.freeze(value);
+    Object.freeze(c.view.virtualRoot);Object.freeze(c.view);
+  }
   return Object.freeze(c);
 }
