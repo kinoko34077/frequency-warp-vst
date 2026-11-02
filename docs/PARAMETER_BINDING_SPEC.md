@@ -263,3 +263,15 @@ The same `createParameterUnitSwitch` exported by `web-demo/frequency-unit-field.
 - The module is a local browser ES module API, not a HTTP API or a change to Rust/WASM/VST3 host ABI.
 
 **Evidence gates:** `web-demo/percent-parameter-field.test.mjs` (valid/invalid/precision/focus/change/disposal), `capability-reuse-check.test.mjs` (negative duplicated-controller fixtures), full Web/Chrome/Rust/WASM + offline regression, formal PR review, main readback and Pages only if all required gates pass. This entry is implemented and accepted on exact main `769727696168fe62d62bd14abce0bb8c94111030`, with Browser/Rust/WASM/Chrome #39515770022, Offline #39515769602 and Pages/public-entry #39515769407 all SUCCESS. The remaining M2 coordinate/count and M3 `state.precise` migration stay OPEN; this is not full #79 completion.
+
+
+## Crusher additional sample-interval view (#309; 2026-11-03)
+
+Crusher 打刻速度は既存の共通単位切替（Hz／音高／レール%）に **samples（サンプル間隔）** を追加する。別の独立パラメータ・個別パーサを作らず、共有 `parameter-units.mjs` と `parameter-binding.mjs` の `frequencySamples` 次元を使用する。他の周波数パラメータへ samples を無条件追加しない。
+
+- 正本は `crusherRateHz`（物理的な1秒当たり更新数、f64）であり、単位切替だけでは値を変更しない。実際の処理サンプルレート `Fs` を動的に参照する。
+- **Hz→samples表示** は `N_view = Fs / Hz`（0 Hz は凍結表示0）。440Hz／48kHz は約109.091 samplesであり、「109 samplesで固定」と偽って表示しない。
+- **samples直接入力** は0（更新停止）または1以上の整数のみを受理し、`Hz=Fs/N` として確定する。1 samples は毎サンプル更新、109 samples／48kHzは約440.36697Hz。整数でない直接入力は値を保持しエラー扱い。
+- DSPは非整数 `Fs/Hz` に対してfractional clockで指定平均Hzを実現し、浮動小数点誤差範囲で厳密に `Fs/N` と一致する周波数は整数N周期でスケジュールする。単に周波数指定を `round(Fs/Hz)` へ丸める旧動作は避ける。
+- A/Bは Hz正本・選択中samples単位・他の非Settings表示状態・吸着状態をそれぞれ保存復元する。現行表示では小数1桁、編集時は最低3桁精度を使用し、描画丸めをDSPへ逆流させない。
+- 48kHz/44.1kHzで整数Nの全tick間隔、非整数Hzの平均更新率、Chrome unit toggle/typed/slider、A/B復元、realtime/offline一致を機械検証。0Hz・1sample・440Hz/109samplesを反例境界として固定する。
