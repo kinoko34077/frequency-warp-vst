@@ -39,7 +39,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
         "memory","warp_alloc_f32","warp_free_f32","warp_stream_create",
         "warp_stream_free","warp_stream_reset","warp_stream_set",
         "warp_stream_create_ext","warp_stream_set_ext",
-        "warp_stream_process","warp_stream_latency","warp_stream_set_crusher","warp_stream_set_crusher_rate_hz",
+        "warp_stream_process","warp_stream_latency","warp_stream_set_crusher","warp_stream_set_crusher_rate_hz","warp_stream_set_crusher_exact",
         "warp_stream_set_transform","warp_stream_set_geometry","warp_stream_set_a_options","warp_stream_set_a_band","warp_stream_set_a_quality","warp_stream_set_zero_reflect_gain","warp_stream_set_zero_reflect_decay"
       ];
       for (const name of required) {
@@ -71,8 +71,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
          e.warp_stream_set_zero_reflect_decay(stream,options.zeroReflectDecay)!==0){
         e.warp_stream_free(stream);throw Error("Rust zero-frequency reflection gain failed");
       }
-      if(e.warp_stream_set_crusher(stream,options.crusherBits,options.crusherHold)!==0 ||
-         e.warp_stream_set_crusher_rate_hz(stream,options.crusherRateHz)!==0){
+      if(e.warp_stream_set_crusher_exact(stream,options.crusherBits,options.crusherRateHz)!==0){
         e.warp_stream_free(stream);throw Error("Rust bitcrusher initialization failed");
       }
       const frames=128*channels;
@@ -136,8 +135,7 @@ class FrequencyWarpProcessor extends AudioWorkletProcessor {
     if(zero!==0)return zero;
     const decay=e.warp_stream_set_zero_reflect_decay(stream,p.zeroReflectDecay);
     if(decay!==0)return decay;
-    const old=e.warp_stream_set_crusher(stream,p.crusherBits,p.crusherHold);
-    return old!==0?old:e.warp_stream_set_crusher_rate_hz(stream,p.crusherRateHz);
+    return e.warp_stream_set_crusher_exact(stream,p.crusherBits,p.crusherRateHz);
   }
   command(data) {
     if (!data) return;
