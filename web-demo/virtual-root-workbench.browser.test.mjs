@@ -223,6 +223,8 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.click("#compare-save-b");
       await page.click("#compare-load-a");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"3");
+      assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
+      assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
       assert.equal(await page.$eval("#vr-placement",el=>el.value),"target");
       assert.equal(await page.$eval("#vr-source-f-scale",el=>el.value),"1000");
       assert.equal(await page.$eval("#tab-map",el=>el.getAttribute("aria-selected")),"true");
@@ -231,6 +233,8 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#sine-volume",el=>el.value),"25");
       await page.click("#compare-load-b");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"-5");
+      assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"off");
+      assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"off");
       assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
       assert.equal(await page.$eval("#vr-source-f-scale",el=>el.value),"5000");
       assert.equal(await page.$eval('[data-vr-unit-for="source-f"][data-vr-unit="note"]',el=>el.getAttribute("aria-pressed")),"true");
