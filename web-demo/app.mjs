@@ -7,7 +7,7 @@ import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
-import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration} from "./harmonics-panel.mjs";
+import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration,captureHarmonicSnapState,restoreHarmonicSnapState} from "./harmonics-panel.mjs";
 import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
 import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
 import {captureComparisonView,restoreComparisonView,validateComparisonView} from "./comparison-view.mjs";
