@@ -82,7 +82,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#mode",el=>el.value),"reciprocal");
     assert.equal(await page.$eval("#mode",el=>[...el.options].some(x=>x.value==="blend")),false,"simple blend must not be user-selectable");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
-    assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
+    assert.equal(await page.$eval("#decimal-digits",el=>el.value),"1");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"0");
     assert.equal(await page.$eval("#sine-heading",el=>el.textContent),"補助音");
     assert.equal(await page.$eval("#sine-volume",el=>el.value),"25");
