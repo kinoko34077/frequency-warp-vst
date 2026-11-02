@@ -189,7 +189,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await setWet("12.345");
     assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
       "typed 12.345% must not be quantized to the coarse slider step");
-    assert.equal(await page.$eval("#wet-value",el=>el.value),"12.345");
+    assert.equal(await page.$eval("#wet-value",el=>el.value),"12.3");
     const railProxy=Number(await page.$eval("#wet",el=>el.value));
     assert.ok(Math.abs(railProxy-.125)<1e-9,
       "range is only a 0.005-spaced gesture/view proxy");
@@ -242,7 +242,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#compare-load-a");
     assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
       "A/B restore must retain Float64, not slider proxy");
-    assert.equal(await page.$eval("#wet-value",el=>el.value),"12.345");
+    assert.equal(await page.$eval("#wet-value",el=>el.value),"12.3");
     assert.ok(Math.abs(await canonicalAReverb()-.33333)<1e-12,
       "A/B restores reverb Float64 independently of whole-percent slider");
     assert.ok(Math.abs(await canonicalReflectGain()-.37125)<1e-12,

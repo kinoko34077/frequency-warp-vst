@@ -82,7 +82,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#mode",el=>el.value),"reciprocal");
     assert.equal(await page.$eval("#mode",el=>[...el.options].some(x=>x.value==="blend")),false,"simple blend must not be user-selectable");
     assert.equal(await page.$eval("#harmonic-count",el=>el.value),"5");
-    assert.equal(await page.$eval("#decimal-digits",el=>el.value),"3");
+    assert.equal(await page.$eval("#decimal-digits",el=>el.value),"1");
     assert.equal(await page.$eval("#graph-log",el=>el.value),"0");
     assert.equal(await page.$eval("#sine-heading",el=>el.textContent),"補助音");
     assert.equal(await page.$eval("#sine-volume",el=>el.value),"25");
@@ -368,13 +368,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       el.value="0.123";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     assert.equal(await page.$eval("#axis-shift",el=>Number(el.value)),0.1);
-    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/43\.05/);
+    assert.match(await page.$eval("#coordinate-details",el=>el.textContent),/43(?:\.0)?\b/);
     await page.$eval("#axis-shift-value",el=>el.blur());
-    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.1);
+    assert.equal(Number(await page.$eval("#axis-shift-value",el=>el.dataset.fwCanonical)),0.123);
     // Exact endpoint coordinates expose meaningful physical units, not Hz
     // aliases at a nonlinear intermediate p.
     await page.select("#axis-shift-unit","hz");
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),43);
+    await page.focus("#axis-shift-value");
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),43.05);
+    await page.$eval("#axis-shift-value",el=>el.blur());
     await page.$eval("#axis-shift-value",el=>{
       el.value="70";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -393,9 +397,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       el.value="0.123";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.select("#axis-shift-unit","percent");
-    assert.ok(Math.abs(await page.$eval("#axis-shift-value",el=>Number(el.value))-53.075)<.01);
+    assert.ok(Math.abs(await page.$eval("#axis-shift-value",el=>Number(el.value))-53.1)<.01);
+    assert.equal(Number(await page.$eval("#axis-shift-value",el=>el.dataset.fwCanonical)),0.123);
     await page.select("#axis-shift-unit","coordinate");
-    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.123);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.1);
     await page.select("#decimal-digits","2");
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),0.12);
     await page.select("#decimal-digits","3");
@@ -676,7 +681,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#low-value",el=>el.dataset.fwCanonical),savedA.low);
     assert.equal(await page.$eval("#fundamental",el=>el.dataset.fwCanonical),savedA.fundamental);
     await page.click("#compare-load-b");
-    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.123);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.1);
+    assert.equal(Number(await page.$eval("#axis-shift-value",el=>el.dataset.fwCanonical)),.123);
     await page.click("#compare-load-a");
     assert.ok(Math.abs(await page.$eval("#axis-shift",el=>Number(el.value))-
       Number(savedA.move))<.051,"restoration leaves one consistent saved processing position");

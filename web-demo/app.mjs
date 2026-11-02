@@ -93,7 +93,7 @@ const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":hz<20?Number(h
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 const concise3=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
-const displayDigits=()=>Number($("#decimal-digits")?.value||3);
+const displayDigits=()=>Number($("#decimal-digits")?.value||1);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
 function refreshWetView(force=false){
   const field=$("#wet-value"),rail=$("#wet");
@@ -143,7 +143,7 @@ const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="zero-decay"?zeroDecayBinding.value:
   name==="invert"?invertBinding.value:(state.precise[name]??fallback());
 let lastRenderedAxisShiftView=null;
-function refreshAxisShiftView(p,force=false){
+function refreshAxisShiftView(p,force=false,editing=false){
   const unitSelector=$("#axis-shift-unit"),field=$("#axis-shift-value");
   const allowed=axisShiftUnits(p.curvature);
   for(const option of unitSelector.options)option.disabled=!allowed.includes(option.value);
@@ -151,9 +151,10 @@ function refreshAxisShiftView(p,force=false){
   const unit=unitSelector.value,ref=p.axisReference;
   const toView=u=>axisShiftView(u,unit,p.curvature,ref);
   const min=toView(-2),max=toView(2);
+  field.dataset.fwCanonical=String(p.axisShift);
   field.min=String(min);field.max=String(max);field.step=unit==="coordinate"?"0.001":"any";
   if(force||document.activeElement!==field){
-    field.value=String(Number(toView(p.axisShift).toFixed(displayDigits())));
+    field.value=String(Number(toView(p.axisShift).toFixed(editing?3:displayDigits())));
     // A formatted coordinate/percent/Hz/ratio view is never the Float64
     // authority. Reconfirming an unchanged presentation is not a DSP edit.
     lastRenderedAxisShiftView=field.value;
@@ -1399,7 +1400,7 @@ for(const [id,binding,refresh,onChanged] of typedPercentEditors)
  };
  moveField.addEventListener("input",parseMove);
  moveField.addEventListener("change",parseMove);
- moveField.addEventListener("focus",()=>{refreshAxisShiftView(settings(),true);moveField.select();});
+ moveField.addEventListener("focus",()=>{refreshAxisShiftView(settings(),true,true);moveField.select();});
  moveField.addEventListener("blur",()=>{parseMove();refreshAxisShiftView(settings(),true);delete moveField.dataset.invalid;});
  moveField.addEventListener("keydown",e=>{if(e.key==="Enter")moveField.blur();});
  moveUnit.addEventListener("change",()=>refreshAxisShiftView(settings(),true));
@@ -1745,7 +1746,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
-    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"3","graph-log":"0","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"1","graph-log":"0","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   wetBinding.reset({notify:false});

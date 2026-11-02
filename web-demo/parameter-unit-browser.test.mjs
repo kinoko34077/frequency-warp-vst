@@ -77,7 +77,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#low-unit","percent");
     const pct=Number(await page.$eval("#low-value",el=>el.value));
     const expected=100*(.2+.8*Math.log(exact/20)/Math.log(1000));
-    assert.ok(Math.abs(pct-expected)<.01,"nonlinear percent: "+pct+" expected "+expected);
+    assert.ok(Math.abs(pct-expected)<.051,"nonlinear percent: "+pct+" expected "+expected);
     await page.$eval("#low-value",el=>{
       el.value="50";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -175,8 +175,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#low-value",el=>el.blur());
     assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c");
     await page.focus("#low-value");
-    assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25c",
-      "focus must not reveal fractional cents");
+    assert.equal(await page.$eval("#low-value",el=>el.value),"A4+25.375c",
+      "focused editor exposes fractional cents independently of display rounding");
     await page.select("#low-unit","hz");
     // Puppeteer's select() dispatches change without focusing the select.
     // Explicitly blur and refocus to expose the full canonical Hz editor.
@@ -212,7 +212,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#high-unit","percent");
     const highPercent=Number(await page.$eval("#high-value",el=>el.value));
     const expectedHighPercent=100*(.2+.8*Math.log(highExact/20)/Math.log(1000));
-    assert.ok(Math.abs(highPercent-expectedHighPercent)<.01);
+    assert.ok(Math.abs(highPercent-expectedHighPercent)<.051);
     await page.select("#high-unit","note");
     await page.$eval("#high-value",el=>{
       el.value="invalid";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -270,7 +270,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pivot-unit","percent");
     const pivotPct=Number(await page.$eval("#axis-pivot-value",el=>el.value));
     const expectedPivotPct=100*(.2+.8*Math.log(pivotExact/20)/Math.log(1000));
-    assert.ok(Math.abs(pivotPct-expectedPivotPct)<.01);
+    assert.ok(Math.abs(pivotPct-expectedPivotPct)<.051);
     await page.select("#pivot-unit","note");
     await page.$eval("#axis-pivot",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -312,7 +312,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#fundamental-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.value))-
-      100*(.2+.8*Math.log((fExact/4)/20)/Math.log(1000)))<.01,
+      100*(.2+.8*Math.log((fExact/4)/20)/Math.log(1000)))<.051,
       "linked F percentage must share its pivot octave rail");
     await page.select("#fundamental-unit","hz");
     await page.focus("#fundamental");
@@ -419,9 +419,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#pitch-ratio-unit","cents");
     await page.select("#pitch-ratio-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.value))-
-      100*(ratioExact-.25)/3.75)<.01, "ratio% uses the physical linear rail");
-    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.value))-
-      ratioExact*440/4)<.001, "r edit still updates linked P");
+      100*(ratioExact-.25)/3.75)<.051, "ratio% uses the physical linear rail");
+    assert.ok(Math.abs(Number(await page.$eval("#axis-pivot-value",el=>el.dataset.fwCanonical))-
+      ratioExact*440/4)<.001, "r edit still updates linked P exactly, regardless of display digits");
     await page.select("#pitch-ratio-unit","ratio");
     await page.$eval("#pitch-ratio",el=>{
       el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -472,9 +472,14 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"any");
     await page.keyboard.up("Control");
     assert.equal(await page.$eval("#pitch-ratio-range",el=>el.step),"0.05");
+    // Focus exposes the 3-digit edit value even when the at-rest label is
+    // rounded to one digit. A change-only event without focus isn't typing.
+    await page.focus("#pitch-ratio");
     await page.$eval("#pitch-ratio",el=>{
-      el.value="1";el.dispatchEvent(new Event("change",{bubbles:true}));
+      el.value="1";el.dispatchEvent(new Event("input",{bubbles:true}));
+      el.dispatchEvent(new Event("change",{bubbles:true}));
     });
+    await page.$eval("#pitch-ratio",el=>el.blur());
     assert.match(await page.$eval(
       "#pitch-ratio-unit + .unit-switch button[data-unit=semitones]",el=>el.title),
       /半音|セント/,"unit tooltip must not be replaced by snap help");
@@ -489,8 +494,10 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="A3+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#fundamental");
-    assert.ok(Math.abs(Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical))-
-      4*220*2**(25/1200))<1e-9, "linked P→F fractional cents must stay exact");
+    const linkedExactF=Number(await page.$eval("#fundamental",el=>el.dataset.fwCanonical));
+    assert.ok(Math.abs(linkedExactF-4*220*2**(25/1200))<1e-9,
+      "linked P→F fractional cents must stay exact (actual F="+linkedExactF+
+      ", physical P="+await page.$eval("#axis-pivot-value",el=>el.dataset.fwCanonical)+")");
     await page.$eval("#fundamental",el=>el.blur());
     await page.select("#pivot-unit","hz");
 
@@ -512,7 +519,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#carrier",el=>el.blur());
     await page.select("#carrier-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#carrier",el=>el.value))-
-      100*(1+999*Math.log(carrierExact)/Math.log(20000))/1000)<.01,
+      100*(1+999*Math.log(carrierExact)/Math.log(20000))/1000)<.051,
       "carrier percent must follow original zero+positive logarithmic rail");
     // Even below 1Hz, the view percentage must convert both directions.
     await page.$eval("#carrier",el=>{
@@ -616,7 +623,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.select("#a-min-unit","percent");
     const aMinPct=Number(await page.$eval("#a-min-value",el=>el.value));
     const expectedAMinPct=100*(.2+.8*Math.log(aMinExact/20)/Math.log(1000));
-    assert.ok(Math.abs(aMinPct-expectedAMinPct)<.01);
+    assert.ok(Math.abs(aMinPct-expectedAMinPct)<.051);
     await page.select("#a-min-unit","note");
     await page.$eval("#a-min-value",el=>{
       el.value="garbage";el.dispatchEvent(new Event("change",{bubbles:true}));
@@ -782,7 +789,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#sine-hz",el=>el.blur());
     await page.select("#sine-unit","percent");
     assert.ok(Math.abs(Number(await page.$eval("#sine-hz",el=>el.value))-
-      100*(69.25-36)/(await page.$eval("#sine-pitch",el=>Number(el.max))-36))<.01);
+      100*(69.25-36)/(await page.$eval("#sine-pitch",el=>Number(el.max))-36))<.051);
     await page.select("#sine-unit","hz");
     await page.keyboard.down("Alt");
     await page.$eval("#sine-pitch",el=>{
