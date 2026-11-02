@@ -705,6 +705,25 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     // the MIDI36..20kHz track retains .01 semitone granularity.
     assert.equal(await page.$eval("#sine-unit",el=>el.getBoundingClientRect().height>0),true);
     assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
+    // #309 Crusher requested rate uses the existing shared frequency unit
+    // icons and a Float64 canonical rate, not a separate 3-digit text store.
+    assert.deepEqual(await page.$eval("#crusher-hold-unit option",els=>els.map(x=>x.value)),["hz","note","percent"]);
+    await page.$eval("#crusher-hold-value",el=>{
+      el.value="440";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(Number(await page.$eval("#crusher-hold-value",el=>el.dataset.fwCanonical)),440);
+    await page.select("#crusher-hold-unit","note");
+    assert.match(await page.$eval("#crusher-hold-value",el=>el.value),/^A4/);
+    await page.select("#crusher-hold-unit","percent");
+    await page.select("#crusher-hold-unit","hz");
+    assert.equal(Number(await page.$eval("#crusher-hold-value",el=>el.dataset.fwCanonical)),440);
+    await page.$eval("#crusher-hold-value",el=>{
+      el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    assert.equal(Number(await page.$eval("#crusher-hold-value",el=>el.dataset.fwCanonical)),0);
+    await page.$eval("#crusher-hold-value",el=>{
+      el.value="12000";el.dispatchEvent(new Event("input",{bubbles:true}));
+    });
     assert.equal(await page.$eval("#sine-pitch",el=>el.dataset.fwSnap),"on");
     // #309: 8kHz was previously clamped to C7 (~2.09kHz). Unit switching
     // and full-size note rail must not alter the exact canonical frequency.
