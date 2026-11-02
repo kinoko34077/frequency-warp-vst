@@ -1240,7 +1240,7 @@ const pivotNormalizedFromHz=hz=>hz<=0?0:hz<=20?
 const pivotHzFromNormalized=t=>t<=0?0:pivotFromScale(Math.max(1,t*1000));
 pivotUnitControl=mountFrequencyUnitField({
   descriptor:defineParameter({
-    id:"axis-pivot",min:0,max:20000,defaultValue:350,
+    id:"axis-pivot",min:0,max:20000,defaultValue:0,
     units:["hz","note","percent"],
     rail:{toPosition:pivotNormalizedFromHz,fromPosition:pivotHzFromNormalized},
     digits:3,
@@ -1248,7 +1248,7 @@ pivotUnitControl=mountFrequencyUnitField({
   }),
   field:$("#axis-pivot-value"),select:$("#pivot-unit"),
   slider:$("#axis-pivot"),railRoot:$("#axis-pivot"),
-  getDigits:displayDigits,initialValue:350,
+  getDigits:displayDigits,initialValue:0,
   onValueChange:()=>{
     if(isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams("axis-pivot");updateEngineInfo();

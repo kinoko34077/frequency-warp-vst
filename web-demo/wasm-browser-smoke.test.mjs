@@ -99,6 +99,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(shapeMarker.text,/固定点.*Hz/);
     assert.ok(shapeMarker.height>0&&!shapeMarker.parent.includes("info-body"),
       "fold/reference Hz was accidentally hidden behind the ⓘ tooltip");
+    // #309: untouched slope uses 0Hz anchor, so s=2 is f→2f even
+    // for low frequencies; the nonzero P setting remains user-selectable.
+    assert.equal(await page.$eval("#axis-pivot-value",el=>Number(el.value)),0);
+    assert.equal(await page.$eval("#axis-pivot",el=>Number(el.value)),0);
     // Opt-in chain couples H=rF/m with axis pivot and supports reverse input.
     assert.equal(await page.$eval("#harmonic-pivot-link",el=>el.checked),false);
     // Direct F↔P is separate from virtual harmonic H=rF/m.
