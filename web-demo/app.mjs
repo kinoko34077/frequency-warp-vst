@@ -672,7 +672,7 @@ function drawCurve(){
     '<mfrac><mi>f</mi><mi>M</mi></mfrac><mo>+</mo><mi>α</mi>'+
     '<msub><mi>g</mi><mtext>log</mtext></msub><mo>(</mo><mi>f</mi><mo>)</mo>'+
     '</mrow></math> M＝表示上限。低域拡大では 0.001Hz 起点の対数尺度。';
-  const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
+  const isCrushed=p.crusherBits>0&&p.crusherRateHz<p.sampleRate;
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=p.crusherBits===0;
   if(p.crusherBits>0)$("#crusher-alias-note").textContent=p.crusherHold===0?
