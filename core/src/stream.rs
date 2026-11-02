@@ -233,6 +233,7 @@ impl Stream {
         }
         self.crusher_bits=bits;self.crusher_hold=hold;
         self.crusher_rate_hz=None;
+        self.crusher_integer_period=None;
         Ok(())
     }
     /// Exact requested sample-update Hz. 0Hz means freeze the first sample.
@@ -242,6 +243,16 @@ impl Stream {
             return Err("invalid Crusher frequency");
         }
         if self.crusher_rate_hz!=Some(hz){self.crusher_phase=0.0;}
+        // Detect only genuinely exact Fs/N ratios. A merely nearby requested
+        // Hz must retain the fractional clock, not be rounded to N samples.
+        self.crusher_integer_period=if hz>0.0 {
+            let period=(self.sample_rate/hz).round();
+            if period>=1.0 && period<=1_000_000_000.0 &&
+                (self.sample_rate/period-hz).abs()<=
+                  4.0*f64::EPSILON*hz.max(self.sample_rate/period) {
+                Some(period as u32)
+            }else{None}
+        }else{None};
         self.crusher_rate_hz=Some(hz);
         Ok(())
     }
