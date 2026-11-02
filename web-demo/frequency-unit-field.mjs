@@ -123,7 +123,7 @@ export function createParameterUnitSwitch({doc,label,choices,selected,onSelect,u
   if(!doc||!Array.isArray(choices)||!choices.length||
      typeof selected!=="function"||typeof onSelect!=="function")
     throw new TypeError("unit switch requires choices, selected and onSelect");
-  const glyph={hz:"Hz",note:"♪",percent:"%",ratio:"×",semitones:"♩",cents:"¢",coordinate:"u",integer:"#"};
+  const glyph={hz:"Hz",note:"♪",percent:"%",samples:"#",ratio:"×",semitones:"♩",cents:"¢",coordinate:"u",integer:"#"};
   const root=doc.createElement("div");root.className="unit-switch";
   root.setAttribute("role","group");root.setAttribute("aria-label",label||"単位");
   const intervalPair=choices.some(item=>item.value==="semitones")&&
@@ -312,7 +312,12 @@ export function mountParameterUnitField({descriptor,field,select,slider,railRoot
     const old=binding.value;
     const normalized=(Number(slider.value)-Number(slider.min))/
       (Number(slider.max)-Number(slider.min));
-    binding.setPosition(normalized,{
+    if(binding.unit==="samples"){
+      const requested=descriptor.rail.fromPosition(normalized);
+      const rate=descriptor.sampleRate();
+      const interval=requested<=0?0:Math.max(1,Math.round(rate/requested));
+      binding.setCanonical(interval===0?0:rate/interval,{origin:"slider",snap:false});
+    }else binding.setPosition(normalized,{
       origin:"slider",
       // Physical minimum/maximum are explicit endpoints, never replace
       // them with a nearby musical grid snap (e.g. carrier 20 kHz).
