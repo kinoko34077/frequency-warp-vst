@@ -28,6 +28,20 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         "Changing the linear span must not alter canonical H");
       await page.select("#vr-target-h-scale","200");
       assert.equal(await page.$eval("#vr-target-h-rail",el=>el.max),"200");
+      // #309: selecting an operating rail span persists, even after a typed
+      // value outside it. Displayed gesture endpoint may clip; canonical H does not.
+      await page.$eval("#vr-target-h",el=>{
+        el.value="220";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"220");
+      assert.equal(await page.$eval("#vr-target-h-scale",el=>el.value),"200");
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.max),"200");
+      assert.equal(await page.$eval("#vr-target-h-rail",el=>el.value),"200");
+      await page.$eval("#vr-target-h",el=>{
+        el.value="87.5";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
+      assert.equal(await page.$eval("#vr-target-h-scale",el=>el.value),"200");
       assert.equal(await page.$eval("#vr-step-m-rail",el=>el.step),"1");
       assert.equal(await page.$eval("#vr-first-index-rail",el=>el.min),"-129");
       assert.equal(await page.$eval("#vr-details",el=>el.open),false);
