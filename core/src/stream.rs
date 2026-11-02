@@ -274,6 +274,9 @@ impl Stream {
             let crusher_tick=if let Some(hz)=self.crusher_rate_hz{
                 if hz==0.0{self.crusher_counter==0}
                 else if hz>=self.sample_rate{true}
+                else if let Some(period)=self.crusher_integer_period{
+                    self.crusher_counter%(period as u64)==0
+                }
                 else if self.crusher_counter==0{true}
                 else{
                     self.crusher_phase+=hz/self.sample_rate;
