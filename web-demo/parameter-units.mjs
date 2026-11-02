@@ -18,7 +18,7 @@ export const PARAMETER_KIND=Object.freeze({
  invert:"fraction",curvature:"fraction","zero-reflect":"fraction",
  "zero-decay":"fraction",wet:"fraction","a-reverb":"fraction",
  "graph-log":"fraction","a-quality":"fraction",
- "axis-shift":"coordinate","crusher-bits":"integer","crusher-hold":"frequency","a-band":"integer",
+ "axis-shift":"coordinate","crusher-bits":"integer","crusher-hold":"frequencySamples","a-band":"integer",
  denominator:"integer",numerator:"integer","harmonic-index":"integer"
 });
 export function compatibleUnits(parameter){
@@ -48,7 +48,7 @@ export function ratioToSemitones(r){
  if(!finite(r)||r<=0)throw RangeError("ratio must be positive");
  return 12*Math.log2(r);
 }
-export function parseView(value,unit,{id,fromRail}={}){
+export function parseView(value,unit,{id,fromRail,sampleRate}={}){
  if(id&&!compatibleUnits(id).includes(unit))throw RangeError("unit incompatible with parameter");
  if(unit==="note")return noteCentsToHz(value);
  const x=Number(String(value).trim().replace(/(?:Hz|%|c)$/i,""));
@@ -60,7 +60,7 @@ export function parseView(value,unit,{id,fromRail}={}){
  if(unit==="semitones"||unit==="cents")return semitonesToRatio(x/(unit==="cents"?100:1));
  return x;
 }
-export function formatView(value,unit,{id,toRail,digits=3}={}){
+export function formatView(value,unit,{id,toRail,sampleRate,digits=3}={}){
  if(id&&!compatibleUnits(id).includes(unit))throw RangeError("unit incompatible with parameter");
  if(!finite(value))throw RangeError("invalid canonical number");
  if(unit==="note")return hzToNoteCents(value,digits);
