@@ -6,7 +6,7 @@ import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 // The entire panel is a UI adapter. Spectral mapping and Fold frequency
 // resolve through core/src/lib.rs compiled to the shared Rust/WASM artifact.
 const $=id=>document.querySelector(id);
-const precision=()=>Number($("#decimal-digits")?.value||3);
+const precision=()=>Number($("#decimal-digits")?.value||1);
 const fmt=value=>Number.isFinite(value)?Number(value.toFixed(precision())).toString():"—";
 const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio","carrier"];
 const preciseFields=new Map();
