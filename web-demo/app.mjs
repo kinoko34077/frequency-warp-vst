@@ -93,7 +93,7 @@ const hzText=hz=>hz>=1000?(hz/1000).toFixed(hz>=10000?1:2)+" kHz":hz<20?Number(h
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const round3=value=>Math.round((value+Number.EPSILON)*1000)/1000;
 const concise3=value=>Number.isFinite(value)?Number(value.toFixed(3)).toString():"—";
-const displayDigits=()=>Number($("#decimal-digits")?.value||3);
+const displayDigits=()=>Number($("#decimal-digits")?.value||1);
 const displayNumber=value=>Number(value.toFixed(displayDigits())).toString();
 function refreshWetView(force=false){
   const field=$("#wet-value"),rail=$("#wet");
@@ -1719,7 +1719,7 @@ $("#settings-reset").addEventListener("click",()=>{
   const defaults={
     low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
-    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"3","graph-log":"0","a-band":"1","a-quality":"0"
+    overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"1","graph-log":"0","a-band":"1","a-quality":"0"
   };
   state.precise=Object.create(null);
   wetBinding.reset({notify:false});
