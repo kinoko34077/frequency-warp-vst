@@ -677,7 +677,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#low-value",el=>el.dataset.fwCanonical),savedA.low);
     assert.equal(await page.$eval("#fundamental",el=>el.dataset.fwCanonical),savedA.fundamental);
     await page.click("#compare-load-b");
-    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.123);
+    assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.1);
+    assert.equal(Number(await page.$eval("#axis-shift-value",el=>el.dataset.fwCanonical)),.123);
     await page.click("#compare-load-a");
     assert.ok(Math.abs(await page.$eval("#axis-shift",el=>Number(el.value))-
       Number(savedA.move))<.051,"restoration leaves one consistent saved processing position");
