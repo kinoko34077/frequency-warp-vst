@@ -554,6 +554,33 @@ double-route behavior, and does NOT guarantee iOS background continuity.
 - **Boundary:** DC=0Hz input/output is *not* produced as a periodic partial, and the finite FFT window/sampling rate determine the smallest actually distinguishable audio frequency even if a positive L near zero is accepted. The Web graph is a display-window model and is not a guarantee that millihertz components are audible or plotted at finite resolution.
 - Rust shared WASM/native, Chrome UI and WAV path use a common reflection oracle; 0Hz-negative signed fold-out remains reflected and attenuated exactly once. Older superseded prose about any descending inversion being reflected no longer describes accepted behavior.
 
+## 2026-11-03 — Issue #321 low-frequency PCM evidence
+
+The targeted WASM diagnostic uses a 0.45-amplitude known cosine, a 2x frequency
+mapping, `L=0.001Hz`, `R=0.000875Hz`, quality profile 2 (`N=4096`), and
+44.1/48/96kHz. It measures the requested target tone and the original-tone
+leakage after the first second. This is a bounded known-tone test, not a claim
+of general music fidelity or human listening acceptance.
+
+- Engine A passes the test gate (target amplitude >= 0.1 and original-tone
+  leakage <= -12dB relative to target) for the tested 1, 5, 10, 15,
+  19.999, 20, and 20.001Hz sources at all three sample rates. At 0.1Hz the
+  original-tone leakage is 2.49 to 5.89dB above the requested 0.2Hz target,
+  so that case is explicitly unqualified. 0.01Hz and 0.001Hz have not been
+  measured as reproducible PCM.
+- Engine B fails the requested-target gate for every tested source from 0.1
+  through 20.001Hz. Its 4096-point bin spacing is 10.767, 11.719, and
+  23.438Hz at 44.1, 48, and 96kHz respectively. The measured strongest output
+  peaks are bin-quantized; examples include 5->21.533Hz at 44.1kHz,
+  20->46.875Hz at 48kHz, and 5->23.438Hz at 96kHz, rather than the requested
+  10/40/10Hz targets. Do not treat a non-silent output or accepted numeric
+  input as successful low-frequency reproduction.
+- The 128-frame streaming test matches latency-compensated offline output
+  exactly for its tested A/B cases. For a known tone >=1Hz, Engine A is the
+  currently measured route; below 1Hz or when Engine B's low-bin mapping is
+  required, use the original/dry route (Mix 0 or “原音”) until a passing PCM
+  result exists. This fallback does not imply a general quality acceptance.
+
 ## 2026-10-14 — shape Hz marker, opt-in virtual root ↔ pivot, typed parameter units (#77 candidate)
 
 The main `変換形状` row once again shows its input-domain hinge/reference in Hz without having to open ⓘ. Fold L/H labels say `L折返し/H折返し`; Reciprocal says `固定点` (a fixed point, not a physical fold).

@@ -1,13 +1,55 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {fullReferenceQuality,qualityGate,baselineNeutralContract} from "./acoustic-quality.mjs";
+import {fullReferenceQuality,qualityGate,baselineNeutralContract,toneComponentQuality} from "./acoustic-quality.mjs";
 
 async function load() {
   const binary=await readFile("web-demo/dsp_core.wasm");
   const {instance}=await WebAssembly.instantiate(binary,{});
   return instance.exports;
 }
+function strongestWindowTone(signal,{sampleRate,start=0,size=4096}={}){
+  if(!Number.isInteger(size)||size<4||(size&(size-1))!==0||start<0||start+size>signal.length)
+    throw new RangeError("invalid FFT measurement window");
+  const real=new Float64Array(size),imag=new Float64Array(size);
+  let windowSum=0,energy=0;
+  for(let i=0;i<size;i++){
+    const window=.5*(1-Math.cos(2*Math.PI*i/(size-1))),value=signal[start+i];
+    real[i]=value*window;windowSum+=window;energy+=value*value;
+  }
+  for(let i=1,j=0;i<size;i++){
+    let bit=size>>1;
+    for(;j&bit;bit>>=1)j^=bit;
+    j^=bit;
+    if(i<j){[real[i],real[j]]=[real[j],real[i]];[imag[i],imag[j]]=[imag[j],imag[i]];}
+  }
+  for(let length=2;length<=size;length<<=1){
+    const angle=-2*Math.PI/length,stepRe=Math.cos(angle),stepIm=Math.sin(angle);
+    for(let base=0;base<size;base+=length){
+      let wr=1,wi=0;
+      for(let j=0;j<length/2;j++){
+        const even=base+j,odd=even+length/2;
+        const tr=wr*real[odd]-wi*imag[odd],ti=wr*imag[odd]+wi*real[odd];
+        real[odd]=real[even]-tr;imag[odd]=imag[even]-ti;
+        real[even]+=tr;imag[even]+=ti;
+        const nextRe=wr*stepRe-wi*stepIm;wi=wr*stepIm+wi*stepRe;wr=nextRe;
+      }
+    }
+  }
+  let bestBin=1,bestPower=0;
+  for(let bin=1;bin<size/2;bin++){
+    const power=real[bin]*real[bin]+imag[bin]*imag[bin];
+    if(power>bestPower){bestPower=power;bestBin=bin;}
+  }
+  return {bin:bestBin,frequencyHz:bestBin*sampleRate/size,
+    amplitude:2*Math.sqrt(bestPower)/windowSum,rms:Math.sqrt(energy/size)};
+}
+test("known-window FFT reports the strongest measured PCM frequency",()=>{
+  const fs=8192,tone=Float32Array.from({length:4096},(_,i)=>.45*Math.cos(2*Math.PI*500*i/fs));
+  const measured=strongestWindowTone(tone,{sampleRate:fs});
+  assert.equal(measured.frequencyHz,500);
+  assert.ok(Math.abs(measured.amplitude-.45)<1e-5);
+});
 test("shared Rust WASM mapping matches accepted curvature and reflection",async ()=>{
   const e=await load();
   for(const p of [0,0.01,.5,1]){
@@ -436,33 +478,35 @@ test("A uses common L and retains reverb without affecting B PCM",async()=>{
   }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
 });
 
-test("Engine A reconstructs sub-20Hz PCM from the first non-DC FFT bin",async()=>{
+test("Engine A low-frequency PCM uses a transformed known-frequency oracle",async()=>{
   const e=await load();
   const measurements=[];
-  const measure=(pcm,rate,frequency)=>{
-    const start=Math.floor(rate*1),count=pcm.length-start;
-    let re=0,im=0;
-    for(let i=start;i<pcm.length;i++){
-      const phase=2*Math.PI*frequency*i/rate;
-      re+=pcm[i]*Math.cos(phase);im+=pcm[i]*Math.sin(phase);
-    }
-    return 2*Math.hypot(re,im)/count;
-  };
   for(const rate of [44100,48000,96000]){
-    for(const frequency of [5,15,19.999]){
-      const frames=rate*3,src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+    for(const frequency of [0.1,1,5,10,15,19.999,20,20.001]){
+      const seconds=frequency===0.1?10:3;
+      const frames=rate*seconds,src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
       assert.ok(src&&dst);
       try{
         const input=new Float32Array(e.memory.buffer,src,frames);
         for(let i=0;i<frames;i++)input[i]=.45*Math.cos(2*Math.PI*frequency*i/rate);
-        const rc=e.warp_stream_render_f32_a_ext(src,dst,frames,1,rate,
-          0.001,20000,1,0,0,2,0,0,1,0,0,0,4,0,1,0,350,0,0,350,1,900,0);
+        const rc=e.warp_stream_render_f32_geometry_ext(src,dst,frames,1,rate,
+          0.001,20000,1,0,0,2,0,0,1,0,0,0,4,0,1,0,350,0,0,0,2);
         assert.equal(rc,0,`valid low-frequency PCM rejected: ${frequency}Hz at ${rate}Hz`);
         const output=Float32Array.from(new Float32Array(e.memory.buffer,dst,frames));
-        const amplitude=measure(output,rate,frequency);
-        measurements.push({rate,frequency,amplitude:Number(amplitude.toFixed(6))});
-        assert.ok(amplitude>0.1,
-          `Engine A should reconstruct ${frequency}Hz below 20Hz with L=.001; measured ${amplitude} at ${rate}Hz`);
+        const measured=toneComponentQuality(output,{sampleRate:rate,targetHz:frequency*2,
+          sourceHz:frequency,start:rate,end:frames});
+        const amplitude=measured.targetAmplitude;
+        const sourceGhost=measured.sourceGhostAmplitude;
+        const gate=qualityGate(measured,{targetAmplitude:{min:0.1},ghostToTargetDb:{max:-12}});
+        measurements.push({rate,frequency,targetHz:frequency*2,
+          amplitude:Number(amplitude.toFixed(6)),sourceGhost:Number(sourceGhost.toFixed(6)),
+          ghostToTargetDb:Number(measured.ghostToTargetDb.toFixed(2)),
+          acousticGate:frequency>=1?gate.pass?"pass-known-tone-gate":"fail-known-tone-gate":"unqualified-below-1Hz"});
+        assert.ok(output.every(Number.isFinite),`Engine A emitted non-finite PCM for ${frequency}Hz at ${rate}Hz`);
+        if(frequency>=1){
+          assert.ok(gate.pass,
+            `Engine A target ${frequency*2}Hz failed the known-tone gate: ${JSON.stringify(gate)}`);
+        }
       }finally{
         e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);
       }
@@ -471,47 +515,109 @@ test("Engine A reconstructs sub-20Hz PCM from the first non-DC FFT bin",async()=
   console.log("LOW_PCM_A_OFFLINE "+JSON.stringify(measurements));
 });
 
-test("128-frame realtime Engine A streams retain sub-20Hz PCM and sub-1Hz R",async()=>{
+test("Engine B low-frequency PCM reports its FFT-bin output instead of the requested target",async()=>{
+  const e=await load(),measurements=[];
+  for(const rate of [44100,48000,96000]){
+    for(const frequency of [0.1,1,5,10,15,19.999,20,20.001]){
+      const seconds=frequency===0.1?10:3,frames=rate*seconds;
+      const src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+      assert.ok(src&&dst);
+      try{
+        const input=Float32Array.from({length:frames},(_,i)=>.45*Math.cos(2*Math.PI*frequency*i/rate));
+        new Float32Array(e.memory.buffer,src,frames).set(input);
+        const rc=e.warp_stream_render_f32_geometry_ext(src,dst,frames,1,rate,
+          0.001,20000,1,0,0,2,0,1,1,0,0,0,4,0,1,0,350,0,0,0,2);
+        assert.equal(rc,0,`valid low-frequency PCM rejected: ${frequency}Hz at ${rate}Hz`);
+        const output=Float32Array.from(new Float32Array(e.memory.buffer,dst,frames));
+        const measuredPeak=strongestWindowTone(output,{sampleRate:rate,start:frames-4096});
+        const measured=toneComponentQuality(output,{sampleRate:rate,targetHz:measuredPeak.frequencyHz,
+          sourceHz:frequency,start:rate,end:frames});
+        const ideal=toneComponentQuality(output,{sampleRate:rate,targetHz:frequency*2,
+          sourceHz:frequency,start:rate,end:frames});
+        const waveform=fullReferenceQuality(input,output,{start:rate,end:frames});
+        const gate=qualityGate(ideal,{targetAmplitude:{min:0.1},ghostToTargetDb:{max:-12}});
+        measurements.push({rate,frequency,requestedTargetHz:frequency*2,fftBinSpacingHz:rate/4096,
+          measuredOutputPeakHz:measuredPeak.frequencyHz,peakAmplitude:Number(measuredPeak.amplitude.toFixed(6)),
+          outputRms:Number(measuredPeak.rms.toFixed(6)),binAmplitude:Number(measured.targetAmplitude.toFixed(6)),
+          requestedTargetAmplitude:Number(ideal.targetAmplitude.toFixed(6)),
+          sourceGhost:Number(measured.sourceGhostAmplitude.toFixed(6)),rmsGain:Number(waveform.rmsGain.toFixed(6)),
+          knownToneGate:gate.pass?"pass":"fail",gateFailures:gate.failures});
+        assert.ok(output.every(Number.isFinite),`Engine B emitted non-finite PCM for ${frequency}Hz at ${rate}Hz`);
+      }finally{
+        e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);
+      }
+    }
+  }
+  console.log("LOW_PCM_B_OFFLINE "+JSON.stringify(measurements));
+});
+
+test("128-frame realtime low-frequency Rust PCM matches offline output and reports A/B limits",async()=>{
   const e=await load(),block=128,inputPtr=e.warp_alloc_f32(block),outputPtr=e.warp_alloc_f32(block);
   const measurements=[];
-  const amplitude=(pcm,rate,frequency)=>{
-    const start=rate,count=pcm.length-start;
-    let re=0,im=0;
-    for(let i=start;i<pcm.length;i++){
-      const phase=2*Math.PI*frequency*i/rate;
-      re+=pcm[i]*Math.cos(phase);im+=pcm[i]*Math.sin(phase);
-    }
-    return 2*Math.hypot(re,im)/count;
-  };
   try{
     for(const rate of [44100,48000,96000]){
-      for(const frequency of [5,15]){
-        const stream=e.warp_stream_create_ext(rate,1,0.001,20000,1,0,0,2,0,0,1,0,0,0,4);
-        assert.ok(stream);
-        try{
-          assert.equal(e.warp_stream_set_transform(stream,0,0.000875,0,0),0,
-            "positive sub-1Hz R must remain exact at "+rate+"Hz");
-          assert.equal(e.warp_stream_set_a_options(stream,900,0),0,
-            "legacy ABI cutoff must not block common L");
-          const total=Math.floor(rate*3/block)*block,pcm=new Float32Array(total);
-          for(let offset=0;offset<total;offset+=block){
-            const input=new Float32Array(e.memory.buffer,inputPtr,block);
-            for(let i=0;i<block;i++)
-              input[i]=.45*Math.cos(2*Math.PI*frequency*(offset+i)/rate);
-            assert.equal(e.warp_stream_process(stream,inputPtr,outputPtr,block),0);
-            pcm.set(new Float32Array(e.memory.buffer,outputPtr,block),offset);
+      for(const engine of [0,1]){
+        for(const frequency of [5,15,19.999,20,20.001]){
+          const seconds=3,frames=rate*seconds,total=Math.floor(frames/block)*block;
+          const inputValues=Float32Array.from({length:total},(_,i)=>.45*Math.cos(2*Math.PI*frequency*i/rate));
+          const src=e.warp_alloc_f32(total),dst=e.warp_alloc_f32(total);
+          assert.ok(src&&dst);
+          try{
+            new Float32Array(e.memory.buffer,src,total).set(inputValues);
+            const offlineStatus=e.warp_stream_render_f32_geometry_ext(src,dst,total,1,rate,
+              0.001,20000,1,0,0,2,0,engine,1,0,0,0,4,0,1,0,0.000875,0,0,0,2);
+            assert.equal(offlineStatus,0);
+            const offline=Float32Array.from(new Float32Array(e.memory.buffer,dst,total));
+            const stream=e.warp_stream_create_ext(rate,1,0.001,20000,1,0,0,2,0,engine,1,0,0,0,4);
+            assert.ok(stream);
+            try{
+              assert.equal(e.warp_stream_set_transform(stream,0,0.000875,0,0),0,
+                "positive sub-1Hz R must remain exact at "+rate+"Hz");
+              assert.equal(e.warp_stream_set_geometry(stream,0,2),0);
+              assert.equal(e.warp_stream_set_a_options(stream,900,0),0,
+                "legacy ABI cutoff must not block common L");
+              const realtime=new Float32Array(total);
+              for(let offset=0;offset<total;offset+=block){
+                new Float32Array(e.memory.buffer,inputPtr,block).set(inputValues.subarray(offset,offset+block));
+                assert.equal(e.warp_stream_process(stream,inputPtr,outputPtr,block),0);
+                realtime.set(new Float32Array(e.memory.buffer,outputPtr,block),offset);
+              }
+              const latency=e.warp_stream_latency(stream),alignedRealtime=realtime.subarray(latency);
+              let maxDelta=0;
+              for(let i=0;i<alignedRealtime.length;i++)
+                maxDelta=Math.max(maxDelta,Math.abs(alignedRealtime[i]-offline[i]));
+              assert.ok(maxDelta<1e-5,
+                `128-frame and offline PCM diverged: ${JSON.stringify({rate,engine,frequency,maxDelta})}`);
+              const measuredPeak=strongestWindowTone(alignedRealtime,{sampleRate:rate,start:alignedRealtime.length-4096});
+              const targetHz=engine===0?frequency*2:measuredPeak.frequencyHz;
+              const measured=toneComponentQuality(alignedRealtime,{sampleRate:rate,targetHz,
+                sourceHz:frequency,start:rate,end:alignedRealtime.length});
+              const requested=toneComponentQuality(alignedRealtime,{sampleRate:rate,targetHz:frequency*2,
+                sourceHz:frequency,start:rate,end:alignedRealtime.length});
+              const gate=qualityGate(engine===0?measured:requested,
+                {targetAmplitude:{min:0.1},ghostToTargetDb:{max:-12}});
+              measurements.push({rate,engine,frequency,targetHz,block,L:0.001,R:0.000875,
+                measuredOutputPeakHz:measuredPeak.frequencyHz,peakAmplitude:Number(measuredPeak.amplitude.toFixed(6)),
+                outputRms:Number(measuredPeak.rms.toFixed(6)),
+                targetAmplitude:Number(measured.targetAmplitude.toFixed(6)),
+                requestedTargetAmplitude:Number(requested.targetAmplitude.toFixed(6)),
+                mappingErrorHz:Number((measuredPeak.frequencyHz-frequency*2).toFixed(6)),
+                sourceGhost:Number(measured.sourceGhostAmplitude.toFixed(6)),
+                knownToneGate:gate.pass?"pass":"fail",gateFailures:gate.failures,
+                latencySamples:latency,maxParityDelta:maxDelta});
+              if(engine===0)assert.ok(gate.pass,
+                `Engine A failed the known-tone realtime gate: ${JSON.stringify(measurements.at(-1))}`);
+            }finally{e.warp_stream_free(stream);}
+          }finally{
+            e.warp_free_f32(src,total);e.warp_free_f32(dst,total);
           }
-          const measured=amplitude(pcm,rate,frequency);
-          measurements.push({rate,frequency,amplitude:Number(measured.toFixed(6)),block,R:0.000875,L:0.001});
-          assert.ok(measured>0.1,
-            `${frequency}Hz realtime PCM should survive at ${rate}Hz; measured ${measured}`);
-        }finally{e.warp_stream_free(stream);}
+        }
       }
     }
   }finally{
     e.warp_free_f32(inputPtr,block);e.warp_free_f32(outputPtr,block);
   }
-  console.log("LOW_PCM_A_REALTIME "+JSON.stringify(measurements));
+  console.log("LOW_PCM_REALTIME_PARITY "+JSON.stringify(measurements));
 });
 
 test("A spectral peak band is independently adjustable in live Rust DSP",async()=>{
