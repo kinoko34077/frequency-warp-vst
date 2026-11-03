@@ -402,7 +402,6 @@ function applyConfigurationSilently(c){
   rationalEnabledByLink=t.rationalEnabledByLink;
   lowUnitControl.setCanonical(v.low);highUnitControl.setCanonical(v.high);
   pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
-  aMinUnitControl.setCanonical(v.aMinHz);
   restoreHarmonicConfiguration(c.harmonic);
   if(c.view?.virtualRoot)virtualRootWorkbench.restoreView(c.view.virtualRoot);
   wetBinding.setCanonical(v.wet,{notify:false});
