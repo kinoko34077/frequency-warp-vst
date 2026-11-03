@@ -27,6 +27,7 @@ pub struct Stream {
     crusher_bits:u32,
     crusher_hold:u32,
     crusher_rate_hz:Option<f64>,
+    crusher_integer_period:Option<u32>,
     crusher_phase:f64,
     crusher_counter:u64,
     crusher_value:Vec<f32>,
@@ -81,7 +82,7 @@ impl Stream {
             sample_rate,channels,n:q.n,hop,max_peaks:q.max_peaks,
             floor:q.floor,settings,outside,engine,pitch_ratio,shift_hz,carrier_hz,
             ring_enabled:engine==2,axis_shift:0.0,
-            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_rate_hz:None,crusher_phase:0.0,crusher_counter:0,
+            axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_rate_hz:None,crusher_integer_period:None,crusher_phase:0.0,crusher_counter:0,
             crusher_value:vec![0.0;channels],
             a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
@@ -232,6 +233,7 @@ impl Stream {
         }
         self.crusher_bits=bits;self.crusher_hold=hold;
         self.crusher_rate_hz=None;
+        self.crusher_integer_period=None;
         Ok(())
     }
     /// Exact requested sample-update Hz. 0Hz means freeze the first sample.
@@ -241,6 +243,16 @@ impl Stream {
             return Err("invalid Crusher frequency");
         }
         if self.crusher_rate_hz!=Some(hz){self.crusher_phase=0.0;}
+        // Detect only genuinely exact Fs/N ratios. A merely nearby requested
+        // Hz must retain the fractional clock, not be rounded to N samples.
+        self.crusher_integer_period=if hz>0.0 {
+            let period=(self.sample_rate/hz).round();
+            if period>=1.0 && period<=1_000_000_000.0 &&
+                (self.sample_rate/period-hz).abs()<=
+                  4.0*f64::EPSILON*hz.max(self.sample_rate/period) {
+                Some(period as u32)
+            }else{None}
+        }else{None};
         self.crusher_rate_hz=Some(hz);
         Ok(())
     }
@@ -262,6 +274,9 @@ impl Stream {
             let crusher_tick=if let Some(hz)=self.crusher_rate_hz{
                 if hz==0.0{self.crusher_counter==0}
                 else if hz>=self.sample_rate{true}
+                else if let Some(period)=self.crusher_integer_period{
+                    self.crusher_counter%(period as u64)==0
+                }
                 else if self.crusher_counter==0{true}
                 else{
                     self.crusher_phase+=hz/self.sample_rate;
@@ -1524,6 +1539,28 @@ mod tests{
                 stream.process(&input,&mut output,128).unwrap();
                 assert!(output.iter().all(|x|x.is_finite()));
             }
+        }
+    }
+    #[test]
+    fn exact_integer_sample_rate_is_never_jittered_by_fractional_clock(){
+        for (fs,n) in [(48000.0,109u32),(44100.0,100u32)]{
+            let mut st=Stream::new(fs,1,settings(),1).unwrap();
+            st.set_crusher_exact(8,fs/n as f64).unwrap();
+            assert_eq!(st.crusher_integer_period,Some(n));
+            let length=n as usize*4;
+            let mut output=(0..length).map(|i|i as f32/(length as f32))
+                .collect::<Vec<_>>();
+            st.post_process(&mut output,length);
+            for block in 0..4{
+                let offset=block*n as usize;
+                for sample in &output[offset..offset+n as usize]{
+                    assert_eq!(*sample,output[offset],
+                        "integer hold must update only every N frames");
+                }
+                if block>0{assert_ne!(output[offset],output[offset-1]);}
+            }
+            st.set_crusher_exact(8,440.0).unwrap();
+            if fs==48000.0{assert_eq!(st.crusher_integer_period,None);}
         }
     }
     #[test]

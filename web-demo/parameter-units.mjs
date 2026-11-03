@@ -4,6 +4,7 @@ const NOTES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const finite=x=>typeof x==="number"&&Number.isFinite(x);
 export const UNIT_KINDS=Object.freeze({
  frequency:Object.freeze(["hz","note","percent"]),
+ frequencySamples:Object.freeze(["hz","note","percent","samples"]),
  ratio:Object.freeze(["ratio","semitones","cents","percent"]),
  fraction:Object.freeze(["percent"]),
  signedRatio:Object.freeze(["ratio","percent"]),
@@ -18,7 +19,7 @@ export const PARAMETER_KIND=Object.freeze({
  invert:"fraction",curvature:"fraction","zero-reflect":"fraction",
  "zero-decay":"fraction",wet:"fraction","a-reverb":"fraction",
  "graph-log":"fraction","a-quality":"fraction",
- "axis-shift":"coordinate","crusher-bits":"integer","crusher-hold":"frequency","a-band":"integer",
+ "axis-shift":"coordinate","crusher-bits":"integer","crusher-hold":"frequencySamples","a-band":"integer",
  denominator:"integer",numerator:"integer","harmonic-index":"integer"
 });
 export function compatibleUnits(parameter){
@@ -56,7 +57,7 @@ export function ratioToSemitones(r){
  if(!finite(r)||r<=0)throw RangeError("ratio must be positive");
  return 12*Math.log2(r);
 }
-export function parseView(value,unit,{id,fromRail}={}){
+export function parseView(value,unit,{id,fromRail,sampleRate}={}){
  if(id&&!compatibleUnits(id).includes(unit))throw RangeError("unit incompatible with parameter");
  if(unit==="note")return noteCentsToHz(value);
  const x=Number(String(value).trim().replace(/(?:Hz|%|c)$/i,""));
@@ -65,16 +66,25 @@ export function parseView(value,unit,{id,fromRail}={}){
   if(x<0||x>100||typeof fromRail!=="function")throw RangeError("percent needs slider scale");
   return fromRail(x/100);
  }
+ if(unit==="samples"){
+  if(!finite(sampleRate)||sampleRate<=0||!Number.isSafeInteger(x)||x<0)
+   throw RangeError("sample interval requires a nonnegative integer and sample rate");
+  return x===0?0:sampleRate/x;
+ }
  if(unit==="semitones"||unit==="cents")return semitonesToRatio(x/(unit==="cents"?100:1));
  return x;
 }
-export function formatView(value,unit,{id,toRail,digits=3}={}){
+export function formatView(value,unit,{id,toRail,sampleRate,digits=3}={}){
  if(id&&!compatibleUnits(id).includes(unit))throw RangeError("unit incompatible with parameter");
  if(!finite(value))throw RangeError("invalid canonical number");
  if(unit==="note")return hzToNoteCents(value,digits);
  if(unit==="percent"){
   if(typeof toRail!=="function")throw RangeError("percent needs slider scale");
   return Number((100*toRail(value)).toFixed(digits));
+ }
+ if(unit==="samples"){
+  if(!finite(sampleRate)||sampleRate<=0||value<0)throw RangeError("sample period needs rate and positive Hz");
+  return value===0?0:Number((sampleRate/value).toFixed(digits));
  }
  if(unit==="semitones"||unit==="cents")
   return Number((ratioToSemitones(value)*(unit==="cents"?100:1)).toFixed(digits));

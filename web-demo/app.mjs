@@ -7,9 +7,10 @@ import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
 import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
-import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration} from "./harmonics-panel.mjs";
+import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration,captureHarmonicSnapState,restoreHarmonicSnapState} from "./harmonics-panel.mjs";
 import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
 import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
+import {captureComparisonView,restoreComparisonView,validateComparisonView} from "./comparison-view.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
@@ -321,6 +322,28 @@ function settings(){
 
 // U4 comparison: two bounded, source-scoped coherent configurations.
 // A source generation changes ONLY after successful decode/commit.
+function comparisonSnapControls(){
+  return {low:lowUnitControl,high:highUnitControl,pivot:pivotUnitControl,
+    slope:slopeUnitControl,crusher:crusherUnitControl,sine:sineUnitControl};
+}
+function captureInterfaceSnaps(){
+  const result={};
+  for(const [key,control] of Object.entries(comparisonSnapControls()))
+    result[key]=control.snapEnabled;
+  const harmonic=captureHarmonicSnapState();
+  for(const [key,value] of Object.entries(harmonic))result["harmonic-"+key]=value;
+  return result;
+}
+function restoreInterfaceSnaps(values){
+  for(const [key,control] of Object.entries(comparisonSnapControls())){
+    if(typeof values?.[key]!=="boolean")throw Error("Invalid snap "+key);
+    control.setSnapEnabled(values[key]);
+  }
+  restoreHarmonicSnapState({
+    fundamental:values["harmonic-fundamental"],
+    carrier:values["harmonic-carrier"],ratio:values["harmonic-ratio"]
+  });
+}
 const comparisonSlots={A:null,B:null};
 let comparisonPending=null,comparisonCurrent=null,applyingConfiguration=false;
 function comparisonMessage(text,phase="idle"){
@@ -341,6 +364,10 @@ function captureCurrentConfiguration(){
   return createSoundConfiguration({
     sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
     harmonic:h,audio:p,
+    view:{virtualRoot:virtualRootWorkbench.captureView(),
+      interface:captureComparisonView($(".workspace-grid"),{
+        graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value,
+        snaps:captureInterfaceSnaps()})},
     values:{
       low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
       axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
@@ -384,6 +411,7 @@ function applyConfigurationSilently(c){
   pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
   aMinUnitControl.setCanonical(v.aMinHz);
   restoreHarmonicConfiguration(c.harmonic);
+  if(c.view?.virtualRoot)virtualRootWorkbench.restoreView(c.view.virtualRoot);
   wetBinding.setCanonical(v.wet,{notify:false});
   aReverbBinding.setCanonical(v.aReverb,{notify:false});
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
@@ -408,6 +436,23 @@ function applyConfigurationSilently(c){
   refreshZeroDecayView(true);
   refreshInvertView(true);
   linkFeedback("");
+  if(c.view?.interface)restoreComparisonView($(".workspace-grid"),c.view.interface,{
+    setGraph:(max,previousAlpha)=>{graphMax=max;graphAlphaBeforeZoom=previousAlpha;drawCurve();},
+    showTab,
+    restoreSnaps:restoreInterfaceSnaps,
+    restoreSine:monitor=>{
+      sineUnitControl.setCanonical(monitor.frequency);
+      updateSineLabel();
+      const volume=$("#sine-volume");
+      volume.value=String(monitor.volume);
+      volume.dispatchEvent(new Event("input",{bubbles:true}));
+      const toggle=$("#sine-enabled");
+      if(toggle.checked!==monitor.enabled){
+        toggle.checked=monitor.enabled;
+        toggle.dispatchEvent(new Event("change",{bubbles:true}));
+      }
+    }
+  });
 }
 function switchSoundConfiguration(slot){
   const saved=comparisonSlots[slot];
@@ -416,6 +461,7 @@ function switchSoundConfiguration(slot){
     validateSoundConfiguration(saved,{
       sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate
     });
+    if(saved.view?.interface)validateComparisonView($(".workspace-grid"),saved.view.interface);
     const preflight=prepareStreamSettings({
       ...saved.audio,sampleRate:state.ctx?.sampleRate||state.decoded.sampleRate
     });
@@ -627,13 +673,13 @@ function drawCurve(){
     '<mfrac><mi>f</mi><mi>M</mi></mfrac><mo>+</mo><mi>α</mi>'+
     '<msub><mi>g</mi><mtext>log</mtext></msub><mo>(</mo><mi>f</mi><mo>)</mo>'+
     '</mrow></math> M＝表示上限。低域拡大では 0.001Hz 起点の対数尺度。';
-  const isCrushed=p.crusherBits>0&&(p.crusherHold>1||p.crusherHold===0);
+  const isCrushed=p.crusherBits>0&&p.crusherRateHz<p.sampleRate;
   $("#crusher-alias-legend").hidden=!isCrushed;
   $("#crusher-alias-note").hidden=p.crusherBits===0;
-  if(p.crusherBits>0)$("#crusher-alias-note").textContent=p.crusherHold===0?
+  if(p.crusherBits>0)$("#crusher-alias-note").textContent=p.crusherRateHz===0?
     "更新 0 Hz：開始値を保持。出力はDCのみで元周波数の周期音は消えます。":
-    (p.crusherHold===1?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
-    "実効更新 "+displayNumber(p.sampleRate/p.crusherHold)+" Hz。y="+displayNumber(p.sampleRate/p.crusherHold/2)+" Hzは実効ナイキスト折返し境界。実線＝単一正弦波の標本保持から生じる理論スペクトル像、透明度＝理想応答ゲイン（振幅量子化でさらに変化）。");
+    (p.crusherRateHz>=p.sampleRate?"間引き無し。振幅量子化による追加倍音は入力音の振幅・位相に依存します。":
+    "指定・平均実効更新 "+displayNumber(p.crusherRateHz)+" Hz。以下のスペクトル像は隣接整数 "+p.crusherHold+" サンプル固定の場合の比較モデルであり、実際の小数周期クロックのスペクトル予測ではありません。");
   updateListeningGuide();
   $("#graph-title").textContent=graphMax===20?"0.001〜20Hz":graphMax===2000?"〜2kHz":"〜20kHz";
 }
@@ -1292,7 +1338,7 @@ const crusherSampleRate=()=>state.ctx?.sampleRate||state.decoded?.sampleRate||48
 crusherUnitControl=mountFrequencyUnitField({
   descriptor:defineParameter({
     id:"crusher-hold",min:0,max:192000,defaultValue:12000,
-    units:["hz","note","percent"],digits:3,
+    units:["hz","note","percent","samples"],sampleRate:crusherSampleRate,digits:3,
     rail:{toPosition:hz=>sliderPositionFromFrequency(hz,crusherSampleRate())/1000,
       fromPosition:t=>frequencyFromSlider(t*1000,crusherSampleRate())},
     snapByUnit:{hz:false}
@@ -1787,6 +1833,7 @@ $("#settings-reset").addEventListener("click",()=>{
   refreshZeroDecayView(true);
   refreshInvertView(true);
   labels();tuneWet();updateParams("settings-reset");updateEngineInfo();
+  $("#vr-placement").value="keep-spacing"; // Reset restores the intended default mode.
   document.dispatchEvent(new Event("fw:virtual-root-external-change"));
   // Controls resetting is not proof that Rust/WASM has acknowledged them.
   // Preserve any validation error and wait for the latest revision's ACK.
@@ -1931,7 +1978,7 @@ attachHarmonicPanel(id=>{
 // The new user-goal workbench is separate from the retained legacy maths UI.
 // One validated transaction updates the existing canonical harmonic owners.
 // Theoretical H outside current DSP capability stays a draft, never a 0Hz P.
-mountVirtualRootWorkbench({
+const virtualRootWorkbench=mountVirtualRootWorkbench({
   onCurrent:()=>captureHarmonicConfiguration(),
   onApply:plan=>{
     if(!plan.capability.rationalStage)throw Error("現行DSPでは指定配置を再現できません");

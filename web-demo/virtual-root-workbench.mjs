@@ -36,7 +36,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     <div class="vr-inputs">
       ${field("source-f","元基音 F",350,.01,5120000,.01)}
       <div class="vr-control"><label for="vr-placement">音程の配置</label><select id="vr-placement">
-        <option value="target">仮想基音を動かす</option><option value="keep-spacing">元の倍音間隔を維持</option>
+        <option value="target">仮想基音を動かす</option><option value="keep-spacing" selected>元の倍音間隔を維持</option>
       </select></div>
       ${field("target-h","仮想基音 H",87.5,.01,20000,.01)}
       ${field("step-m","番号間隔",4,1,64,1)}
@@ -44,6 +44,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     </div>
     <p id="vr-sequence" class="vr-sequence" aria-live="polite"></p>
     <div id="vr-formula" class="vr-formula"></div>
+    <p id="vr-sync-note" class="vr-sync-note" role="status" aria-live="polite" hidden></p>
     <details id="vr-details"><summary>詳細表示</summary>
       <p id="vr-summary" class="vr-summary"></p>
       <p class="vr-legend"><span>━ 元の部分音</span><span>━ 配置後の部分音（理論）</span></p>
@@ -144,6 +145,10 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   function render(){
     const keep=$("#vr-placement").value==="keep-spacing";
     if(keep)state.H=state.F/state.m;
+    const actual=onCurrent?.(),note=$("#vr-sync-note");
+    const mismatch=keep&&Number.isFinite(actual?.r)&&Math.abs(actual.r-1)>1e-10;
+    note.hidden=!mismatch;
+    note.textContent=mismatch?"未適用の配置案：表示H="+fmt(state.H,3)+" Hz（倍率1倍）。現在の倍音設定は倍率"+fmt(actual.r,3)+"倍、H="+fmt(actual.F*actual.r/actual.m,3)+" Hz。次の配置操作で維持配置を適用します。":"";
     controls.H.readOnly=keep;rails.H.disabled=keep;
     root.querySelector('[data-vr-digit="target-h"]').disabled=keep;
     for(const key of Object.keys(controls)){
@@ -220,7 +225,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     // Batch rapid slider gestures to one real engine parameter transaction per frame.
     requestAnimationFrame(()=>{
       if(version!==generation||!activePlan||!activePlan.capability.rationalStage)return;
-      try{onApply(activePlan);lastFingerprint=fp;error.hidden=true;error.textContent="";}
+      try{onApply(activePlan);lastFingerprint=fp;error.hidden=true;error.textContent="";render();}
       catch(e){error.hidden=false;error.textContent="音声設定エラー";error.title=String(e.message||e);}
     });
   };
@@ -307,10 +312,37 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       const first=old.m+old.n;
       if(Number.isSafeInteger(first)&&first>=-129&&first<=129){
         Object.assign(state,{F:old.F,H:old.F*old.r/old.m,m:old.m,h1:first});
-        $("#vr-placement").value="target";
+        // Do not override the user-selected placement during external state restore.
       }
     }
     render(); // Loading A/B/Reset is already an existing DSP transaction; never write again.
   });
   render(); // Initial mount never overwrites existing audio settings.
+  return Object.freeze({
+    captureView:()=>({
+      placement:$("#vr-placement").value,
+      scopes:{F:scopes.F,H:scopes.H},
+      units:{F:getUnit("F"),H:getUnit("H")},
+      snaps:{F:snapControllers.F.enabled,H:snapControllers.H.enabled}
+    }),
+    restoreView:view=>{
+      if(!view||!["target","keep-spacing"].includes(view.placement))
+        throw Error("Invalid workbench placement");
+      for(const key of ["F","H"]){
+        const allowed=[...$("#vr-"+keyIds[key]+"-scale").options].map(option=>Number(option.value));
+        if(!allowed.includes(view.scopes?.[key])||
+          !["hz","note","percent"].includes(view.units?.[key])||
+          typeof view.snaps?.[key]!=="boolean")
+          throw Error("Invalid workbench view "+key);
+      }
+      $("#vr-placement").value=view.placement;
+      for(const key of ["F","H"]){
+        scopes[key]=view.scopes[key];
+        const button=unitSwitches[key].element.querySelector('button[data-unit="'+view.units[key]+'"]');
+        if(getUnit(key)!==view.units[key])button.click();
+        snapControllers[key].setEnabled(view.snaps[key]);
+      }
+      render(); // View restore never writes DSP values.
+    }
+  });
 }

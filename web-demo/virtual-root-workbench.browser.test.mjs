@@ -19,6 +19,9 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       const errors=[];page.on("pageerror",err=>errors.push(err.message));
       await page.goto("http://127.0.0.1:8798/index.html",{waitUntil:"domcontentloaded"});
       await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.readOnly),true);
+      await page.select("#vr-placement","target");
       assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
       assert.equal(await page.$eval("#vr-target-h-rail",el=>[el.min,el.max,el.step].join("|")),"1|200|1");
       assert.equal(await page.$eval("#vr-source-f-rail",el=>el.max),"1000");
@@ -198,11 +201,45 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         input.files=data.files;input.dispatchEvent(new Event("change",{bubbles:true}));
       });
       await page.waitForFunction(()=>!document.querySelector("#play-dry").disabled,{timeout:25000});
+      await page.select("#vr-placement","keep-spacing");
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+      // Regression: legacy r=2 must not be misrepresented as currently
+      // audible keep-spacing H=F/m, nor silently reset on an A/B refresh.
+      await page.$eval("#pitch-ratio",el=>{
+        el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.waitForFunction(()=>!document.querySelector("#vr-sync-note").hidden,{timeout:10000});
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
+      assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-2)<1e-9,
+        "legacy ratio is still canonical until workbench is deliberately edited");
+      assert.match(await page.$eval("#vr-sync-note",el=>el.textContent),/H=175/);
       await page.$eval("#vr-first-index",el=>{
         el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
-      await page.waitForFunction(()=>document.querySelector("#numerator").value==="-1",{timeout:10000});
+      await page.waitForFunction(()=>document.querySelector("#numerator").value==="-1" &&
+        Number(document.querySelector("#pitch-ratio").dataset.fwCanonical)===1 &&
+        document.querySelector("#vr-sync-note").hidden,{timeout:10000});
+      await page.select("#vr-placement","target"); // A deliberately stores target; B stores keep.
       await page.click("#compare-save-a");
+      // A retains the default ON preferences, B independently stores OFF.
+      for(const selector of ["#low","#fundamental-range"]){
+        await page.$eval(selector,el=>el.dispatchEvent(new MouseEvent(
+          "contextmenu",{bubbles:true,cancelable:true,clientX:80,clientY:100})));
+        await page.$eval("#fw-unit-snap-menu button",el=>el.click());
+        assert.equal(await page.$eval(selector,el=>el.dataset.fwSnap),"off");
+      }
+      await page.select("#vr-placement","keep-spacing");
+      await page.select("#vr-source-f-scale","5000");
+      await page.click('[data-vr-unit-for="source-f"][data-vr-unit="note"]');
+      await page.$eval("#tab-math",el=>el.click());
+      await page.$eval("#graph-log",el=>{
+        el.value="50";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.select("#sine-unit","note");
+      await page.$eval("#sine-volume",el=>{
+        el.value="70";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
       await page.$eval("#vr-first-index",el=>{
         el.value="-5";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
@@ -210,8 +247,25 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.click("#compare-save-b");
       await page.click("#compare-load-a");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"3");
+      assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
+      assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"target");
+      assert.equal(await page.$eval("#vr-source-f-scale",el=>el.value),"1000");
+      assert.equal(await page.$eval("#tab-map",el=>el.getAttribute("aria-selected")),"true");
+      assert.equal(await page.$eval("#graph-log",el=>el.value),"0");
+      assert.equal(await page.$eval("#sine-unit",el=>el.value),"hz");
+      assert.equal(await page.$eval("#sine-volume",el=>el.value),"25");
       await page.click("#compare-load-b");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"-5");
+      assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"off");
+      assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"off");
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
+      assert.equal(await page.$eval("#vr-source-f-scale",el=>el.value),"5000");
+      assert.equal(await page.$eval('[data-vr-unit-for="source-f"][data-vr-unit="note"]',el=>el.getAttribute("aria-pressed")),"true");
+      assert.equal(await page.$eval("#tab-math",el=>el.getAttribute("aria-selected")),"true");
+      assert.equal(await page.$eval("#graph-log",el=>el.value),"50");
+      assert.equal(await page.$eval("#sine-unit",el=>el.value),"note");
+      assert.equal(await page.$eval("#sine-volume",el=>el.value),"70");
       // Live DSP acceptance: a slider edit must obtain a new Worklet ACK
       // while Wet is audible, with no separate Apply click.
       await page.click("#play-wet");

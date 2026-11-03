@@ -12,6 +12,18 @@ const IDS=["fundamental","denominator","numerator","harmonic-index","pitch-ratio
 const preciseFields=new Map();
 const integerBindings=new Map();
 let fundamentalUnitControl=null,carrierUnitControl=null,ratioUnitControl=null;
+export function captureHarmonicSnapState(){
+  return {fundamental:fundamentalUnitControl?.snapEnabled??true,
+    carrier:carrierUnitControl?.snapEnabled??true,
+    ratio:ratioUnitControl?.snapEnabled??true};
+}
+export function restoreHarmonicSnapState(values){
+  for(const [key,control] of [["fundamental",fundamentalUnitControl],
+    ["carrier",carrierUnitControl],["ratio",ratioUnitControl]]){
+    if(typeof values?.[key]!=="boolean")throw Error("Invalid harmonic snap "+key);
+    control?.setSnapEnabled(values[key]); // Gesture preference only; no DSP update.
+  }
+}
 const round3=v=>Math.round((v+Number.EPSILON)*1000)/1000;
 const read=id=>integerBindings.has(id)?integerBindings.get(id).value:
   id==="fundamental"&&fundamentalUnitControl?fundamentalUnitControl.value:
