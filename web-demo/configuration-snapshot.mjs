@@ -74,6 +74,13 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
   }
   if(c.values.crusherBits!==0&&c.values.crusherBits<2)
     throw Error("Invalid crusher bit count");
+  if(c.transport!==undefined){
+    const t=c.transport;
+    if(!t||!['stopped','dry','wet'].includes(t.mode)||
+      !Number.isFinite(t.position)||!Number.isFinite(t.duration)||
+      t.duration<=0||t.position<0||t.position>t.duration)
+      throw Error("Invalid transport snapshot");
+  }
   if(c.flags.crusherEnabled && c.values.crusherBits!==c.values.manualCrusherBits)
     throw Error("Inconsistent crusher enablement");
   if(!c.flags.crusherEnabled && c.values.crusherBits!==0)
@@ -109,7 +116,7 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
     throw Error("DSP/harmonic canonical mismatch");
   return c;
 }
-export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio,view}){
+export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio,view,transport}){
   const canonicalValues={...values},canonicalAudio={...audio};
   // Older snapshots stored an independent A cutoff in values/audio. Drop the
   // former and migrate the ABI compatibility field to this slot's common L.
@@ -117,6 +124,7 @@ export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values
   canonicalAudio.aMinHz=canonicalAudio.low;
   const c={version:1,sourceToken,sampleRate,
     harmonic:{...harmonic},values:canonicalValues,selectors:{...selectors},flags:{...flags},audio:canonicalAudio,
+    ...(transport?{transport:{...transport}}:{}),
     ...(view?{view:{virtualRoot:{...view.virtualRoot,
       scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}},
       ...(view.interface?{interface:{...view.interface,units:{...view.interface.units},
@@ -124,7 +132,8 @@ export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values
         sine:{...view.interface.sine},
         ...(view.interface.snaps?{snaps:{...view.interface.snaps}}:{})}}:{})}}:{})};
   validateSoundConfiguration(c);
-  for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio])Object.freeze(value);
+  for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio,
+    ...(c.transport?[c.transport]:[])])Object.freeze(value);
   if(c.view){
     for(const value of [c.view.virtualRoot.scopes,c.view.virtualRoot.units,c.view.virtualRoot.snaps])Object.freeze(value);
     Object.freeze(c.view.virtualRoot);

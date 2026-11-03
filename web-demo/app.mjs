@@ -371,6 +371,8 @@ function captureCurrentConfiguration(){
   return createSoundConfiguration({
     sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
     harmonic:h,audio:p,
+    transport:{mode:state.player?.mode??"stopped",
+      position:clamp(playPosition(),0,duration()),duration:duration()},
     view:{virtualRoot:virtualRootWorkbench.captureView(),
       interface:captureComparisonView($(".workspace-grid"),{
         graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value,
@@ -450,6 +452,33 @@ function applyConfigurationSilently(c){
     }
   });
 }
+async function restoreComparisonTransport(saved,sourceToken,operation){
+  if(!saved||sourceToken!==state.sourceGeneration||comparisonPending!==operation)return false;
+  if(Math.abs(duration()-saved.duration)>1e-6)
+    throw Error("保存時の音源の長さと現在の音源が一致しません");
+  const position=clamp(saved.position,0,Math.max(0,duration()-.001));
+  if(saved.mode==="stopped"){
+    // Always fence pending async play launches, even when no player exists yet.
+    const expectedEpoch=state.transportEpoch+1;
+    await stop();
+    if(sourceToken!==state.sourceGeneration||comparisonPending!==operation||
+      state.transportEpoch!==expectedEpoch)return false;
+    state.seek=position;
+    refreshStatusSeek();
+    return true;
+  }
+  if(state.player?.mode===saved.mode){
+    seek(position);
+    refreshStatusSeek();
+    return true;
+  }
+  await play(saved.mode,position);
+  if(sourceToken!==state.sourceGeneration||comparisonPending!==operation)return false;
+  if(state.player?.mode!==saved.mode)
+    throw Error("保存された再生モードの復帰に失敗しました");
+  refreshStatusSeek();
+  return true;
+}
 function switchSoundConfiguration(slot){
   const saved=comparisonSlots[slot];
   if(!saved)return;
@@ -479,7 +508,38 @@ function switchSoundConfiguration(slot){
     }finally{applyingConfiguration=false;}
     document.dispatchEvent(new Event("fw:virtual-root-external-change"));
     comparisonCurrent=null;
-    if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
+    if(saved.transport){
+      const operation={slot,revision:null};
+      comparisonPending=operation;
+      const token=state.sourceGeneration;
+      if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
+        const f=state.player.feedback.current;
+        operation.revision=f.phase==="pending"?f.requestedRevision:null;
+      }
+      comparisonMessage("設定"+slot+"：再生状態を復帰中","pending");
+      void restoreComparisonTransport(saved.transport,token,operation).then(restored=>{
+        if(!restored||comparisonPending!==operation)return;
+        const p=state.player;
+        if(p&&!p.directDry&&p.mode==="wet"&&settings().wet>0){
+          const f=p.feedback.current;
+          if(operation.revision===null&&f.phase==="pending")
+            operation.revision=f.requestedRevision;
+          if(operation.revision===null){
+            comparisonPending=null;comparisonCurrent=slot;
+            comparisonMessage("設定"+slot+"：DSP最新設定の受理を確認","applied");
+          }
+          return;
+        }
+        comparisonPending=null;
+        const mode=p?.mode??"stopped";
+        const label=mode==="dry"?"原音再生中":mode==="wet"?"変換再生中":"停止中";
+        comparisonMessage("設定"+slot+"を復帰 · "+label,"ready");
+      }).catch(error=>{
+        if(comparisonPending!==operation)return;
+        comparisonPending=null;
+        comparisonMessage("再生状態の復帰失敗："+error.message,"error");
+      });
+    }else if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
       const f=state.player.feedback.current;
       comparisonPending={slot,revision:f.phase==="pending"?f.requestedRevision:null};
       comparisonMessage("設定"+slot+"：DSP反映確認中","pending");
@@ -1540,8 +1600,8 @@ for(const id of ["crusher-enabled","crusher-bits"]){
   });
 }
 
-controls.dry.addEventListener("click",()=>play("dry"));
-controls.wet.addEventListener("click",()=>play("wet"));
+controls.dry.addEventListener("click",()=>{comparisonPending=null;void play("dry");});
+controls.wet.addEventListener("click",()=>{comparisonPending=null;void play("wet");});
 controls.stop.addEventListener("click",()=>{
   if(comparisonPending){
     comparisonPending=null;

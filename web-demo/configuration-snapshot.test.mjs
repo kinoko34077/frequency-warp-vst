@@ -99,3 +99,21 @@ test("legacy A/B Engine A minimum is migrated to the saved per-slot L",()=>{
   assert.equal(actual.aMinHz,12.345);
   verifyComparisonAudio(actual,legacy.audio);
 });
+
+test("A/B transport is immutable and optional for older sound snapshots",()=>{
+  const legacy=createSoundConfiguration(fixture());
+  assert.equal(legacy.transport,undefined);
+  assert.doesNotThrow(()=>validateSoundConfiguration(legacy));
+
+  const input={...fixture(),transport:{mode:"wet",position:3.25,duration:12}};
+  const saved=createSoundConfiguration(input);
+  input.transport.position=9;
+  assert.deepEqual(saved.transport,{mode:"wet",position:3.25,duration:12});
+  assert.ok(Object.isFrozen(saved.transport));
+  assert.throws(()=>createSoundConfiguration({...fixture(),transport:{
+    mode:"pause",position:3,duration:12
+  }}),/transport/);
+  assert.throws(()=>createSoundConfiguration({...fixture(),transport:{
+    mode:"dry",position:12.1,duration:12
+  }}),/transport/);
+});
