@@ -78,3 +78,26 @@ test("A/B restores per-slot effects while global Settings remain current",()=>{
   verifyComparisonAudio(result,saved);
   assert.throws(()=>verifyComparisonAudio({...result,wet:.5},saved),/wet/);
 });
+
+
+test("A/B preserves exact source-local transport state, rejects malformed positions",()=>{
+  const a=fixture();a.transport={mode:"wet",position:1.125,duration:3};
+  const saved=createSoundConfiguration(a);
+  a.transport.position=2;
+  assert.deepEqual(saved.transport,{mode:"wet",position:1.125,duration:3});
+  assert.ok(Object.isFrozen(saved.transport));
+  const b=fixture();b.transport={mode:"stopped",position:2.75,duration:3};
+  const other=createSoundConfiguration(b);
+  assert.equal(saved.transport.mode,"wet");
+  assert.equal(other.transport.mode,"stopped");
+  for(const transport of [
+    {mode:"pause",position:1,duration:3},
+    {mode:"dry",position:-1,duration:3},
+    {mode:"wet",position:3.1,duration:3},
+    {mode:"dry",position:NaN,duration:3},
+    {mode:"stopped",position:0,duration:0}
+  ]){
+    const invalid=fixture();invalid.transport=transport;
+    assert.throws(()=>createSoundConfiguration(invalid),/transport/);
+  }
+});
