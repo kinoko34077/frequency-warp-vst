@@ -257,6 +257,10 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#mode",el=>el.value),"fold-h");
       assert.equal(await page.$eval("#quality",el=>el.value),"standard");
       assert.equal(await page.$eval("#harmonic-count",el=>el.value),"7");
+      assert.equal(await page.$eval("#a-min-value",el=>Number(el.dataset.fwCanonical)),70);
+      assert.equal(await page.$eval("#a-band",el=>el.value),"2");
+      assert.equal(await page.$eval("#a-quality",el=>el.value),"25");
+      assert.equal(await page.$eval("#a-reverb",el=>el.value),"20");
       assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
       assert.equal(await page.$eval("#fundamental-range",el=>el.dataset.fwSnap),"on");
       assert.equal(await page.$eval("#vr-placement",el=>el.value),"target");
