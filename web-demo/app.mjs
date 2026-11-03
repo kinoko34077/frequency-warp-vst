@@ -29,7 +29,7 @@ const controls={
   render:$("#render"),download:$("#download")
 };
 const dualControls={};
-let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,aMinUnitControl=null,sineUnitControl=null,slopeUnitControl=null,crusherUnitControl=null;
+let lowUnitControl=null,highUnitControl=null,pivotUnitControl=null,sineUnitControl=null,slopeUnitControl=null,crusherUnitControl=null;
 // #79 M3: exactly one canonical Wet scalar; slider and typed % are views.
 const wetBinding=createParameterBinding(defineParameter({
   id:"wet",min:0,max:1,defaultValue:1,units:["percent"],
@@ -60,7 +60,7 @@ const state={
   module:null,workletLoaded:false,player:null,position:0,seek:0,
   qualityIndex:0,settingsRevision:0,name:"audio",fileMeta:"音声未選択",processing:false,
   precise:Object.create(null),
-  effective:{low:20,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0,sourceGeneration:0,transportEpoch:0
+  effective:{low:0.001,high:16000},raf:0,lastStats:null,mathCore:null,wasmPromise:null,rebuildTimer:null,sine:null,loadToken:0,sourceGeneration:0,transportEpoch:0
 };
 // Continuous log bands around 20 Hz: 0..200 resolves 0.001..20 Hz,
 // 200..1000 resolves 20..20,000 Hz. Exact typed values remain independent.
@@ -142,7 +142,6 @@ function refreshInvertView(force=false){
 const scalar=(name,fallback)=>name==="low"&&lowUnitControl?lowUnitControl.value:
   name==="high"&&highUnitControl?highUnitControl.value:
   name==="axis-pivot"&&pivotUnitControl?pivotUnitControl.value:
-  name==="a-min"&&aMinUnitControl?aMinUnitControl.value:
   name==="axis-slope"&&slopeUnitControl?slopeUnitControl.value:
   name==="wet"?wetBinding.value:
   name==="a-reverb"?aReverbBinding.value:
@@ -173,7 +172,6 @@ function showNumber(id,value){
   if(id==="low-value"&&lowUnitControl){lowUnitControl.refresh();return;}
   if(id==="high-value"&&highUnitControl){highUnitControl.refresh();return;}
   if(id==="axis-pivot-value"&&pivotUnitControl){pivotUnitControl.refresh();return;}
-  if(id==="a-min-value"&&aMinUnitControl){aMinUnitControl.refresh();return;}
   if(id==="axis-slope-value"&&slopeUnitControl){slopeUnitControl.refresh();return;}
   if(id==="sine-hz"&&sineUnitControl){sineUnitControl.refresh();return;}
   if(id==="wet-value"){refreshWetView();return;}
@@ -307,7 +305,7 @@ function settings(){
     crusherBits:$("#crusher-enabled").checked?scalar("crusher-bits",()=>Number($("#crusher-bits").value)):0,
     crusherRateHz,
     crusherHold:holdFromFrequency(crusherRateHz,runtimeSampleRate),
-    aMinHz:scalar("a-min",()=>hzFromScale($("#a-min").value)),
+    aMinHz:low, // legacy ABI slot mirrors shared lower bound L
     aReverb:scalar("a-reverb",()=>Number($("#a-reverb").value)/100),
     aBandBins:Number($("#a-band").value),
     aQuality:Number($("#a-quality").value)
@@ -379,7 +377,7 @@ function captureCurrentConfiguration(){
       low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
       axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
       wet:p.wet,zeroReflectGain:p.zeroReflectGain,zeroReflectDecay:p.zeroReflectDecay,
-      aMinHz:p.aMinHz,aReverb:p.aReverb,aBandBins:p.aBandBins,aQuality:p.aQuality,
+      aMinHz:p.low,aReverb:p.aReverb,aBandBins:p.aBandBins,aQuality:p.aQuality,
       crusherRateHz:p.crusherRateHz,crusherBits:p.crusherBits,manualCrusherBits
     },
     selectors:{
@@ -534,7 +532,6 @@ function labels(id=""){
     '</mrow></math> 折返し点からの距離 d に適用（単なる負の傾きは対象外）。';
   showNumber("wet-value",100*p.wet);
   refreshAxisShiftView(p);
-  showNumber("a-min-value",p.aMinHz);
   showNumber("a-band-value",p.aBandBins);
   showNumber("a-quality-value",p.aQuality);
   const profile=[{count:6,floor:.09},{count:10,floor:.045},{count:18,floor:.025}][p.qualityIndex];
@@ -1236,7 +1233,7 @@ const lowNormalizedFromHz=hz=>hz<=20?
   .2+.8*Math.log(hz/20)/Math.log(1000);
 lowUnitControl=mountFrequencyUnitField({
   descriptor:defineParameter({
-    id:"low",min:MIN_POSITIVE_HZ,max:20000,defaultValue:20,
+    id:"low",min:MIN_POSITIVE_HZ,max:20000,defaultValue:MIN_POSITIVE_HZ,
     units:["hz","note","percent"],
     rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
     digits:3,
@@ -1292,20 +1289,6 @@ pivotUnitControl=mountFrequencyUnitField({
     if(isHarmonicPivotLinked())syncPivotToHarmonic();
     updateParams("axis-pivot");updateEngineInfo();
   }
-});
-// Engine A extraction floor has the same nonzero Hz log rail as L/H.
-aMinUnitControl=mountFrequencyUnitField({
-  descriptor:defineParameter({
-    id:"a-min",min:MIN_POSITIVE_HZ,max:20000,defaultValue:20,
-    units:["hz","note","percent"],
-    rail:{toPosition:lowNormalizedFromHz,fromPosition:t=>hzFromScale(t*1000)},
-    digits:3,
-    snap:{unit:"note",mode:"step",step:1,thresholdPx:6,during:["slider"]}
-  }),
-  field:$("#a-min-value"),select:$("#a-min-unit"),
-  slider:$("#a-min"),railRoot:$("#a-min"),
-  getDigits:displayDigits,initialValue:20,
-  onValueChange:()=>{updateParams("a-min");updateEngineInfo();}
 });
 // Signed slope s has no pitch or Hz interpretation: only signed × and the
 // original linear physical rail%, with optional anchors −1, 0, +1.
@@ -1472,12 +1455,11 @@ $("#curve").addEventListener("click",()=>{cycleGraphView();});
 $("#curve").addEventListener("keydown",event=>{
   if(event.key==="Enter"||event.key===" "){event.preventDefault();cycleGraphView();}
 });
-for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-min","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
+for(const name of ["low","high","curvature","invert","zero-reflect","zero-decay","axis-shift","axis-pivot","axis-slope","a-band","a-quality","a-reverb","ring-enabled","rational-enabled"]){
   $("#"+name).addEventListener("input",()=>{
     if(name==="low"){lowUnitControl.fromSlider();return;}
     if(name==="high"){highUnitControl.fromSlider();return;}
     if(name==="axis-pivot"){pivotUnitControl.fromSlider();return;}
-    if(name==="a-min"){aMinUnitControl.fromSlider();return;}
     if(name==="axis-slope"){slopeUnitControl.fromSlider();return;}
     if(name==="a-reverb"){
       aReverbBinding.setPosition(Number($("#a-reverb").value)/100,{snap:false,notify:false});
@@ -1521,7 +1503,6 @@ $("#decimal-digits").addEventListener("change",()=>{
   lowUnitControl.refresh();
   highUnitControl.refresh();
   pivotUnitControl.refresh();
-  aMinUnitControl.refresh();
   slopeUnitControl.refresh();
   updateSineLabel();
 });
@@ -1782,7 +1763,7 @@ controls.download.addEventListener("click",()=>{
 // It remains available even when a Rust/DSP module import fails.
 $("#settings-reset").addEventListener("click",()=>{
   const defaults={
-    low:"200",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
+    low:"0",high:"974",curvature:"1",invert:"0",wet:"1","axis-shift":"0",
     engine:"1",mode:"reciprocal",outside:"pass",quality:"eco",
     overlap:"4","zero-reflect":"100","zero-decay":"0","harmonic-count":"5","fraction-slider-span":"16","decimal-digits":"1","graph-log":"0","a-band":"1","a-quality":"0"
   };
@@ -1795,7 +1776,6 @@ $("#settings-reset").addEventListener("click",()=>{
   lowUnitControl.reset();
   highUnitControl.reset();
   pivotUnitControl.reset();
-  aMinUnitControl.reset();
   slopeUnitControl.reset();
   resetHarmonicControls();
   // Reference sine is an independent monitor: leave its frequency/playback

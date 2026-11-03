@@ -8,7 +8,7 @@ import {validateHarmonicConfiguration} from "./harmonics-panel.mjs";
 // The L front-panel control is intentionally per-slot despite its Settings mirror.
 export const SHARED_SETTINGS_AUDIO_KEYS=Object.freeze([
   "mode","outside","qualityIndex","hopDiv","engine",
-  "aMinHz","aQuality","aBandBins","aReverb"
+  "aQuality","aBandBins","aReverb"
 ]);
 export function effectiveComparisonAudio(saved,current){
   const merged={...saved};
@@ -101,7 +101,7 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
   const a=c.audio,h=c.harmonic;
   if(Math.abs(a.axisReference-h.r*h.F)>Math.max(1e-8,Math.abs(h.r*h.F)*1e-12)||
     Math.abs(a.shiftHz-h.n*h.r*h.F/h.m)>Math.max(1e-8,Math.abs(a.shiftHz)*1e-12)||
-    a.low!==c.values.low||a.high!==c.values.high||a.axisPivot!==c.values.axisPivot||
+    a.low!==c.values.low||a.aMinHz!==a.low||a.high!==c.values.high||a.axisPivot!==c.values.axisPivot||
     a.axisSlope!==c.values.axisSlope||a.wet!==c.values.wet)
     throw Error("DSP/harmonic canonical mismatch");
   return c;

@@ -57,7 +57,7 @@ export function validateStreamSettings(p){
 /**
  * Build the EFFECTIVE, Rust-compatible audio snapshot without mutating the
  * user's theoretical controls or graph. Sub-1 Hz reference frequencies are
- * accepted by Rust when finite and positive without any silent 1-Hz substitution.
+ * accepted by Rust when finite and positive without value substitution.
  * All invalid numeric and semantic fields remain fail-closed.
  */
 export function prepareStreamSettings(theoretical){
