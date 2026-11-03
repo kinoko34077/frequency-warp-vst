@@ -12,11 +12,11 @@ test("accepted active-audio bounds include the 1/20kHz reference endpoints",()=>
  assert.equal(validateStreamSettings({...base(),axisReference:1}).ok,true);
  assert.equal(validateStreamSettings({...base(),axisReference:20000,shiftHz:-20000}).ok,true);
 });
-test("out-of-core theoretical F is not clamped or silently applied",()=>{
+test("large positive theoretical R is preserved without an arbitrary 20kHz reference cap",()=>{
  const p={...base(),axisReference:100000,rationalEnabled:false};
- assert.deepEqual(validateStreamSettings(p).field,"axisReference");
+ assert.equal(validateStreamSettings(p).ok,true);
+ assert.equal(prepareStreamSettings(p).settings.axisReference,100000);
  assert.equal(p.axisReference,100000);
- assert.match(validateStreamSettings(p).message,/オーバーサンプリング/);
 });
 test("positive sub-1Hz axis reference is accepted as exact DSP value",()=>{
  const p={...base(),axisReference:0.5,shiftHz:0};
