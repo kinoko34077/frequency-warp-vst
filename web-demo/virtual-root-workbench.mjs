@@ -139,6 +139,10 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   function render(){
     const keep=$("#vr-placement").value==="keep-spacing";
     if(keep)state.H=state.F/state.m;
+    const actual=onCurrent?.(),note=$("#vr-sync-note");
+    const mismatch=keep&&Number.isFinite(actual?.r)&&Math.abs(actual.r-1)>1e-10;
+    note.hidden=!mismatch;
+    note.textContent=mismatch?"未適用の配置案：表示H="+fmt(state.H,3)+" Hz（倍率1倍）。現在の倍音設定は倍率"+fmt(actual.r,3)+"倍、H="+fmt(actual.F*actual.r/actual.m,3)+" Hz。次の配置操作で維持配置を適用します。":"";
     controls.H.readOnly=keep;rails.H.disabled=keep;
     root.querySelector('[data-vr-digit="target-h"]').disabled=keep;
     for(const key of Object.keys(controls)){
