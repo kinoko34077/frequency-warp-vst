@@ -392,14 +392,8 @@ function applyConfigurationSilently(c){
   // Preconditions are checked before entry. No DOM events or intermediate DSP
   // writes: the owning adapters accept exact canonical numbers first.
   const v=c.values,s=c.selectors,t=c.flags;
-  for(const [id,value] of Object.entries({
-    mode:s.mode,outside:s.outside,quality:s.quality,overlap:s.overlap,
-    engine:s.engine,harmonicCount:s.harmonicCount,pivotLinkTarget:s.pivotLinkTarget
-  })){
-    const selectorId=id==="harmonicCount"?"harmonic-count":
-      id==="pivotLinkTarget"?"pivot-link-target":id;
-    $("#"+selectorId).value=value;
-  }
+  // A/B owns only non-Settings selectors; shared engine, mode and quality stay live.
+  $("#pivot-link-target").value=s.pivotLinkTarget;
   for(const [id,value] of Object.entries({
     "engine-auto":t.engineAuto,"ring-enabled":t.ringEnabled,
     "rational-enabled":t.rationalEnabled,"crusher-enabled":t.crusherEnabled,
