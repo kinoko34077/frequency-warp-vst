@@ -784,6 +784,7 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
 #vr-details>summary{cursor:pointer;min-height:34px;font-size:12px;display:list-item;
   color:#bce5d5}
 #vr-details .vr-preview{margin-top:5px}
+.vr-sync-note{font-size:11px;line-height:1.45;color:#f2c18d;margin:0;overflow-wrap:anywhere}
 .vr-error{font-size:10px;color:#f2c18d;margin:0}
 .vr-digit-open{display:none;min-height:40px;min-width:34px;padding:2px 5px;
   border:1px solid #4b736b;border-radius:5px;background:#173a36;color:#d2eddf;font-size:10px}
