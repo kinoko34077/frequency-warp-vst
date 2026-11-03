@@ -34,6 +34,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // #240: independently observe the real AudioContext clock in the Chrome
     // page; do not mistake a stalled UI label for stopped source playback.
     await page.evaluateOnNewDocument(()=>{
+      // This smoke checks the AudioContext clock and waveform timeline. Native
+      // MediaSession pause events are covered by device tests and can arrive
+      // asynchronously after other tabs close in headless Chrome.
+      try{Object.defineProperty(navigator,"mediaSession",{configurable:true,value:null});}catch{}
       const Native=window.AudioContext;
       if(!Native)return;
       window.__originalPlaybackAuditContexts=[];
