@@ -1,6 +1,6 @@
 //! V1 ABI around the existing frequency_warp_core::Stream, not a DSP fork.
 //! One Stream per Wasmi instance. Preparation/destruction allocate off audio RT.
-use frequency_warp_core::{Stream,Settings,Progression};
+use frequency_warp_core::{Stream,Settings,Progression,default_frequency_high};
 use std::ptr::{addr_of,addr_of_mut};
 const FRAMES:usize=2048;
 const SAMPLES:usize=FRAMES*2;
@@ -27,7 +27,7 @@ static mut STATE:Option<ModuleState>=None;
        !(1..=2).contains(&channels)||max_block==0||max_block as usize>FRAMES{return 0;}
     unsafe {
         if STATE.is_some(){return 0;}
-        let settings=Settings{low:20.,high:16000_f64.min(rate*0.45),
+        let settings=Settings{low:20.,high:default_frequency_high(rate),
             curvature:1.,invert:0.,mode:Progression::Blend,quality:0};
         match Stream::new(rate,channels as usize,settings,0) {
             Ok(stream)=>{STATE=Some(ModuleState{stream,settings,rate,channels:channels as usize});HANDLE}
