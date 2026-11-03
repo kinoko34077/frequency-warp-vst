@@ -860,14 +860,13 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#low-value",el=>Number(el.value)),20);
     assert.equal(await page.$eval("#low",el=>el.value),"200");
-    // #79-A21: changing L near H must move H in the *canonical binding*,
-    // not only the coarse range proxy (which used to be undone by settings()).
+    // #321: editing L within the valid interval must preserve H exactly.
     await page.$eval("#low-value",el=>{
       el.value="15500";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#high-value");
-    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16740,
-      "an L edit to 15.5k must move canonical H to 16.74k");
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16000,
+      "a valid close L/H interval must retain H without an artificial gap");
     await page.$eval("#high-value",el=>el.blur());
     await page.focus("#low-value");
     assert.equal(Number(await page.$eval("#low-value",el=>el.value)),15500);
@@ -878,15 +877,16 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       el.value="2";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     await page.focus("#high-value");
-    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16740);
+    assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16000);
     await page.$eval("#high-value",el=>el.blur());
-    // Changing H instead keeps H and pulls L downward by the declared gap.
+    // Crossing H over L moves L to its closest representable lower Hz value.
     await page.$eval("#high-value",el=>{
       el.value="10000";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
     await page.focus("#low-value");
-    assert.ok(Math.abs(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical))-
-      10000/1.08)<1e-8,"H edit must move actual canonical L, not its proxy");
+    const adjustedL=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
+    assert.ok(adjustedL<10000&&10000-adjustedL<1e-8,
+      "crossing H must minimally adjust canonical L without percentage spacing");
     await page.$eval("#low-value",el=>el.blur());
     await page.focus("#high-value");
     assert.equal(Number(await page.$eval("#high-value",el=>el.value)),10000);
