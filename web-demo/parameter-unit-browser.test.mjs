@@ -33,6 +33,24 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     }
     assert.ok(started,"staged Web app HTTP server not ready");
     await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:18000});
+    // #321: the shared 20Hz rail breakpoint must not leak binary float tails.
+    assert.equal(await page.$eval("#processing-min-hz",el=>el.value),"20");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),20);
+    // A three-decimal input stays a real Hz value, not rounded to an integer.
+    await page.$eval("#processing-min-hz",el=>{
+      el.value="0.001";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#processing-min-hz",el=>el.value),"0.001");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),0.001);
+    await page.$eval("#processing-min-hz",el=>{
+      el.value="19.999";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#processing-min-hz",el=>el.value),"19.999");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),19.999);
+    await page.$eval("#processing-min-hz",el=>{
+      el.value="20";el.dispatchEvent(new Event("change",{bubbles:true}));
+    });
+    assert.equal(await page.$eval("#processing-min-hz",el=>el.value),"20");
     assert.deepEqual(await page.$$eval("#low-unit option",options=>options.map(o=>o.value)),["hz","note","percent"]);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
