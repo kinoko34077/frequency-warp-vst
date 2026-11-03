@@ -8,6 +8,10 @@ use std::f64::consts::PI;
 mod stream;
 pub use stream::Stream; // One canonical native/WASM spectral streaming processor.
 
+/// Shared native/WASM default for the user-requested processing lower bound L.
+/// This is a requested default, not proof of sub-Hz DSP resolution.
+pub const DEFAULT_PROCESSING_LOW_HZ:f64=0.001;
+
 /// Default upper processing frequency respects the strict Nyquist boundary.
 /// A user-facing rail may impose its own gesture span, but never Fs * 0.45.
 pub fn default_frequency_high(sample_rate:f64)->f64{

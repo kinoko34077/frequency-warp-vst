@@ -1,6 +1,6 @@
 //! V1 ABI around the existing frequency_warp_core::Stream, not a DSP fork.
 //! One Stream per Wasmi instance. Preparation/destruction allocate off audio RT.
-use frequency_warp_core::{Stream,Settings,Progression,default_frequency_high};
+use frequency_warp_core::{Stream,Settings,Progression,default_frequency_high,DEFAULT_PROCESSING_LOW_HZ};
 use std::ptr::{addr_of,addr_of_mut};
 const FRAMES:usize=2048;
 const SAMPLES:usize=FRAMES*2;
@@ -13,7 +13,7 @@ static mut INPUT:[f32;SAMPLES]=[0.;SAMPLES];
 static mut OUTPUT:[f32;SAMPLES]=[0.;SAMPLES];
 static mut TMP_IN:[f32;SAMPLES]=[0.;SAMPLES];
 static mut TMP_OUT:[f32;SAMPLES]=[0.;SAMPLES];
-static mut EVENTS:[Event;EVENTS_MAX]=[Event{id:2,offset:0,value:20.};EVENTS_MAX];
+static mut EVENTS:[Event;EVENTS_MAX]=[Event{id:2,offset:0,value:DEFAULT_PROCESSING_LOW_HZ};EVENTS_MAX];
 struct ModuleState {stream:Stream,settings:Settings,channels:usize,rate:f64}
 static mut STATE:Option<ModuleState>=None;
 #[no_mangle]pub extern "C" fn fw_abi_major()->u32 {1}
@@ -27,7 +27,7 @@ static mut STATE:Option<ModuleState>=None;
        !(1..=2).contains(&channels)||max_block==0||max_block as usize>FRAMES{return 0;}
     unsafe {
         if STATE.is_some(){return 0;}
-        let settings=Settings{low:20.,high:default_frequency_high(rate),
+        let settings=Settings{low:DEFAULT_PROCESSING_LOW_HZ,high:default_frequency_high(rate),
             curvature:1.,invert:0.,mode:Progression::Blend,quality:0};
         match Stream::new(rate,channels as usize,settings,0) {
             Ok(stream)=>{STATE=Some(ModuleState{stream,settings,rate,channels:channels as usize});HANDLE}
@@ -115,6 +115,7 @@ mod tests {
         assert_eq!(fw_abi_major(),1);
         assert_eq!(fw_event_stride(),16);
         assert_eq!(fw_create(48000.,2,128),1);
+        unsafe { assert_eq!(STATE.as_ref().unwrap().settings.low,DEFAULT_PROCESSING_LOW_HZ); }
         assert_eq!(fw_get_latency_frames(HANDLE),1023);
         assert_eq!(fw_reset(HANDLE),0);
         fw_destroy(HANDLE);

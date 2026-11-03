@@ -1,6 +1,6 @@
 //! S4a: actual core::Stream native vs the SAME DSP via Wasmi .fwengine
 //! wrapper. Exit nonzero on PCM/latency/automation divergence.
-use frequency_warp_core::{Progression,Settings,Stream};
+use frequency_warp_core::{Progression,Settings,Stream,DEFAULT_PROCESSING_LOW_HZ};
 use fwengine_runtime::{ParamEvent,Runtime};
 use std::error::Error;
 use std::f64::consts::PI;
@@ -69,7 +69,7 @@ fn main()->Result<(),Box<dyn Error>>{
     assert_eq!(wasm.manifest.nominal_latency_frames,1023);
     assert!(Runtime::prepare(&wrong,48000.,2,128).is_err(),
         "invalid declared Stream latency was not rejected");
-    let mut native_settings=Settings{low:20.,high:16000.,curvature:1.,invert:0.,
+    let mut native_settings=Settings{low:DEFAULT_PROCESSING_LOW_HZ,high:16000.,curvature:1.,invert:0.,
         mode:Progression::Blend,quality:0};
     let mut native=Stream::new(48000.,2,native_settings,0)?;
     assert_eq!(native.latency(),1023);

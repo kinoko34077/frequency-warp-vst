@@ -1,6 +1,6 @@
 //! S4a: ABI v1 wrapper over the SAME Stream used by native and browser code.
  //! One Wasmi instance per plugin; no imports, no custom frequency transform.
-use frequency_warp_core::{Progression,Settings,Stream,default_frequency_high};
+use frequency_warp_core::{Progression,Settings,Stream,default_frequency_high,DEFAULT_PROCESSING_LOW_HZ};
 use std::ptr::{addr_of,addr_of_mut};
 
 const MAX_FRAMES:usize=2048;
@@ -13,7 +13,7 @@ const OUTSIDE_PASS:u32=0;
 #[repr(C)]
 #[derive(Clone,Copy)]
 pub struct Event {pub id:u32,pub offset:u32,pub value:f64}
-const NEUTRAL_EVENT:Event=Event{id:2,offset:0,value:20.};
+const NEUTRAL_EVENT:Event=Event{id:2,offset:0,value:DEFAULT_PROCESSING_LOW_HZ};
 
 static mut INPUT:[f32;MAX_SAMPLES]=[0.;MAX_SAMPLES];
 static mut OUTPUT:[f32;MAX_SAMPLES]=[0.;MAX_SAMPLES];
@@ -36,7 +36,7 @@ impl Default for ExtraControls {
         Self{shift:0.,pivot:350.,slope:1.,gain:1.,decay:0.,
              ring:false,rational:false,
              crusher_enabled:false,crusher_bits:8,crusher_rate_hz:12000.,
-             a_min_hz:20.,a_quality:0,a_band_bins:1,a_reverb:0.}
+             a_min_hz:DEFAULT_PROCESSING_LOW_HZ,a_quality:0,a_band_bins:1,a_reverb:0.}
     }
 }
 static mut EXTRA:Option<ExtraControls>=None;
@@ -44,7 +44,7 @@ static mut CHANNELS:usize=0;
 static mut SAMPLE_RATE:f64=0.;
 
 fn defaults(rate:f64)->Settings {
-    Settings{low:20.,high:default_frequency_high(rate),curvature:1.,
+    Settings{low:DEFAULT_PROCESSING_LOW_HZ,high:default_frequency_high(rate),curvature:1.,
              invert:0.,mode:Progression::Blend,quality:0}
 }
 // Optional capability export: legacy .fwengine without this symbol is
@@ -252,4 +252,16 @@ pub extern "C" fn fw_process(handle:i32,input:u32,output:u32,frames:i32,
         }
     }
     0
+}
+
+#[cfg(test)]
+mod default_contract_tests {
+    use super::*;
+    #[test]
+    fn native_requested_low_and_legacy_a_alias_are_shared() {
+        assert_eq!(defaults(48_000.).low, DEFAULT_PROCESSING_LOW_HZ);
+        assert_eq!(defaults(44_100.).low, DEFAULT_PROCESSING_LOW_HZ);
+        assert_eq!(ExtraControls::default().a_min_hz, DEFAULT_PROCESSING_LOW_HZ);
+        assert_eq!(NEUTRAL_EVENT.value, DEFAULT_PROCESSING_LOW_HZ);
+    }
 }
