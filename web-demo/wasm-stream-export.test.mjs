@@ -10,7 +10,7 @@ const settings={
  pitchRatio:1,shiftHz:0,carrierHz:0,zeroMode:0,
  zeroReflectGain:1,zeroReflectDecay:0,
  axisShift:0,axisReference:350,axisPivot:350,axisSlope:1,
- ringEnabled:false,rationalEnabled:false,crusherBits:0,crusherRateHz:12000,
+ ringEnabled:false,rationalEnabled:false,crusherBits:0,crusherRateHz:4096,
  aMinHz:20,aReverb:0,aBandBins:1,aQuality:0
 };
 async function wasm(){
@@ -41,7 +41,7 @@ test("streamed Rust PCM equals legacy whole-file Rust audio on actual WASM",asyn
     src,dst,frames,1,rate,settings.low,settings.high,settings.curvature,
     settings.invert,1,settings.qualityIndex,1,settings.engine,
     settings.pitchRatio,settings.shiftHz,settings.carrierHz,settings.zeroMode,
-    settings.hopDiv,settings.crusherBits,4,settings.axisShift,
+    settings.hopDiv,settings.crusherBits,2,settings.axisShift,
     settings.axisReference,0,0,settings.axisPivot,settings.axisSlope,
     settings.aMinHz,settings.aReverb,settings.aBandBins,settings.aQuality,
     settings.zeroReflectGain,settings.zeroReflectDecay,settings.crusherRateHz);
