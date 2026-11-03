@@ -107,16 +107,16 @@
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><span class="unit-value-tools"><label for="low-value">下限 <input class="inline-value" id="low-value" type="text" value="20" spellcheck="false" autocapitalize="off" aria-label="下限の数値・音名入力"></label><select id="low-unit" aria-label="下限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><span class="unit-value-tools"><label for="high-value">上限 <input class="inline-value" id="high-value" type="text" value="16000" spellcheck="false" autocapitalize="off" aria-label="上限の数値・音名入力"></label><select id="high-unit" aria-label="上限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><span class="unit-value-tools"><label for="low-value">下限 <input class="inline-value" id="low-value" type="text" value="0.001" spellcheck="false" autocapitalize="off" aria-label="下限の数値・音名入力"></label><select id="low-unit" aria-label="下限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><span class="unit-value-tools"><label for="high-value">上限 <input class="inline-value" id="high-value" type="text" value="16000" spellcheck="false" autocapitalize="off" aria-label="上限の数値・音名入力"></label><select id="high-unit" aria-label="上限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
             <div class="dual-range shared-dual-track" id="dual-range" aria-label="帯域下限Lと帯域上限Hを操作するデュアルサム">
-              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="200" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="0" tabindex="-1" aria-hidden="true">
               <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="974" tabindex="-1" aria-hidden="true">
               <div class="shared-dual-inner" data-dual-inner>
                 <button type="button" id="low-thumb" class="shared-dual-thumb upper" data-dual-thumb role="slider" aria-label="帯域下限L" aria-valuenow="0"></button>
                 <button type="button" id="high-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="帯域上限H" aria-valuenow="968"></button>
               </div>
             </div>
-          <div class="ends"><span>20 Hz</span><span>20 kHz</span></div>
+          <div class="ends"><span>0.001 Hz</span><span>20 kHz</span></div>
         </div>
         <details class="effects-panel" open><summary>追加加工</summary><div class="effects-panel-body">
           <div class="fx-item">
