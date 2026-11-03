@@ -136,9 +136,9 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     // The native File must remain associated with its input while the
     // asynchronous read begins, especially for iOS FileProvider-backed files.
     await page.evaluate(()=>{
-      const original=File.prototype.arrayBuffer;
+      const original=File.prototype.slice;
       window.__pickerAttachedAtRead=null;
-      File.prototype.arrayBuffer=function(...args){
+      File.prototype.slice=function(...args){
         const field=document.querySelector("#audio-file");
         window.__pickerAttachedAtRead=Array.from(field.files).includes(this);
         return original.apply(this,args);
@@ -155,7 +155,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       document.querySelector("#file-meta").textContent.includes("picker.wav"),
       {timeout:23000});
     assert.equal(await page.evaluate(()=>window.__pickerAttachedAtRead),true,
-      "Do not clear native file input before its asynchronous File.arrayBuffer read");
+      "Do not clear native file input before its asynchronous File.slice read");
     await page.waitForFunction(()=>document.querySelector("#audio-file").files.length===0,
       {timeout:4000});
     // Failed replacement must leave the previously decoded sample ready to
