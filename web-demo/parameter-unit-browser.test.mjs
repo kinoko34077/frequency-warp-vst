@@ -87,8 +87,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.focus("#low-value");
     const exact=Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical));
     assert.ok(Math.abs(exact-440*2**(25/1200))<1e-9,"full precision note conversion: "+exact);
-    assert.match(await page.$eval("#low-value",el=>el.value),/^\d+(?:\.\d{1,3})?$/,
-      "focused number must be compact instead of exposing the full floating-point tail");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),exact,
+      "focused editor must expose the full canonical Hz value");
     await page.$eval("#low-value",el=>el.blur());
 
     // % means its actual piecewise logarithmic thumb rail, not f/20000.
