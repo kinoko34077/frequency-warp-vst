@@ -34,10 +34,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // #240: independently observe the real AudioContext clock in the Chrome
     // page; do not mistake a stalled UI label for stopped source playback.
     await page.evaluateOnNewDocument(()=>{
-      // This smoke checks the AudioContext clock and waveform timeline. Native
-      // MediaSession pause events are covered by device tests and can arrive
-      // asynchronously after other tabs close in headless Chrome.
-      try{Object.defineProperty(navigator,"mediaSession",{configurable:true,value:null});}catch{}
+      // This smoke measures the AudioContext clock and waveform timeline only.
+      // Native MediaSession actions are outside this check; a separate browser
+      // test covers the hidden-document HTMLMediaElement pause fallback.
+      Object.defineProperty(navigator,"mediaSession",{configurable:true,value:undefined});
       const Native=window.AudioContext;
       if(!Native)return;
       window.__originalPlaybackAuditContexts=[];
@@ -72,6 +72,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(r=>setTimeout(r,250));
     }
     assert.ok(okay,"page not served");
+    assert.equal(await page.evaluate(()=>navigator.mediaSession),undefined,
+      "timeline smoke must isolate native MediaSession actions");
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
       document.querySelectorAll("#math-results math").length>=5 && document.querySelector("#mini-fundamental")?.textContent.includes("→"),{timeout:16000})
       .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
