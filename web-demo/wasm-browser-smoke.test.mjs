@@ -1352,12 +1352,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(harmonics,12);
     await page.click("#tab-map");
 
-    // Check a 601s source is trimmed to 600s without rendering the track.
+    // Check a 601s source retains its complete duration, without silent 600s truncation.
     const longPath=path.join(temp,"six-hundred.wav");
     await writeFile(longPath,sineWav(601));
     await (await page.$("#audio-file")).uploadFile(longPath);
-    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("600.0秒"),{timeout:45000});
-    assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("601.0秒"),{timeout:45000});
+    assert.equal(await page.$eval("#duration",el=>el.textContent),"10:01.0");
     await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
     const longWave=await (await page.$("#wave")).boundingBox();
     assert.equal(await page.$eval("#stop",el=>el.disabled),true);
