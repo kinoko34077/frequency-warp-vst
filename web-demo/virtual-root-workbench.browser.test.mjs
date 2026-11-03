@@ -248,6 +248,10 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.select("#mode","fold-h");
       await page.select("#quality","standard");
       await page.select("#harmonic-count","7");
+      await page.$eval("#a-min-value",el=>{el.value="70";el.dispatchEvent(new Event("input",{bubbles:true}));});
+      for(const [selector,value] of [["#a-band","2"],["#a-quality","25"],["#a-reverb","20"]]){
+        await page.$eval(selector,(el,v)=>{el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));},value);
+      }
       await page.click("#compare-load-a");
       assert.equal(await page.$eval("#vr-first-index",el=>el.value),"3");
       assert.equal(await page.$eval("#mode",el=>el.value),"fold-h");
