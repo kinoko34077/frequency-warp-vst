@@ -96,3 +96,12 @@ test("V5 signed arithmetic progression folds negative terms automatically with n
   const negative=createVirtualRootPlan({F:350,H:87.5,m:4,h1:-129,mode:"auto-fold"});
   assert.equal(negative.capability.rationalStage,false,"theory remains representable");
 });
+
+test("sub-1Hz F and derived positive R are not rejected by independent DSP floor",()=>{
+  for(const F of [0.001,0.01,0.1,1,10,19.999]){
+    const plan=createVirtualRootPlan({F,H:F,m:1,h1:1,placement:"target"});
+    assert.equal(plan.pitched,F);
+    assert.equal(plan.capability.rationalStage,true,"sub-20Hz input="+F);
+    assert.equal(plan.capability.theoryOnly,false);
+  }
+});
