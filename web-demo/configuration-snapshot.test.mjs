@@ -34,7 +34,7 @@ test("full-precision two-slot configuration is immutable and independent",()=>{
   assert.equal(frozen.audio.low,20);
   assert.ok(Object.isFrozen(frozen.audio));
   assert.ok(Object.isFrozen(frozen));
-  const b=fixture();b.values.low=40;b.audio.low=40;
+  const b=fixture();b.values.low=40;b.audio.low=40;b.audio.aMinHz=40;
   const newer=createSoundConfiguration(b);
   assert.equal(frozen.values.low,20);assert.equal(newer.values.low,40);
 });
@@ -64,7 +64,7 @@ test("canonical direct F/P and derived H/P link have different invariants",()=>{
 test("A/B restores per-slot effects while global Settings remain current",()=>{
   const saved=fixture().audio,current={...saved,
     mode:"fold-h",outside:"kill",qualityIndex:2,hopDiv:8,engine:0,
-    aMinHz:70,aQuality:35,aBandBins:2,aReverb:.5,
+    aMinHz:90,aQuality:35,aBandBins:2,aReverb:.5,
     low:90,high:11000,wet:.33};
   const result=effectiveComparisonAudio(saved,current);
   for(const key of SHARED_SETTINGS_AUDIO_KEYS){
@@ -73,6 +73,7 @@ test("A/B restores per-slot effects while global Settings remain current",()=>{
   for(const key of ["low","high","wet","pitchRatio","shiftHz","axisPivot"]){
     assert.equal(result[key],saved[key],key+" is per-slot");
   }
+  assert.equal(result.aMinHz,saved.low,"A uses saved common L, not global cutoff");
   assert.notEqual(result,saved);
   assert.equal(saved.mode,"reciprocal");
   verifyComparisonAudio(result,saved);
