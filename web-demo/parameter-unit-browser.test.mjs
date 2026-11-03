@@ -634,6 +634,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#a-min-value",el=>el.blur());
 
     await page.click("#settings-reset");
+    assert.equal(await page.$eval("#decimal-digits",el=>el.value),"1",
+      "Settings reset must restore an actual selected one-decimal option");
     assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#a-min",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#a-min-value",el=>Number(el.value)),20);
