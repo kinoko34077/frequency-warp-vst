@@ -5,6 +5,7 @@ import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
+import {encodePcm16Wav} from "./wav-stream-writer.mjs";
 import {openWavChunkSource} from "./wav-chunk-source.mjs";
 import {browserAudioMemory,planBufferedPreview,planCompressedPredecode} from "./processing-capability.mjs";
 import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
@@ -1749,25 +1750,11 @@ controls.render.addEventListener("click",()=>{
     type:"process",channels:copies,sampleRate:state.decoded.sampleRate,settings:renderSettings
   },copies.map(c=>c.buffer));
 });
-function makeWav(channels,rate){
-  const n=channels[0].length,count=channels.length;
-  const ab=new ArrayBuffer(44+n*count*2),view=new DataView(ab);
-  const write=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i));};
-  write(0,"RIFF");view.setUint32(4,36+n*count*2,true);write(8,"WAVE");
-  write(12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);
-  view.setUint16(22,count,true);view.setUint32(24,rate,true);
-  view.setUint32(28,rate*count*2,true);view.setUint16(32,count*2,true);
-  view.setUint16(34,16,true);write(36,"data");view.setUint32(40,n*count*2,true);
-  let offset=44;
-  for(let i=0;i<n;i++)for(let c=0;c<count;c++){
-    const sample=clamp(channels[c][i],-1,1);
-    view.setInt16(offset,sample<0?Math.round(sample*32768):Math.round(sample*32767),true);
-    offset+=2;
-  }
-  return new Blob([ab],{type:"audio/wav"});
-}
-controls.download.addEventListener("click",()=>{
-  if(!state.offline)return;
+// The WASM renderer still has a separate 40M-sample resource bound. PCM16
+// encoding and Wet mix are now chunked; no full mixed Float32Array or one
+// monolithic WAV ArrayBuffer is allocated on download.
+controls.download.addEventListener("click",async()=>{
+  if(!state.offline||controls.download.disabled)return;
   const check=prepareStreamSettings({
     ...settings(),sampleRate:state.decoded.sampleRate
   });
@@ -1778,11 +1765,29 @@ controls.download.addEventListener("click",()=>{
     message("変更後の設定に一致するWAVではありません。再度変換してください。","warning");
     return;
   }
-  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,currentMix));
-  const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
-  const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
-  document.body.append(el);el.click();el.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const rendered=state.offline,original=state.dry,identity=state.exportIdentity;
+  const generation=state.sourceGeneration;
+  controls.download.disabled=true;
+  try{
+    const chunks=[];
+    const frames=rendered[0].length,channels=rendered.length;
+    for await(const bytes of encodePcm16Wav({
+      frames,channels,sampleRate:state.decoded.sampleRate,
+      readFrames:(start,count)=>rendered.map((ch,i)=>mixWet(
+        original[i].subarray(start,start+count),ch.subarray(start,start+count),currentMix))
+    }))chunks.push(bytes);
+    if(rendered!==state.offline||generation!==state.sourceGeneration||
+      !matchesExportIdentity(identity,state.sourceGeneration,spectralNow))
+      throw Error("書出し処理中に音声または設定が変化しました");
+    const url=URL.createObjectURL(new Blob(chunks,{type:"audio/wav"}));
+    const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
+    document.body.append(el);el.click();el.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60_000);
+  }catch(error){
+    message("WAV生成失敗: "+error.message,"error");
+  }finally{
+    controls.download.disabled=!state.offline;
+  }
 });
 // Settings are part of the same live parameter model as the front-panel knobs.
 // Modal entry/exit lives in the minimal, separately loaded entry-controls.js.
