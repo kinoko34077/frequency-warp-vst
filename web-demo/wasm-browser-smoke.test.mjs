@@ -50,12 +50,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         createBufferSource(...args){
           const source=super.createBufferSource(...args);
           const start=source.start.bind(source);
+          const stop=source.stop.bind(source);
           source.start=(...inputs)=>{
             this.__auditSourceStarts.push({
               when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
               activeAtStart:this.currentTime,stateAtStart:this.state
             });
             return start(...inputs);
+          };
+          source.stop=(...inputs)=>{
+            window.__timelineEvents?.push({type:"source-stop",audioTime:this.currentTime});
+            return stop(...inputs);
           };
           return source;
         }
@@ -949,6 +954,23 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // A second tab was opened and closed above; keep this transport check in
     // the foreground so Chrome's hidden-page media pause policy is irrelevant.
     await page.bringToFront();
+    await page.evaluate(()=>{
+      window.__timelineEvents=[];
+      const record=(type,details={})=>window.__timelineEvents.push({
+        type,time:performance.now(),visibility:document.visibilityState,
+        mediaSession:navigator.mediaSession?.playbackState??"unavailable",
+        stopDisabled:document.querySelector("#stop")?.disabled,
+        ...details
+      });
+      document.addEventListener("visibilitychange",()=>record("visibilitychange"));
+      window.addEventListener("pagehide",event=>record("pagehide",{persisted:event.persisted}));
+      window.addEventListener("pageshow",event=>record("pageshow",{persisted:event.persisted}));
+      const output=document.querySelector("#background-output");
+      for(const type of ["pause","playing","waiting","stalled","error"])
+        output.addEventListener(type,()=>record("media-"+type,{
+          paused:output.paused,readyState:output.readyState,hasStream:Boolean(output.srcObject)
+        }));
+    });
     await page.click("#play-dry");
     await page.waitForFunction(()=>
       !document.querySelector("#stop").disabled&&
@@ -983,7 +1005,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(resolve=>setTimeout(resolve,140));
     }
     const firstAudio=timeline[0],lastAudio=timeline.at(-1);
-    const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length});
+    const diagnostic=await page.evaluate(()=>({
+      fileMeta:document.querySelector("#file-meta")?.textContent??"",
+      duration:document.querySelector("#duration")?.textContent??"",
+      indicator:document.querySelector("#rt-indicator")?.textContent??"",
+      stopDisabled:document.querySelector("#stop")?.disabled,
+      events:window.__timelineEvents??[]
+    }));
+    const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length,diagnostic});
     assert.ok(lastAudio.starts.length>=1 &&
       lastAudio.starts.some(source=>source.duration>0),
       "direct original-audio buffer must schedule its own source: "+evidence);
