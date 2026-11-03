@@ -53,8 +53,8 @@ export function createVirtualRootPlan({
   if(Math.abs(shift)>20000)notes.push("current DSP shift is limited to +/-20,000 Hz");
   if(numerator < -128||numerator>128)
     notes.push("legacy DSP number offset n must be an integer in -128..128");
-  if(pitched<1||pitched>20000)
-    notes.push("current DSP axis reference F' is limited to 1..20,000 Hz");
+  if(!Number.isFinite(pitched)||pitched<=0)
+    notes.push("derived DSP reference F' is not a positive finite Hz value");
   if(root<.001||root>20000)
     notes.push("theoretical H has no exact physical P coordinate in the current 0/.001..20kHz rail");
   if(F<.001||F>5_120_000)
@@ -62,7 +62,7 @@ export function createVirtualRootPlan({
   // This is the rational stage's capability gate only. It is NOT an actual
   // AudioWorklet ACK; live stream bands, Nyquist, zero-mode and CPU may add gates.
   const rationalCapability=ratio>=.25&&ratio<=4&&Math.abs(shift)<=20000
-    &&numerator>=-128&&numerator<=128&&pitched>=1&&pitched<=20000&&F>=.001&&F<=5_120_000;
+    &&numerator>=-128&&numerator<=128&&Number.isFinite(pitched)&&pitched>0&&F>=.001&&F<=5_120_000;
   const representablePivot=root>=.001&&root<=20000;
   return Object.freeze({
     F,H:root,m,h1,q,mode,placement,pitched,ratio,numerator,shift,
