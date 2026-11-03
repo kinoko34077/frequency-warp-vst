@@ -395,10 +395,9 @@ function applyConfigurationSilently(c){
   // A/B owns only non-Settings selectors; shared engine, mode and quality stay live.
   $("#pivot-link-target").value=s.pivotLinkTarget;
   for(const [id,value] of Object.entries({
-    "engine-auto":t.engineAuto,"ring-enabled":t.ringEnabled,
+    "ring-enabled":t.ringEnabled,
     "rational-enabled":t.rationalEnabled,"crusher-enabled":t.crusherEnabled,
-    "carrier-link":t.carrierLink,"harmonic-pivot-link":t.harmonicPivotLink,
-    "pivot-follow-low":t.pivotFollowLow
+    "carrier-link":t.carrierLink,"harmonic-pivot-link":t.harmonicPivotLink
   }))$("#"+id).checked=value;
   rationalEnabledByLink=t.rationalEnabledByLink;
   lowUnitControl.setCanonical(v.low);highUnitControl.setCanonical(v.high);
