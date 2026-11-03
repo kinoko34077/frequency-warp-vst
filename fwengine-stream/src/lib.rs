@@ -1,6 +1,6 @@
 //! S4a: ABI v1 wrapper over the SAME Stream used by native and browser code.
  //! One Wasmi instance per plugin; no imports, no custom frequency transform.
-use frequency_warp_core::{Progression,Settings,Stream};
+use frequency_warp_core::{Progression,Settings,Stream,default_frequency_high};
 use std::ptr::{addr_of,addr_of_mut};
 
 const MAX_FRAMES:usize=2048;
@@ -44,7 +44,7 @@ static mut CHANNELS:usize=0;
 static mut SAMPLE_RATE:f64=0.;
 
 fn defaults(rate:f64)->Settings {
-    Settings{low:20.,high:16000_f64.min(rate*0.45),curvature:1.,
+    Settings{low:20.,high:default_frequency_high(rate),curvature:1.,
              invert:0.,mode:Progression::Blend,quality:0}
 }
 // Optional capability export: legacy .fwengine without this symbol is
