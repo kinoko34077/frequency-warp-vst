@@ -7,6 +7,14 @@ use std::f64::consts::PI;
 
 mod stream;
 pub use stream::Stream; // One canonical native/WASM spectral streaming processor.
+
+/// Default upper processing frequency respects the strict Nyquist boundary.
+/// A user-facing rail may impose its own gesture span, but never Fs * 0.45.
+pub fn default_frequency_high(sample_rate:f64)->f64{
+    if !sample_rate.is_finite()||sample_rate<=0.0{return f64::NAN;}
+    16000.0_f64.min(f64::from_bits((sample_rate*0.5).to_bits()-1))
+}
+
 mod reflection;
 
 const TAU: f64 = PI * 2.0;
