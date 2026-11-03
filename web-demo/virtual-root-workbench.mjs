@@ -214,7 +214,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     // Batch rapid slider gestures to one real engine parameter transaction per frame.
     requestAnimationFrame(()=>{
       if(version!==generation||!activePlan||!activePlan.capability.rationalStage)return;
-      try{onApply(activePlan);lastFingerprint=fp;error.hidden=true;error.textContent="";}
+      try{onApply(activePlan);lastFingerprint=fp;error.hidden=true;error.textContent="";render();}
       catch(e){error.hidden=false;error.textContent="音声設定エラー";error.title=String(e.message||e);}
     });
   };
