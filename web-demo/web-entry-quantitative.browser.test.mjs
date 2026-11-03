@@ -100,6 +100,15 @@ test("W1: three independent entry modes × four widths, quantified reachability 
         await page.click("#settings-open");
         assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
           mode.name+"/"+width+" settings unavailable");
+        if(mode.name==="ordinary"&&width===390){
+          assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),0.001,
+            "initial canonical L is 0.001Hz");
+          assert.equal(await page.$$eval("#a-min, #a-min-value, #a-min-unit",els=>els.length),0,
+            "Engine A has no duplicate minimum-frequency control");
+          await page.click("#settings-reset");
+          assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),0.001,
+            "reset canonical L is 0.001Hz");
+        }
         await page.click("#settings-done");
         metrics.restoredFocus=await page.evaluate(()=>document.activeElement?.id);
         metrics.errors=errors;

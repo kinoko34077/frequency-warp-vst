@@ -237,14 +237,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.click("#tab-map");
     // A22: optional L→P minimum constraint remains distinct from the
-    // H↔P harmonic link; it changes the real physical pivot numeric field.
+    // H↔P harmonic link; current L=.001 allows P=10 instead of imposing 20.
     await page.$eval("#pivot-follow-low",el=>{
       el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     await page.$eval("#axis-pivot-value",el=>{
       el.value="10";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-20)<.01);
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-10)<.01);
     await page.$eval("#low-value",el=>{
       el.value="30";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -564,6 +564,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
+    assert.match(await page.$eval("#low-frequency-capability-help",el=>el.textContent),
+      /入力できる下限.*再現限界|再現限界.*入力できる下限/,
+      "the numeric L minimum must be distinguished from demonstrated PCM capability");
+    assert.match(await page.$eval("#low-frequency-capability-help",el=>el.textContent),
+      /Mix 0%.*原音|原音.*Mix 0%/,
+      "unqualified low-frequency output must name an original-audio fallback");
     assert.equal(await page.$eval("#engine-auto",el=>el.checked),false);
     // Graph-negative even WITHOUT raw invert: physical shift -700Hz and
     // target-0 Reflect turn the audible low band into a descending curve.
@@ -1074,8 +1080,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#stop",el=>el.disabled),false,
       "Live comparison must retain the chosen source and transport mode");
 
-    // A19: 0.001 Hz theoretical F is allowed to coexist with a 1 Hz
-    // effective Rust transform reference. It must not stop audible playback.
+    // #321: 0.001Hz source F remains exact in the effective DSP request;
+    // no hidden conversion to an arbitrary 1Hz reference is allowed.
     // Floating HUD changes also must NOT move the player buttons.
     const priorButtons=await page.$eval("#play-wet",node=>{
       const r=node.getBoundingClientRect();
@@ -1089,7 +1095,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.waitForFunction(rev=>
       Number(document.querySelector("#rt-indicator").dataset.appliedRevision||0)>rev
-      &&document.querySelector("#status").textContent.includes("1 Hz"),{
+      &&!document.querySelector("#status").textContent.includes("1 Hz"),{
         timeout:16000
       },priorAck);
     assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),.001,
@@ -1190,8 +1196,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{timeout:25000});
     await page.select("#engine","0");
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
-    await page.$eval("#a-min",el=>{el.value="570";el.dispatchEvent(new Event("input",{bubbles:true}));});
-    assert.ok(await page.$eval("#a-min-value",el=>Number(el.value))>100);
+    assert.equal(await page.$$eval("#a-min, #a-min-value, #a-min-unit",els=>els.length),0,
+      "Engine A has no separate extraction-floor control");
+    await page.$eval("#low-value",el=>{el.value="12.345";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),12.345,
+      "Engine A shares the exact typed common L");
     await page.$eval("#a-band",el=>{el.value="6";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-band-value",el=>Number(el.value)),6);
     await page.$eval("#a-quality",el=>{el.value="80";el.dispatchEvent(new Event("input",{bubbles:true}));});

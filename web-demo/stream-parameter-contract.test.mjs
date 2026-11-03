@@ -12,16 +12,16 @@ test("accepted active-audio bounds include the 1/20kHz reference endpoints",()=>
  assert.equal(validateStreamSettings({...base(),axisReference:1}).ok,true);
  assert.equal(validateStreamSettings({...base(),axisReference:20000,shiftHz:-20000}).ok,true);
 });
-test("out-of-core theoretical F is not clamped or silently applied",()=>{
+test("large positive theoretical R is preserved without an arbitrary 20kHz reference cap",()=>{
  const p={...base(),axisReference:100000,rationalEnabled:false};
- assert.deepEqual(validateStreamSettings(p).field,"axisReference");
+ assert.equal(validateStreamSettings(p).ok,true);
+ assert.equal(prepareStreamSettings(p).settings.axisReference,100000);
  assert.equal(p.axisReference,100000);
- assert.match(validateStreamSettings(p).message,/オーバーサンプリング/);
 });
-test("sub-1Hz axis anchor stays theoretical rather than accepted DSP",()=>{
+test("positive sub-1Hz axis reference is accepted as exact DSP value",()=>{
  const p={...base(),axisReference:0.5,shiftHz:0};
- assert.equal(validateStreamSettings(p).field,"axisReference");
- assert.match(validateStreamSettings(p).message,/1Hz未満/);
+ assert.equal(validateStreamSettings(p).ok,true);
+ assert.equal(prepareStreamSettings(p).settings.axisReference,0.5);
 });
 test("Rust validates shift even when rational effect is switched off",()=>{
  for(const rationalEnabled of [false,true]){
@@ -78,41 +78,41 @@ test("mode, engine, quality and crusher controls keep their valid Rust variants"
     assert.equal(validateStreamSettings({...base(),engine}).ok,true);
 });
 
-test("0.001 Hz theoretical reference is retained while DSP plays from 1 Hz",()=>{
+test("0.001Hz reference, A cutoff and L survive exact DSP preflight",()=>{
  const theoretical={...base(),low:0.001,axisPivot:0.001,
     aMinHz:0.001,axisReference:0.001,shiftHz:0};
- const previous={...theoretical};
+ const before={...theoretical};
  const resolved=prepareStreamSettings(theoretical);
  assert.equal(resolved.ok,true);
- assert.equal(resolved.settings.axisReference,1);
+ assert.equal(resolved.settings.axisReference,0.001);
  assert.equal(resolved.settings.low,0.001);
  assert.equal(resolved.settings.aMinHz,0.001);
  assert.equal(resolved.settings.axisPivot,0.001);
- assert.deepEqual(theoretical,previous,"theoretical inputs and graph must not be overwritten");
- assert.match(resolved.warnings.join(" "),/1 Hz/);
- assert.match(resolved.warnings.join(" "),/0.001/);
- assert.equal(validateStreamSettings(resolved.settings).ok,true);
+ assert.deepEqual(resolved.warnings,[]);
+ assert.deepEqual(theoretical,before);
+});
+test("R domain accepts positive finite values and rejects zero/nonfinite",()=>{
+ for(const hz of [0.001,0.01,0.5,0.999999,1,350,20000,20001]){
+   const res=prepareStreamSettings({...base(),axisReference:hz,shiftHz:0});
+   assert.equal(res.ok,true);
+   assert.equal(res.settings.axisReference,hz);
+   assert.deepEqual(res.warnings,[]);
+ }
+ for(const hz of [-0.001,0,NaN,Infinity])
+   assert.equal(prepareStreamSettings({...base(),axisReference:hz}).ok,false);
+ const bad={...base(),axisReference:0.001,high:25000};
+ assert.equal(prepareStreamSettings(bad).field,"high");
+ assert.equal(bad.axisReference,0.001);
 });
 
-test("only sub-1Hz axis reference is adapted and all other failures stay explicit",()=>{
- for(const hz of [0,0.001,0.5,0.999999]) {
-   const result=prepareStreamSettings({...base(),axisReference:hz});
-   assert.equal(result.ok,true);
-   assert.equal(result.settings.axisReference,1);
-   assert.equal(result.warnings.length,1);
+test("legacy A ABI cutoff follows exact shared L during preflight",()=>{
+ for(const low of [0.001,0.01,19.999,20,20.001]){
+   const theoretical={...base(),low,aMinHz:900,axisReference:0.0005,shiftHz:0};
+   const result=prepareStreamSettings(theoretical);
+   assert.equal(result.ok,true,"L="+low);
+   assert.equal(result.settings.low,low);
+   assert.equal(result.settings.aMinHz,low,"compatibility ABI field aliases L");
+   assert.equal(result.settings.axisReference,0.0005,"positive R remains exact");
+   assert.equal(theoretical.aMinHz,900,"theoretical input remains untouched");
  }
- for(const hz of [1,350,20000]) {
-   const result=prepareStreamSettings({...base(),axisReference:hz,shiftHz:0});
-   assert.equal(result.ok,true);
-   assert.equal(result.settings.axisReference,hz);
-   assert.deepEqual(result.warnings,[]);
- }
- for(const hz of [-0.001,NaN,20001]) {
-   assert.equal(prepareStreamSettings({...base(),axisReference:hz}).ok,false);
- }
- const bad={...base(),axisReference:0.001,high:25000};
- const resolved=prepareStreamSettings(bad);
- assert.equal(resolved.ok,false);
- assert.equal(resolved.field,"high");
- assert.equal(bad.axisReference,0.001);
 });

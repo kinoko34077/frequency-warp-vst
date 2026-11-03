@@ -5,6 +5,18 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {collectAssets,stageSite} from "./stage-pages.mjs";
 
+test("L help separates accepted numeric input from low-frequency PCM evidence and names dry fallback",async()=>{
+  const html=await readFile(new URL("./index.html",import.meta.url),"utf8");
+  const match=html.match(/<p\b(?=[^>]*\bid="low-frequency-capability-help")[^>]*>([\s\S]*?)<\/p>/);
+  assert.ok(match,"the low-frequency capability note must be present in the settings UI");
+  assert.match(match[1],/入力できる下限.*再現限界/);
+  assert.match(match[1],/N=4096/);
+  assert.match(match[1],/44\.1\/48\/96kHz/);
+  assert.match(match[1],/1Hz以上.*0\.1Hz/);
+  assert.match(match[1],/0\.1.*20\.001Hz/);
+  assert.match(match[1],/Mix 0%.*原音/);
+});
+
 test("Pages staging resolves transitive module/worker dependencies and fails closed",async()=>{
   const root=await mkdtemp(join(tmpdir(),"warp-pages-"));
   const src=join(root,"source"),dest=join(root,"site"),wasm=join(root,"compiled.wasm");

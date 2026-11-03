@@ -31,7 +31,6 @@ pub struct Stream {
     crusher_phase:f64,
     crusher_counter:u64,
     crusher_value:Vec<f32>,
-    a_min_hz:f64,
     a_peak_band_bins:usize,
     a_quality_percent:u32,
     a_reverb_amount:f32,
@@ -84,7 +83,7 @@ impl Stream {
             ring_enabled:engine==2,axis_shift:0.0,
             axis_reference:350.0,axis_pivot:350.0,axis_slope:1.0,rational_enabled:engine==3,crusher_bits:0,crusher_hold:1,crusher_rate_hz:None,crusher_integer_period:None,crusher_phase:0.0,crusher_counter:0,
             crusher_value:vec![0.0;channels],
-            a_min_hz:20.0,a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
+            a_peak_band_bins:1,a_quality_percent:0,a_reverb_amount:0.0,
             a_reverb_delays:(0..channels).map(|_|[0.029,0.041,0.061].iter()
                 .map(|sec|vec![0.0;(sample_rate*sec).round().max(1.0) as usize])
                 .collect()).collect(),
@@ -148,7 +147,7 @@ impl Stream {
     pub fn set_transform(&mut self,shift:f64,reference:f64,ring_enabled:u32,
         rational_enabled:u32)->Result<(),&'static str>{
         if !shift.is_finite()||shift.abs()>4.0||!reference.is_finite()
-           ||!(1.0..=20000.0).contains(&reference)||ring_enabled>1||rational_enabled>1{
+           ||reference<=0.0||ring_enabled>1||rational_enabled>1{
             return Err("invalid axis shift / effect parameters");
         }
         self.axis_shift=shift;
@@ -165,11 +164,12 @@ impl Stream {
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
     pub fn set_a_options(&mut self,min_hz:f64,reverb:f64)->Result<(),&'static str>{
+        // Keep validating the legacy ABI argument, but never store or apply
+        // it as a second extraction floor; Engine A reads Settings.low only.
         if !min_hz.is_finite()||!(0.001..=20000.0).contains(&min_hz)
            || !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
             return Err("invalid A options");
         }
-        self.a_min_hz=min_hz;
         if reverb==0.0 && self.a_reverb_amount>0.0{
             for channel in &mut self.a_reverb_delays{
                 for delay in channel{delay.fill(0.0);}
@@ -520,7 +520,9 @@ impl Stream {
         }
         let threshold=(greatest*self.floor).max(1e-10);
         self.candidates.clear();
-        for k in 2..half-1{
+        // Bin 1 is the first positive-frequency partial. Excluding it creates
+        // an accidental sample-rate-dependent floor above the shared L.
+        for k in 1..half-1{
             if k<self.a_peak_band_bins || k+self.a_peak_band_bins>=half {continue;}
             // One stronger local maximum inside each adjustable FFT-bin band.
             // No FFT extra allocation or copy on the audio render thread.
@@ -551,7 +553,7 @@ impl Stream {
             }else{
                 self.interpolate(k,step)
             };
-            if !frequency.is_finite() ||frequency<self.settings.low.max(self.a_min_hz)||frequency>self.settings.high{continue;}
+            if !frequency.is_finite() ||frequency<self.settings.low||frequency>self.settings.high{continue;}
             // Transform semantics are orthogonal to the resynthesis engine:
             // g(f) -> optional Issue #24 rational lattice -> axis-translation.
             let mapped=match map_frequency(frequency,self.settings){Ok(f)=>f,Err(_)=>continue};
@@ -626,7 +628,7 @@ impl Stream {
                 for k in 1..half {
                     if self.synthesized_peak_mask[k]{continue;}
                     let f=k as f64*step;
-                    if f<self.settings.low.max(self.a_min_hz)||f>self.settings.high{continue;}
+                    if f<self.settings.low||f>self.settings.high{continue;}
                     let base=match map_frequency(f,self.settings){
                         Ok(value)=>value,Err(_)=>continue
                     };
@@ -1447,20 +1449,24 @@ mod tests{
         a.set_transform(0.0,400.0,1,0).unwrap();
         assert!(a.ring_enabled);
         a.set_transform(0.0,400.0,0,0).unwrap();
+        a.set_transform(0.0,0.001,0,0).unwrap();
+        assert_eq!(a.axis_reference,0.001);
         assert!(!a.ring_enabled);
         assert!(a.set_transform(0.0,0.0,0,0).is_err());
     }
     #[test]
-    fn a_minimum_frequency_and_reverb_are_independent_options(){
+    fn a_min_legacy_option_does_not_create_an_independent_cutoff(){
         let stg=Settings{low:20.0,high:3000.0,curvature:1.0,invert:0.0,
             mode:Progression::FoldHigh,quality:0};
         let mut a=Stream::new_extended(8192.0,1,stg,0,0,1.0,0.0,0.0,0,4).unwrap();
         let mut b=Stream::new_extended(8192.0,1,stg,0,1,1.0,0.0,0.0,0,4).unwrap();
         assert!(a.set_a_options(900.0,0.4).is_ok());
-        assert_eq!(a.a_min_hz,900.0);
+        assert_eq!(a.settings.low,20.0, "common L remains the sole processing floor");
         assert!((a.a_reverb_amount-0.4).abs()<0.00001);
         assert!(a.set_a_options(0.0001,1.0).is_err());
         assert!(a.set_a_options(0.001,0.4).is_ok());
+        assert!(a.set_transform(0.0,0.001,0,0).is_ok());
+        assert_eq!(a.axis_reference,0.001);
         assert!(a.set_a_options(2.0,0.4).is_ok());
         b.set_a_options(900.0,1.0).unwrap();
         let mut aa=vec![0.0f32;128];aa[0]=0.7;

@@ -40,7 +40,7 @@ Status (2026-10-15): **partial implementation**. Shared pure codec and M1 freque
 
 | Dimension | Parameters | Meaningful representations |
 |---|---|---|
-| Positive/zero-allowed absolute Hz | L/H, carrier, pivot P, F, A floor, reference tone | Hz; musical name + cents for **positive** values; rail travel % |
+| Positive/zero-allowed absolute Hz | L/H, carrier, pivot P, F, reference tone | Hz; musical name + cents for **positive** values; rail travel %. The former Engine A floor is common L; its ABI field is a compatibility alias only. |
 | Positive relative ratio | r | Ratio; semitones; cents from unison; rail % |
 | Signed physical stretch | slope s | Signed ratio multiplier / signed rail%; a Hz or absolute note is **not** equivalent |
 | Fraction / amplitude | invert, synthesis C, reflection D, Wet, reverb, quality | Percent; never Hz / note |
@@ -67,7 +67,7 @@ The marker shown beside `変換形状` is a **Fold L/H hinge** only in Fold mode
 ## 5. Migration gates
 
 - M0: shared codec and typed unit matrix with Node tests (this PR). No audible/DSP modifications from view choice.
-- M1: accepted in part; use a `ParamBinding` object for selected frequency controls (L/H/P/F/carrier/A floor). Unit dropdown next to typed input; Hz↔note+cents↔rail %; preserve exact Float64 canonical state and existing dual-thumb pointers.
+- M1: accepted in part; use a `ParamBinding` object for selected frequency controls (L/H/P/F/carrier). Unit dropdown next to typed input; Hz↔note+cents↔rail %; preserve exact Float64 canonical state and existing dual-thumb pointers. Engine A uses L; its former floor is not a separate binding.
 - M2: adopt r, signed slope, u and fraction/integer controls with correct compatible modes; for u require explicit p and reference, no fake absolute-Hz for intermediate p.
 - M3: replace duplicate `state.precise`, `preciseFields`, sine input glue one parameter at a time; regression for bidirectional updates, clamped typed input, empty/invalid edits, focus blur, reset, roundtrip and Undo (if added), 390px iOS touch, AudioWorklet/WAV/graph parity. Avoid simultaneous bulk replacement without independent CI.
 - M4: only if tests confirm M1–M3, consider a common customizable pitch display mode and saved user preferences. No connection to unrelated repositories is implied.
@@ -101,7 +101,7 @@ A snap declaration is `{enabled:true, unit:"note", mode:"step", step:1, origin:0
 ```js
 const fundamental = defineParameter({
   id: "fundamental",
-  min: 20, max: 2000, defaultValue: 350,
+  min: 0.001, max: 5120000, defaultValue: 350,
   units: ["hz", "note", "percent"],
   rail: {toPosition: hzToNormalizedRail, fromPosition: normalizedRailToHz},
   digits: 3,
@@ -124,7 +124,7 @@ This pure-layer foundation is independent of the existing `app.mjs` / `harmonics
 - The actual piecewise log rail is [0..0.2] for 0.001..20 Hz and [0.2..1] for 20..20000 Hz. Percent means 100×this position. Continuous inverse is used for value input; rounding to 1000 coarse thumb steps never overwrites typed canonical values.
 - Unit selection only reformats the current value: no DSP change event. Typing a complete valid note (`A4+25c`) or a valid Hz/% number commits once, updates coarse rail position, then uses the existing `updateParams` Rust/graph pipeline. Invalid/incomplete edits preserve the last canonical value and revert on blur/change. Normal display digits follow the existing display setting; focus reveals high precision.
 - Optional snap is **OFF by default** and only for slider gestures: note step=1 semitone, threshold=6 physical rail px. The existing two-thumb touch, mouse and keyboard input handler still emits native `input` for the same hidden source control, then this binding applies snap before the single DSP update.
-- Constraint-induced adjustments when L/H or sample-rate cap collide silently synchronize the canonical binding and its coarse thumb (rather than showing a note label disagreeing with effective audio bounds). Reset returns L to 20Hz, Hz notation, snapping OFF.
+- Constraint-induced adjustments when L/H or sample-rate cap collide silently synchronize the canonical binding and its coarse thumb (rather than showing a note label disagreeing with effective audio bounds). Current main initializes and resets canonical L to 0.001Hz; the hidden slider value 0 is only its rail coordinate.
 - `web-demo/parameter-unit-browser.test.mjs` exercises actual staged artifact in headless Chrome at 390px: parse/format, precision retention, true nonlinear %, invalid input rollback, optional snapping, keyboard thumb and reset. The existing Rust AudioWorklet/WAV/graph code and VST3 parameter IDs are unchanged.
 - **Acceptance gate:** exact head CI and review before further horizontal migration. M1 is not the full per-control unit rollout; #79 stays open.
 
@@ -148,19 +148,19 @@ Pivot `axis-pivot` is an independent canonical frequency binding (default 350 Hz
 
 This is a staged child PR, not yet published to GitHub Pages.
 
-## 10. M1 Engine A minimum frequency (staged)
+## 10. Former Engine A minimum frequency (retired by #321)
 
-The existing `a-min` parameter (minimum positive extraction frequency for Engine A) reuses the Hz/note+cents/nonlinear physical rail% typed binding and 6px opt-in semitone snapping. Canonical bounds are 0.001..20000Hz, default 20Hz, and no arbitrary zero-Hz musical note is accepted. Its own unit/snap preference is independent of L/H/P. The underlying Rust Engine A frequency gate receives the canonical `aMinHz`; changing only formatting does not retrigger audio.
+The former independent `a-min` / `aMinHz` control is retired. Engine A extraction reads common processing floor L. The old Rust/WASM ABI argument remains for compatibility, is validated as a legacy field, and is not stored or applied as a second cutoff; Web preflight and A/B restore mirror it to that slot's exact L. The duplicate Settings UI and binding are removed.
 
-The original `#a-min` range remains a coarse DOM gesture transport; duplicate `state.precise["a-min"]` and old numeric field listener are removed. Reset restores 20Hz, Hz notation, snap off. The mobile staged Chrome test must first select actual Engine A in Settings, then verify visible field/menu, cents, nonlinear rail%, invalid edit retention, snapped 440Hz and reset. Other M1 controls F/carrier/reference sine remain open.
+The single L binding owns the 0.001Hz initial and reset value and its existing unit/range behavior. Engine A's FFT peak selector includes the first non-DC bin. The shared WASM renderer reproduced 5, 15 and 19.999Hz sine PCM at 44.1/48/96kHz; 128-frame streaming reproduced 5 and 15Hz at those rates with L=0.001Hz, legacy A ABI cutoff=900Hz and R=0.000875Hz. The 0.001Hz setting is accepted exactly, but its 1000-second period was not treated as PCM reproduction evidence. Real output remains dependent on FFT size, sample rate and input duration.
 
 ## 11. M1 harmonic source F (staged, not released)
 
-The harmonic source F `fundamental` (20..2000Hz, default 350) now has one `mountFrequencyUnitField` canonical Float64 owner inside `harmonics-panel.mjs`. The panel's legacy `preciseFields["fundamental"]` numeric listener and range owner are bypassed (other harmonic inputs unchanged). `harmonicParameters()` reads this one binding, and the existing `setFundamentalFromPivot(P)` writes back into it silently rather than creating a second independent F. The external Rust/DSP graph, native VST3 ParamID 19 and mathematical invariant `H=rF/m` remain unchanged.
+The harmonic source F `fundamental` has one `mountFrequencyUnitField` canonical Float64 owner inside `harmonics-panel.mjs`, with typed bounds 0.001..5,120,000Hz and default 350Hz. Values above the current audio rail remain theoretical. `harmonicParameters()` reads this binding, and `setFundamentalFromPivot(P)` writes back into it silently rather than creating a second independent F. The external Rust/DSP graph, native VST3 ParamID 19 and mathematical invariant `H=rF/m` remain unchanged.
 
-Unlike L/H/P, the existing F slider is LINEAR 20..2000Hz; thus F percent denotes `100 (F-20)/1980`. Note+cents and Hz use the same shared physical converters; opt-in 6px semitone snapping applies to the F slider only. F unit selection cannot trigger DAW or DSP automation. Existing global display precision remains formatting only and F input focus preserves the full canonical value.
+The F slider is a logarithmic gesture proxy from 0.001 to 20,000Hz; typed values retain the full canonical Float64 across that rail. Note+cents and Hz use the same shared physical converters; semitone snapping applies to slider gestures only. F unit selection cannot trigger DAW or DSP automation. Existing global display precision remains formatting only and F input focus preserves the full canonical value.
 
-Staged Chrome regression must visit the actual mathematical panel, parse A4+25c, verify **linear** rail%, preserve F during notation changes, confirm H↔P from precise F, snap A4=440, and reject invalid text without changing canonical F. Existing P↔F inverse regression continues. Carrier/Fold remain distinct. No Pages release or main merge.
+Staged Chrome regression must visit the actual mathematical panel, parse A4+25c, verify the logarithmic gesture rail%, preserve F during notation changes, confirm H↔P from precise F, snap A4=440, and reject invalid text without changing canonical F. Existing P↔F inverse regression continues. Carrier/Fold remain distinct. No Pages release or main merge.
 
 ## 12. M1 manual ring carrier c (staged in same harmonic-panel PR as F)
 
@@ -228,7 +228,7 @@ The remaining M2 fractions/u/count and M3 legacy state migration are future task
 
 ## 2026-10-15 effective audio domain (superseding older draft assumptions)
 
-A theoretical harmonic model may accept F up to 5.12MHz (and graph may display down to 0.001Hz); this is **not** the active DSP passband. The user's current rule defers >20kHz to possible later oversampling. Shared Rust currently validates effective axisReference R in [1,20000]Hz and |shiftHz|<=20000Hz even if rationalEnabled is OFF. Web preflight must reject incompatible *audio application* visibly, preserve the actual chosen F rather than silently clamp it to pass validation, and require successful worklet ACK/offline Rust evidence before claiming application. This validation does not alter the shared Rust ABI or DAW authorization. The physical pivot P still has a maximum of 20kHz.
+A theoretical harmonic model may accept F up to 5.12MHz (and graph may display down to 0.001Hz); this is **not** the active DSP passband. The user's current rule defers >20kHz to possible later oversampling. Shared Rust accepts any finite positive axisReference R; it has no independent 1Hz floor or forced replacement. The independent shift bound |shiftHz|<=20000Hz remains even if rationalEnabled is OFF. Web preflight preserves the exact chosen F/R and requires successful worklet ACK/offline Rust evidence before claiming application. FFT-bin resolution and finite audio duration still constrain actual low-frequency PCM; parameter acceptance is not proof of reproduction. This validation does not alter the shared Rust ABI or DAW authorization. The physical pivot P still has a maximum of 20kHz.
 ## 2026-10-16 unit-icon and fine-gesture consistency audit (#79)
 
 After the #183 compact icon-unit UI release, the visible `.unit-switch button[data-unit]` elements — **not** the visually hidden native `select` — are the actual operator controls. A carrier c locked by Fold-point coupling must disable its number input, slider, native unit-select bridge **and all visible unit-icon buttons**, and restore the same set when unlinked or switched to a mode without a Fold target. Linked c remains read-only; the stored unlinked manual frequency and display unit must not change via a disabled icon. Keep the selected icon visually discernible as unavailable rather than as an active editable button.

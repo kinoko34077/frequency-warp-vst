@@ -107,16 +107,16 @@
           <div class="control control-cue"><span>選択中の方式</span><strong id="engine-summary">STFT変換</strong><button id="settings-inline" class="text-button" type="button">詳細設定を変更 ↗</button></div>
         </div>
         <div class="bounds">
-          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><span class="unit-value-tools"><label for="low-value">下限 <input class="inline-value" id="low-value" type="text" value="20" spellcheck="false" autocapitalize="off" aria-label="下限の数値・音名入力"></label><select id="low-unit" aria-label="下限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><span class="unit-value-tools"><label for="high-value">上限 <input class="inline-value" id="high-value" type="text" value="16000" spellcheck="false" autocapitalize="off" aria-label="上限の数値・音名入力"></label><select id="high-unit" aria-label="上限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
+          <div class="bounds-heading"><strong>変換範囲</strong><details class="info-tip"><summary aria-label="変換範囲の説明" title="変換範囲の説明">ⓘ</summary><div class="info-body">LからHまでの元周波数に変換を適用します。外側は設定で通過／除去を選べます。</div></details><span class="unit-value-tools"><label for="low-value">下限 <input class="inline-value" id="low-value" type="text" value="0.001" spellcheck="false" autocapitalize="off" aria-label="下限の数値・音名入力"></label><select id="low-unit" aria-label="下限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><span class="unit-value-tools"><label for="high-value">上限 <input class="inline-value" id="high-value" type="text" value="16000" spellcheck="false" autocapitalize="off" aria-label="上限の数値・音名入力"></label><select id="high-unit" aria-label="上限の入力・表示単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span></div>
             <div class="dual-range shared-dual-track" id="dual-range" aria-label="帯域下限Lと帯域上限Hを操作するデュアルサム">
-              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="200" tabindex="-1" aria-hidden="true">
+              <input class="dual-source" id="low" type="range" min="0" max="1000" step="1" value="0" tabindex="-1" aria-hidden="true">
               <input class="dual-source" id="high" type="range" min="0" max="1000" step="1" value="974" tabindex="-1" aria-hidden="true">
               <div class="shared-dual-inner" data-dual-inner>
                 <button type="button" id="low-thumb" class="shared-dual-thumb upper" data-dual-thumb role="slider" aria-label="帯域下限L" aria-valuenow="0"></button>
                 <button type="button" id="high-thumb" class="shared-dual-thumb lower" data-dual-thumb role="slider" aria-label="帯域上限H" aria-valuenow="968"></button>
               </div>
             </div>
-          <div class="ends"><span>20 Hz</span><span>20 kHz</span></div>
+          <div class="ends"><span>0.001 Hz</span><span>20 kHz</span></div>
         </div>
         <details class="effects-panel" open><summary>追加加工</summary><div class="effects-panel-body">
           <div class="fx-item">
@@ -256,12 +256,11 @@
       <label class="setting-checkbox" for="engine-auto"><input id="engine-auto" type="checkbox">反転で切り替え</label><details class="help-inline"><summary>ⓘ 説明</summary><p class="setting-help">チェック中は実際の変換後の主曲線が全体として右下がりならA、それ以外はB。オフなら上の手動選択を使います。Aは目立つ音の成分を再合成し、Bは周波数帯を移す方式です。</p></details>
       <div id="engine-a-settings" hidden>
         <div class="settings-pair">
-          <div><label for="a-min">A · 最低抽出周波数</label><span class="unit-value-tools"><input class="inline-value" id="a-min-value" type="text" value="20" spellcheck="false" autocapitalize="off" aria-label="Engine Aの最低抽出周波数・音名入力"><select id="a-min-unit" aria-label="最低抽出周波数の単位"><option value="hz">Hz</option><option value="note">音名+c</option><option value="percent">レール%</option></select></span><input id="a-min" type="range" min="0" max="1000" step="1" value="200"></div>
           <div><label for="a-quality">A · 再合成精細度（品質と処理負荷） <input class="inline-value" id="a-quality-value" type="number" min="0" max="100" step="1" value="0"></label><input id="a-quality" type="range" min="0" max="100" step="1" value="0"></div>
           <div><label for="a-band">A · 抽出帯域幅 <input class="inline-value" id="a-band-value" type="number" min="1" max="8" step="1" value="1"></label><input id="a-band" type="range" min="1" max="8" step="1" value="1"></div>
           <div><label for="a-reverb">A · 残響量 <input class="inline-value" id="a-reverb-value" type="number" min="0" max="100" step="0.001" value="0"></label><input id="a-reverb" type="range" min="0" max="100" step="1" value="0"></div>
         </div>
-        <details class="help-inline"><summary>ⓘ A方式の説明</summary><p id="a-quality-info" class="setting-help" aria-live="polite"></p><p class="setting-help">精細度はピーク抽出数・閾値・残差補完を連動調節します。抽出帯域幅は近接ピークの分離基準です。音質は実験段階で、高設定はCPU負荷が増加します。</p></details>
+        <details class="help-inline"><summary>ⓘ A方式の説明</summary><p id="a-quality-info" class="setting-help" aria-live="polite"></p><p class="setting-help">抽出下限はメインのLと共通です。精細度はピーク抽出数・閾値・残差補完を連動調節します。抽出帯域幅は近接ピークの分離基準です。音質は実験段階で、高設定はCPU負荷が増加します。</p></details>
       </div>
     </fieldset>
     <fieldset><legend>反転と帯域</legend>
@@ -274,9 +273,9 @@
     </fieldset>
     <fieldset><legend>処理帯域</legend>
       <label for="processing-min-hz">最低処理周波数 L（Hz）</label>
-      <input id="processing-min-hz" type="number" min="0.001" max="20000" step="any" value="20" inputmode="decimal">
+      <input id="processing-min-hz" type="number" min="0.001" max="20000" step="any" value="0.001" inputmode="decimal">
        <label class="setting-checkbox" for="pivot-follow-low"><input id="pivot-follow-low" type="checkbox"> 起点Pを処理下限L以上へ連動（0Hzは例外）</label>
-      <p class="setting-help">Lは処理する帯域の下限、Pは周波数座標の起点で別の値です。連動ON時だけPがLを下回らないよう調整します。変換範囲の下限Lと共通。FFT分解能以下の音響的分離は保証されません。処理外もグラフに細破線で表示します。</p>
+      <p class="setting-help" id="low-frequency-capability-help">Lは処理する帯域の下限、Pは周波数座標の起点で別の値です。連動ON時だけPがLを下回らないよう調整します。変換範囲の下限Lと共通。Lの入力できる下限と実PCMの再現限界は異なります。WASM既知単音試験（N=4096、44.1/48/96kHz）では、Engine Aは1Hz以上の測定点で合格し、0.1Hzは不合格。Engine Bは0.1〜20.001Hzの測定点で目標音ゲート未達でした。これは単音試験の結果で、一般的な音質保証ではありません。未確認の低域はMix 0%または「原音」で比較してください。処理外もグラフに細破線で表示します。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>

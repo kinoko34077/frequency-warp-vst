@@ -6,7 +6,7 @@ export function validateStreamSettings(p){
   if(!p||typeof p!=="object")return failed("settings","DSP設定がありません。");
   const ranges=[
     ["low",0.001,20000,"処理下限 L"],["high",0.001,20000,"処理上限 H"],
-    ["axisPivot",0,20000,"物理起点 P"],["aMinHz",0.001,20000,"A抽出下限"],
+    ["axisPivot",0,20000,"物理起点 P"],
     ["pitchRatio",0.000000000001,4,"ピッチ比 r"],["carrierHz",-1,20000,"搬送波 c"],
     ["axisShift",-4,4,"変換位置 u"],["axisSlope",-4,4,"物理傾き s"],
     // Each later Rust stream setter validates independently after set_ext.
@@ -48,10 +48,8 @@ export function validateStreamSettings(p){
   // clamp or secretly change the theoretical F to make a rejected packet pass.
   if(!finite(p.shiftHz)||Math.abs(p.shiftHz)>20000)
     return failed("shiftHz","理論上のシフト Δ が±20,000Hzを超えています。20kHz超の実処理は将来のオーバーサンプリング領域です。現在の音声処理へは未反映です。");
-  if(!finite(p.axisReference)||p.axisReference<1||p.axisReference>20000)
-    return failed("axisReference",p.axisReference>20000?
-      "基準周波数 R が20,000Hz超です。これは将来のオーバーサンプリング領域で、現行DSPには適用されません（理論Fは保持）。":
-      "基準周波数 R が1Hz未満です。グラフ表示は維持できますが、現行DSPには適用されません（対応1〜20,000Hz）。");
+  if(!finite(p.axisReference)||p.axisReference<=0)
+    return failed("axisReference","基準周波数 R は有限の正値が必要です。");
   return {ok:true,field:null,message:""};
 }
 
@@ -59,20 +57,16 @@ export function validateStreamSettings(p){
 /**
  * Build the EFFECTIVE, Rust-compatible audio snapshot without mutating the
  * user's theoretical controls or graph. Sub-1 Hz reference frequencies are
- * displayable but Rust's transform setter currently accepts >=1 Hz.
- * Treat this one known capability gap as a visible warning, not a startup
- * failure; all other invalid numeric/semantic fields remain fail-closed.
+ * accepted by Rust when finite and positive without value substitution.
+ * All invalid numeric and semantic fields remain fail-closed.
  */
 export function prepareStreamSettings(theoretical){
   if(!theoretical || typeof theoretical!=="object")
     return {settings:theoretical,warnings:[],...validateStreamSettings(theoretical)};
   const settings={...theoretical};
   const warnings=[];
-  if(finite(settings.axisReference) &&
-     settings.axisReference>=0 && settings.axisReference<1){
-    settings.axisReference=1;
-    warnings.push("基準周波数 R は現行DSPでは1 Hzからです。指定した"+
-      theoretical.axisReference+" Hzは表示・入力に保持し、音声処理には1 Hzを適用します。");
-  }
+  // Compatibility field for older Rust/WASM function signatures. The
+  // effective payload always mirrors the single canonical processing floor.
+  settings.aMinHz=settings.low;
   return {settings,warnings,...validateStreamSettings(settings)};
 }
