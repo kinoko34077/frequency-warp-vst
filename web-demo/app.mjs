@@ -14,6 +14,7 @@ import {captureComparisonView,restoreComparisonView,validateComparisonView} from
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
 import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
+import {formatView} from "./parameter-units.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
 import {auditionFeedbackView} from "./audition-feedback-view.mjs";
@@ -67,6 +68,11 @@ const MIN_POSITIVE_HZ=0.001;
 const LOW_BREAK=200;
 const hzFromScale=value=>{
   const x=clamp(Number(value),0,1000);
+  // Exact physical landmarks must not become 19.999999999999986 Hz.
+  // Non-landmark physical values still retain full Float64 precision.
+  if(x===0)return MIN_POSITIVE_HZ;
+  if(x===LOW_BREAK)return 20;
+  if(x===1000)return 20000;
   return x<=LOW_BREAK?
     MIN_POSITIVE_HZ*Math.exp(Math.log(20/MIN_POSITIVE_HZ)*x/LOW_BREAK):
     20*Math.exp(Math.log(1000)*(x-LOW_BREAK)/(1000-LOW_BREAK));
@@ -224,7 +230,8 @@ function bounds(changed=""){
   }else $("#high").value=String(scaleFromHz(high));
   // Even with both exact values unchanged, refresh coarse handles/ARIA.
   state.effective={low,high};
-  const min=$("#processing-min-hz");if(min&&document.activeElement!==min)min.value=String(low);
+  const min=$("#processing-min-hz");if(min&&document.activeElement!==min)
+    min.value=String(formatView(low,"hz",{id:"low",digits:3}));
   showNumber("low-value",low);
   showNumber("high-value",high);
   const rail=$("#dual-range");
