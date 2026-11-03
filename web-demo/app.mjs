@@ -410,9 +410,8 @@ function applyConfigurationSilently(c){
   invertBinding.setCanonical(v.invert,{notify:false});
   crusherUnitControl?.setCanonical(v.crusherRateHz);
   state.precise=Object.assign(Object.create(null),{
-    curvature:v.curvature,
-    "axis-shift":v.axisShift,
-    "a-band":v.aBandBins,"a-quality":v.aQuality,
+    "a-band":state.precise["a-band"],"a-quality":state.precise["a-quality"],
+    curvature:v.curvature,"axis-shift":v.axisShift,
     "crusher-bits":v.manualCrusherBits
   });
   for(const [id,val] of Object.entries({
