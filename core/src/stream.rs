@@ -1449,16 +1449,18 @@ mod tests{
         assert!(a.set_transform(0.0,0.0,0,0).is_err());
     }
     #[test]
-    fn a_minimum_frequency_and_reverb_are_independent_options(){
+    fn a_min_legacy_option_does_not_create_an_independent_cutoff(){
         let stg=Settings{low:20.0,high:3000.0,curvature:1.0,invert:0.0,
             mode:Progression::FoldHigh,quality:0};
         let mut a=Stream::new_extended(8192.0,1,stg,0,0,1.0,0.0,0.0,0,4).unwrap();
         let mut b=Stream::new_extended(8192.0,1,stg,0,1,1.0,0.0,0.0,0,4).unwrap();
         assert!(a.set_a_options(900.0,0.4).is_ok());
-        assert_eq!(a.a_min_hz,900.0);
+        assert_eq!(a.settings.low,20.0, "common L remains the sole processing floor");
         assert!((a.a_reverb_amount-0.4).abs()<0.00001);
         assert!(a.set_a_options(0.0001,1.0).is_err());
         assert!(a.set_a_options(0.001,0.4).is_ok());
+        assert!(a.set_transform(0.0,0.001,0,0).is_ok());
+        assert_eq!(a.axis_reference,0.001);
         assert!(a.set_a_options(2.0,0.4).is_ok());
         b.set_a_options(900.0,1.0).unwrap();
         let mut aa=vec![0.0f32;128];aa[0]=0.7;
