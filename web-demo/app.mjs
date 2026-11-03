@@ -9,7 +9,7 @@ import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs"
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration,captureHarmonicSnapState,restoreHarmonicSnapState} from "./harmonics-panel.mjs";
 import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
-import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
+import {createSoundConfiguration,validateSoundConfiguration,effectiveComparisonAudio,verifyComparisonAudio} from "./configuration-snapshot.mjs";
 import {captureComparisonView,restoreComparisonView,validateComparisonView} from "./comparison-view.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
@@ -392,42 +392,31 @@ function applyConfigurationSilently(c){
   // Preconditions are checked before entry. No DOM events or intermediate DSP
   // writes: the owning adapters accept exact canonical numbers first.
   const v=c.values,s=c.selectors,t=c.flags;
+  // A/B owns only non-Settings selectors; shared engine, mode and quality stay live.
+  $("#pivot-link-target").value=s.pivotLinkTarget;
   for(const [id,value] of Object.entries({
-    mode:s.mode,outside:s.outside,quality:s.quality,overlap:s.overlap,
-    engine:s.engine,harmonicCount:s.harmonicCount,pivotLinkTarget:s.pivotLinkTarget
-  })){
-    const selectorId=id==="harmonicCount"?"harmonic-count":
-      id==="pivotLinkTarget"?"pivot-link-target":id;
-    $("#"+selectorId).value=value;
-  }
-  for(const [id,value] of Object.entries({
-    "engine-auto":t.engineAuto,"ring-enabled":t.ringEnabled,
+    "ring-enabled":t.ringEnabled,
     "rational-enabled":t.rationalEnabled,"crusher-enabled":t.crusherEnabled,
-    "carrier-link":t.carrierLink,"harmonic-pivot-link":t.harmonicPivotLink,
-    "pivot-follow-low":t.pivotFollowLow
+    "carrier-link":t.carrierLink,"harmonic-pivot-link":t.harmonicPivotLink
   }))$("#"+id).checked=value;
   rationalEnabledByLink=t.rationalEnabledByLink;
   lowUnitControl.setCanonical(v.low);highUnitControl.setCanonical(v.high);
   pivotUnitControl.setCanonical(v.axisPivot);slopeUnitControl.setCanonical(v.axisSlope);
-  aMinUnitControl.setCanonical(v.aMinHz);
   restoreHarmonicConfiguration(c.harmonic);
   if(c.view?.virtualRoot)virtualRootWorkbench.restoreView(c.view.virtualRoot);
   wetBinding.setCanonical(v.wet,{notify:false});
-  aReverbBinding.setCanonical(v.aReverb,{notify:false});
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
   zeroDecayBinding.setCanonical(v.zeroReflectDecay,{notify:false});
   invertBinding.setCanonical(v.invert,{notify:false});
   crusherUnitControl?.setCanonical(v.crusherRateHz);
   state.precise=Object.assign(Object.create(null),{
-    curvature:v.curvature,
-    "axis-shift":v.axisShift,
-    "a-band":v.aBandBins,"a-quality":v.aQuality,
+    "a-band":state.precise["a-band"],"a-quality":state.precise["a-quality"],
+    curvature:v.curvature,"axis-shift":v.axisShift,
     "crusher-bits":v.manualCrusherBits
   });
   for(const [id,val] of Object.entries({
     curvature:v.curvature,
     "axis-shift":v.axisShift,
-    "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits
   }))$("#"+id).value=String(val);
   refreshWetView(true);
@@ -462,9 +451,7 @@ function switchSoundConfiguration(slot){
       sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate
     });
     if(saved.view?.interface)validateComparisonView($(".workspace-grid"),saved.view.interface);
-    const preflight=prepareStreamSettings({
-      ...saved.audio,sampleRate:state.ctx?.sampleRate||state.decoded.sampleRate
-    });
+    const preflight=prepareStreamSettings(effectiveComparisonAudio(saved.audio,settings()));
     if(!preflight.ok)throw Error(preflight.message);
     const previous=captureCurrentConfiguration();
     // Every sound path is evaluated as a single transaction, with a local
@@ -472,11 +459,9 @@ function switchSoundConfiguration(slot){
     try{
       applyConfigurationSilently(saved);
       const actual=settings();
-      for(const [key,value] of Object.entries(saved.audio)){
-        if(key==="sampleRate")continue;
-        if(!Object.is(actual[key],value))
-          throw Error("復帰検証失敗: "+key);
-      }
+      const verified=prepareStreamSettings(actual);
+      if(!verified.ok)throw Error(verified.message);
+      verifyComparisonAudio(actual,saved.audio);
     }catch(error){
       applyConfigurationSilently(previous);
       throw error;

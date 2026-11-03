@@ -4,6 +4,25 @@
  */
 import {validateHarmonicConfiguration} from "./harmonics-panel.mjs";
 
+// These are global Settings-dialog controls, not independent A/B sound states.
+// The L front-panel control is intentionally per-slot despite its Settings mirror.
+export const SHARED_SETTINGS_AUDIO_KEYS=Object.freeze([
+  "mode","outside","qualityIndex","hopDiv","engine",
+  "aMinHz","aQuality","aBandBins","aReverb"
+]);
+export function effectiveComparisonAudio(saved,current){
+  const merged={...saved};
+  for(const key of SHARED_SETTINGS_AUDIO_KEYS)merged[key]=current[key];
+  merged.sampleRate=current.sampleRate;
+  return merged;
+}
+export function verifyComparisonAudio(actual,saved){
+  for(const [key,value] of Object.entries(saved)){
+    if(key==="sampleRate"||SHARED_SETTINGS_AUDIO_KEYS.includes(key))continue;
+    if(!Object.is(actual[key],value))throw Error("復帰検証失敗: "+key);
+  }
+}
+
 const numeric={
   low:[.001,20000],high:[.001,20000],curvature:[0,1],invert:[0,1],
   axisPivot:[0,20000],axisSlope:[-4,4],axisShift:[-2,2],
