@@ -915,8 +915,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       delete window.__auditWorkletProto;
     });
     await (await page.$("#audio-file")).uploadFile(wavPath);
-    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("twelve.wav"),
-      {timeout:20000});
+    await page.waitForFunction(()=>
+      document.querySelector("#file-meta").textContent.includes("twelve.wav") &&
+      document.querySelector("#status").textContent.includes("読み込み完了。再生できます。") &&
+      !document.querySelector("#play-dry").disabled,
+      {timeout:25000});
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
     // A16: stopped→original audio must bypass invalid wet DSP settings.
