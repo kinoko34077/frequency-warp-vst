@@ -459,11 +459,9 @@ function switchSoundConfiguration(slot){
     try{
       applyConfigurationSilently(saved);
       const actual=settings();
-      for(const [key,value] of Object.entries(saved.audio)){
-        if(key==="sampleRate")continue;
-        if(!Object.is(actual[key],value))
-          throw Error("復帰検証失敗: "+key);
-      }
+      const verified=prepareStreamSettings(actual);
+      if(!verified.ok)throw Error(verified.message);
+      verifyComparisonAudio(actual,saved.audio);
     }catch(error){
       applyConfigurationSilently(previous);
       throw error;
