@@ -940,6 +940,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       for(const ctx of window.__originalPlaybackAuditContexts??[])
         ctx.__auditSourceStarts.length=0;
     });
+    // A second tab was opened and closed above; keep this transport check in
+    // the foreground so Chrome's hidden-page media pause policy is irrelevant.
+    await page.bringToFront();
     await page.click("#play-dry");
     await page.waitForFunction(()=>
       !document.querySelector("#stop").disabled&&
@@ -958,6 +961,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
           uiSeconds:Number(document.querySelector("#elapsed")?.textContent?.split(":")[1]??0),
           audioTime:owner?.currentTime??null,
           audioState:owner?.state??"missing",
+          visibility:document.visibilityState,
+          mediaPlaybackState:navigator.mediaSession?.playbackState??"unavailable",
           starts:owner?.__auditSourceStarts??[],
           trackedContexts:contexts.length,
           otherContexts:contexts.filter(ctx=>ctx!==owner).map(ctx=>({time:ctx.currentTime,state:ctx.state,starts:ctx.__auditSourceStarts.length})),
