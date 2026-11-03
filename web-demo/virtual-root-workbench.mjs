@@ -44,6 +44,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     </div>
     <p id="vr-sequence" class="vr-sequence" aria-live="polite"></p>
     <div id="vr-formula" class="vr-formula"></div>
+    <p id="vr-sync-note" class="vr-sync-note" role="status" aria-live="polite" hidden></p>
     <details id="vr-details"><summary>詳細表示</summary>
       <p id="vr-summary" class="vr-summary"></p>
       <p class="vr-legend"><span>━ 元の部分音</span><span>━ 配置後の部分音（理論）</span></p>
