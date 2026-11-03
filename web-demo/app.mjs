@@ -9,7 +9,7 @@ import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs"
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration,captureHarmonicSnapState,restoreHarmonicSnapState} from "./harmonics-panel.mjs";
 import {mountVirtualRootWorkbench} from "./virtual-root-workbench.mjs";
-import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
+import {createSoundConfiguration,validateSoundConfiguration,effectiveComparisonAudio,verifyComparisonAudio} from "./configuration-snapshot.mjs";
 import {captureComparisonView,restoreComparisonView,validateComparisonView} from "./comparison-view.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
@@ -451,9 +451,7 @@ function switchSoundConfiguration(slot){
       sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate
     });
     if(saved.view?.interface)validateComparisonView($(".workspace-grid"),saved.view.interface);
-    const preflight=prepareStreamSettings({
-      ...saved.audio,sampleRate:state.ctx?.sampleRate||state.decoded.sampleRate
-    });
+    const preflight=prepareStreamSettings(effectiveComparisonAudio(saved.audio,settings()));
     if(!preflight.ok)throw Error(preflight.message);
     const previous=captureCurrentConfiguration();
     // Every sound path is evaluated as a single transaction, with a local
