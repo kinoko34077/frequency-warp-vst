@@ -1,6 +1,6 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {createSoundConfiguration,validateSoundConfiguration} from "./configuration-snapshot.mjs";
+import {createSoundConfiguration,validateSoundConfiguration,effectiveComparisonAudio,verifyComparisonAudio,SHARED_SETTINGS_AUDIO_KEYS} from "./configuration-snapshot.mjs";
 
 function fixture(){
   const harmonic={F:350,m:4,n:-3,q:1,r:1,carrier:350};
@@ -59,4 +59,22 @@ test("canonical direct F/P and derived H/P link have different invariants",()=>{
   f.selectors.pivotLinkTarget="H";
   f.values.axisPivot=87.5;f.audio.axisPivot=87.5;
   assert.equal(createSoundConfiguration(f).values.axisPivot,87.5);
+});
+
+test("A/B restores per-slot effects while global Settings remain current",()=>{
+  const saved=fixture().audio,current={...saved,
+    mode:"fold-h",outside:"kill",qualityIndex:2,hopDiv:8,engine:0,
+    aMinHz:70,aQuality:35,aBandBins:2,aReverb:.5,
+    low:90,high:11000,wet:.33};
+  const result=effectiveComparisonAudio(saved,current);
+  for(const key of SHARED_SETTINGS_AUDIO_KEYS){
+    assert.equal(result[key],current[key],key+" remains global");
+  }
+  for(const key of ["low","high","wet","pitchRatio","shiftHz","axisPivot"]){
+    assert.equal(result[key],saved[key],key+" is per-slot");
+  }
+  assert.notEqual(result,saved);
+  assert.equal(saved.mode,"reciprocal");
+  verifyComparisonAudio(result,saved);
+  assert.throws(()=>verifyComparisonAudio({...result,wet:.5},saved),/wet/);
 });
