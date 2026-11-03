@@ -97,6 +97,13 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
         typeof vr.snaps?.[key]!=="boolean")throw Error("Invalid virtual root view");
     }
   }
+  if(c.transport!==undefined){
+    const t=c.transport;
+    if(!t||!["stopped","dry","wet"].includes(t.mode)||
+      !Number.isFinite(t.position)||t.position<0||
+      !Number.isFinite(t.duration)||t.duration<=0||t.position>t.duration)
+      throw Error("Invalid A/B transport state");
+  }
   if(!c.audio||typeof c.audio!=="object")throw Error("Missing audio snapshot");
   const a=c.audio,h=c.harmonic;
   if(Math.abs(a.axisReference-h.r*h.F)>Math.max(1e-8,Math.abs(h.r*h.F)*1e-12)||
