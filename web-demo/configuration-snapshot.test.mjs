@@ -79,3 +79,23 @@ test("A/B restores per-slot effects while global Settings remain current",()=>{
   verifyComparisonAudio(result,saved);
   assert.throws(()=>verifyComparisonAudio({...result,wet:.5},saved),/wet/);
 });
+
+test("legacy A/B Engine A minimum is migrated to the saved per-slot L",()=>{
+  const current=fixture();
+  current.values.low=12.345;current.values.aMinHz=900;
+  current.audio.low=12.345;current.audio.aMinHz=900;
+  const captured=createSoundConfiguration(current);
+  assert.equal(captured.audio.aMinHz,12.345);
+  assert.equal(Object.hasOwn(captured.values,"aMinHz"),false,
+    "new snapshots do not store a second A cutoff");
+
+  // A snapshot from the old page can still carry a different legacy ABI value.
+  const legacy=structuredClone(createSoundConfiguration(fixture()));
+  legacy.values.low=12.345;legacy.values.aMinHz=900;
+  legacy.audio.low=12.345;legacy.audio.aMinHz=900;
+  validateSoundConfiguration(legacy);
+  const actual=effectiveComparisonAudio(legacy.audio,{...legacy.audio,low:90,aMinHz:90});
+  assert.equal(actual.low,12.345);
+  assert.equal(actual.aMinHz,12.345);
+  verifyComparisonAudio(actual,legacy.audio);
+});

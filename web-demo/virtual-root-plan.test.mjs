@@ -63,6 +63,18 @@ test("below .001Hz remains strictly positive; P=0 is NOT faked; link never force
   assert.throws(()=>createVirtualRootPlan({F:350,H:Infinity,m:4}),RangeError);
   assert.throws(()=>createVirtualRootPlan({F:350,H:NaN,m:4}),RangeError);
 });
+
+test("low source F may derive an exact positive sub-1Hz DSP reference",()=>{
+  const plan=createVirtualRootPlan({F:0.0035,H:0.00021875,m:4});
+  assert.equal(plan.F,0.0035);
+  assert.equal(plan.pitched,0.000875);
+  assert.equal(plan.ratio,0.25);
+  assert.equal(plan.capability.rationalStage,true,
+    "R=0.000875Hz is mathematically within the positive-ratio DSP contract");
+  assert.equal(plan.capability.physicalPivot,false,
+    "a smaller Web physical-P rail remains a separate UI capability");
+});
+
 test("ordinary q cannot create a fake audible change; only selected reflect mode uses q",()=>{
   const a=createVirtualRootPlan({F:350,H:87.5,m:4,h1:1,q:1});
   const b=createVirtualRootPlan({F:350,H:87.5,m:4,h1:1,q:19});

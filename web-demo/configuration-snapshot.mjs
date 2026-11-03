@@ -13,21 +13,24 @@ export const SHARED_SETTINGS_AUDIO_KEYS=Object.freeze([
 export function effectiveComparisonAudio(saved,current){
   const merged={...saved};
   for(const key of SHARED_SETTINGS_AUDIO_KEYS)merged[key]=current[key];
+  merged.aMinHz=merged.low;
   merged.sampleRate=current.sampleRate;
   return merged;
 }
 export function verifyComparisonAudio(actual,saved){
   for(const [key,value] of Object.entries(saved)){
     if(key==="sampleRate"||SHARED_SETTINGS_AUDIO_KEYS.includes(key))continue;
-    if(!Object.is(actual[key],value))throw Error("復帰検証失敗: "+key);
+    const expected=key==="aMinHz"?saved.low:value;
+    if(!Object.is(actual[key],expected))throw Error("復帰検証失敗: "+key);
   }
+  if(!Object.is(actual.aMinHz,saved.low))throw Error("復帰検証失敗: aMinHz");
 }
 
 const numeric={
   low:[.001,20000],high:[.001,20000],curvature:[0,1],invert:[0,1],
   axisPivot:[0,20000],axisSlope:[-4,4],axisShift:[-2,2],
   wet:[0,1],zeroReflectGain:[0,1],zeroReflectDecay:[0,1],
-  aMinHz:[.001,20000],aReverb:[0,1],aBandBins:[1,8],
+  aReverb:[0,1],aBandBins:[1,8],
   aQuality:[0,100],crusherRateHz:[0,192000],crusherBits:[0,16],
   manualCrusherBits:[2,16]
 };
@@ -101,14 +104,19 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
   const a=c.audio,h=c.harmonic;
   if(Math.abs(a.axisReference-h.r*h.F)>Math.max(1e-8,Math.abs(h.r*h.F)*1e-12)||
     Math.abs(a.shiftHz-h.n*h.r*h.F/h.m)>Math.max(1e-8,Math.abs(a.shiftHz)*1e-12)||
-    a.low!==c.values.low||a.aMinHz!==a.low||a.high!==c.values.high||a.axisPivot!==c.values.axisPivot||
+    a.low!==c.values.low||a.high!==c.values.high||a.axisPivot!==c.values.axisPivot||
     a.axisSlope!==c.values.axisSlope||a.wet!==c.values.wet)
     throw Error("DSP/harmonic canonical mismatch");
   return c;
 }
 export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio,view}){
+  const canonicalValues={...values},canonicalAudio={...audio};
+  // Older snapshots stored an independent A cutoff in values/audio. Drop the
+  // former and migrate the ABI compatibility field to this slot's common L.
+  delete canonicalValues.aMinHz;
+  canonicalAudio.aMinHz=canonicalAudio.low;
   const c={version:1,sourceToken,sampleRate,
-    harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags},audio:{...audio},
+    harmonic:{...harmonic},values:canonicalValues,selectors:{...selectors},flags:{...flags},audio:canonicalAudio,
     ...(view?{view:{virtualRoot:{...view.virtualRoot,
       scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}},
       ...(view.interface?{interface:{...view.interface,units:{...view.interface.units},

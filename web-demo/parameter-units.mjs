@@ -13,7 +13,7 @@ export const UNIT_KINDS=Object.freeze({
 });
 export const PARAMETER_KIND=Object.freeze({
  low:"frequency",high:"frequency","axis-pivot":"frequency",fundamental:"frequency",
- carrier:"frequency","a-min":"frequency","sine-hz":"frequency",
+ carrier:"frequency","sine-hz":"frequency",
  "virtual-root-f":"frequency","virtual-root-h":"frequency",
  "pitch-ratio":"ratio","axis-slope":"signedRatio",
  invert:"fraction",curvature:"fraction","zero-reflect":"fraction",

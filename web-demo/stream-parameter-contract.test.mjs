@@ -104,3 +104,15 @@ test("R domain accepts positive finite values and rejects zero/nonfinite",()=>{
  assert.equal(prepareStreamSettings(bad).field,"high");
  assert.equal(bad.axisReference,0.001);
 });
+
+test("legacy A ABI cutoff follows exact shared L during preflight",()=>{
+ for(const low of [0.001,0.01,19.999,20,20.001]){
+   const theoretical={...base(),low,aMinHz:900,axisReference:0.0005,shiftHz:0};
+   const result=prepareStreamSettings(theoretical);
+   assert.equal(result.ok,true,"L="+low);
+   assert.equal(result.settings.low,low);
+   assert.equal(result.settings.aMinHz,low,"compatibility ABI field aliases L");
+   assert.equal(result.settings.axisReference,0.0005,"positive R remains exact");
+   assert.equal(theoretical.aMinHz,900,"theoretical input remains untouched");
+ }
+});

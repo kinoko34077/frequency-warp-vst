@@ -221,6 +221,7 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         Number(document.querySelector("#pitch-ratio").dataset.fwCanonical)===1 &&
         document.querySelector("#vr-sync-note").hidden,{timeout:10000});
       await page.select("#vr-placement","target"); // A deliberately stores target; B stores keep.
+      await page.$eval("#low-value",el=>{el.value="12.345";el.dispatchEvent(new Event("input",{bubbles:true}));});
       await page.click("#compare-save-a");
       // A retains the default ON preferences, B independently stores OFF.
       for(const selector of ["#low","#fundamental-range"]){
@@ -244,11 +245,12 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         el.value="-5";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
       await page.waitForFunction(()=>document.querySelector("#numerator").value==="-9",{timeout:10000});
+      await page.$eval("#low-value",el=>{el.value="19.5";el.dispatchEvent(new Event("input",{bubbles:true}));});
       await page.click("#compare-save-b");
       await page.select("#mode","fold-h");
       await page.select("#quality","standard");
       await page.select("#harmonic-count","7");
-      await page.$eval("#a-min-value",el=>{el.value="70";el.dispatchEvent(new Event("input",{bubbles:true}));});
+      await page.$eval("#low-value",el=>{el.value="70";el.dispatchEvent(new Event("input",{bubbles:true}));});
       for(const [selector,value] of [["#a-band","2"],["#a-quality","25"],["#a-reverb","20"]]){
         await page.$eval(selector,(el,v)=>{el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));},value);
       }
@@ -257,7 +259,8 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#mode",el=>el.value),"fold-h");
       assert.equal(await page.$eval("#quality",el=>el.value),"standard");
       assert.equal(await page.$eval("#harmonic-count",el=>el.value),"7");
-      assert.equal(await page.$eval("#a-min-value",el=>Number(el.dataset.fwCanonical)),70);
+      assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),12.345,
+        "A restores its saved common L despite current Settings");
       assert.equal(await page.$eval("#a-band",el=>el.value),"2");
       assert.equal(await page.$eval("#a-quality",el=>el.value),"25");
       assert.equal(await page.$eval("#a-reverb",el=>el.value),"20");
@@ -273,7 +276,8 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       assert.equal(await page.$eval("#mode",el=>el.value),"fold-h");
       assert.equal(await page.$eval("#quality",el=>el.value),"standard");
       assert.equal(await page.$eval("#harmonic-count",el=>el.value),"7");
-      assert.equal(await page.$eval("#a-min-value",el=>Number(el.dataset.fwCanonical)),70);
+      assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),19.5,
+        "B restores its saved common L despite current Settings");
       assert.equal(await page.$eval("#a-band",el=>el.value),"2");
       assert.equal(await page.$eval("#a-quality",el=>el.value),"25");
       assert.equal(await page.$eval("#a-reverb",el=>el.value),"20");

@@ -82,13 +82,13 @@ Above **20,000Hz**, physical DSP is **not** currently implemented: any extended
 harmonic F above this boundary is a theoretical value retained for possible
 future oversampling, and must not silently be treated as active audio.
 
-The Web UI preserves theoretical reference F/R input down to 0.001 Hz and
-its graph notation. The current Rust Stream accepts an **effective audio**
-reference R=[1,20000] Hz: when a valid theoretical R is positive but below
-1 Hz, preview, live update and offline WAV rendering apply 1 Hz to the DSP
-only, with a visible warning; the theoretical input is **not rewritten**.
-Other incompatible DSP settings, including |shiftHz|>20000 Hz, are rejected
-before being sent to the stream, without silent theoretical-value clamping.
+The Web UI preserves theoretical F to 0.001 Hz and Rust Stream preserves any
+finite positive DSP reference R, including values below 1 Hz, without an
+independent floor or replacement. Accepted values do not guarantee that a
+finite FFT window or render duration can resolve that frequency. The shared
+processing floor L starts and resets at 0.001 Hz, and Engine A uses this same L. Other
+incompatible DSP settings, including |shiftHz|>20000 Hz, are rejected before
+being sent to the stream, without silent theoretical-value clamping.
 When wet startup cannot proceed, independent original playback remains
 available. Physical iPhone Safari decode and field-performance acceptance
 of the reported failing audio file still require real-device evidence.
@@ -550,7 +550,7 @@ double-route behavior, and does NOT guarantee iOS background continuity.
 ## 2026-10-14 — reflection event separation and sub-20Hz L/H (#75)
 
 - Reflection synthesis/falloff is applied **only** to a genuine FoldHigh/FoldLow source segment beyond that mode's physical input-side hinge, or to a signed output below 0Hz. A globally descending Reciprocal inversion or a negative physical slope is *not* by itself an L/H fold. The sign of the output derivative does not decide whether attenuation is applied; source-domain fold-branch membership does. Numeric tests include the forward and reflected portions independently for both modes.
-- Frequency limits L/H and Engine A minimum selection accept strictly positive `0.001Hz` to `20000Hz` (while H remains greater than L and below stream Nyquist). The sliders have a continuous logarithmic 0.001–20Hz segment and an existing 20–20000Hz segment; default L=20Hz and default A floor=20Hz are preserved. Precise typed input is retained for DSP rather than rounded to the gesture track.
+- Frequency limits L/H accept strictly positive `0.001Hz` to `20000Hz` (while H remains greater than L and below stream Nyquist). At this 2026-10-14 revision, default L and the independent Engine A floor were both 20Hz. Issue #321 later retires the separate floor, mirrors its legacy Rust/WASM ABI field to L, and sets initial/reset L to `0.001Hz`. Precise typed input is retained for DSP rather than rounded to the gesture track.
 - **Boundary:** DC=0Hz input/output is *not* produced as a periodic partial, and the finite FFT window/sampling rate determine the smallest actually distinguishable audio frequency even if a positive L near zero is accepted. The Web graph is a display-window model and is not a guarantee that millihertz components are audible or plotted at finite resolution.
 - Rust shared WASM/native, Chrome UI and WAV path use a common reflection oracle; 0Hz-negative signed fold-out remains reflected and attenuated exactly once. Older superseded prose about any descending inversion being reflected no longer describes accepted behavior.
 

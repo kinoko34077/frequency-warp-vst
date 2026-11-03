@@ -33,9 +33,9 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     }
     assert.ok(started,"staged Web app HTTP server not ready");
     await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:18000});
-    // #321: the shared 20Hz rail breakpoint must not leak binary float tails.
-    assert.equal(await page.$eval("#processing-min-hz",el=>el.value),"20");
-    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),20);
+    // #321: the shared minimum initializes to exact 0.001Hz.
+    assert.equal(await page.$eval("#processing-min-hz",el=>el.value),"0.001");
+    assert.equal(Number(await page.$eval("#low-value",el=>el.dataset.fwCanonical)),0.001);
     // A three-decimal input stays a real Hz value, not rounded to an integer.
     await page.$eval("#processing-min-hz",el=>{
       el.value="0.001";el.dispatchEvent(new Event("change",{bubbles:true}));
@@ -73,7 +73,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#low-value",el=>{
       el.value="20";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    // Existing start at L=20Hz. A unit-only view change must not change L.
+    // After explicitly setting L=20Hz, a unit-only view change must not change L.
     const original=await page.$eval("#low",el=>el.value);
     await page.select("#low-unit","note");
     assert.match(await page.$eval("#low-value",el=>el.value),/^[A-G](#)?-?\d/);
@@ -622,48 +622,17 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       assert.equal(await page.$eval("#"+(id==="fundamental"?"fundamental-range":
         id==="carrier"?"carrier-range":id),el=>el.dataset.fwSnap),"off");
     }
-    // Engine A floor reuses the frequency descriptor in its actual Settings UI.
+    // Engine A consumes the shared L binding; there is no duplicate frequency UI.
     await page.click("#settings-open");
     await page.select("#engine","0");
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
-    assert.equal(await page.$eval("#a-min-unit",el=>el.getBoundingClientRect().height>0),true);
-    assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#a-min",el=>el.dataset.fwSnap),"on");
-    await page.select("#a-min-unit","note");
-    await page.$eval("#a-min-value",el=>{
-      el.value="A4+25c";el.dispatchEvent(new Event("input",{bubbles:true}));
-    });
-    await page.select("#a-min-unit","hz");
-    await page.focus("#a-min-value");
-    const aMinExact=Number(await page.$eval("#a-min-value",el=>el.dataset.fwCanonical));
-    assert.ok(Math.abs(aMinExact-440*2**(25/1200))<1e-9);
-    await page.$eval("#a-min-value",el=>el.blur());
-    await page.select("#a-min-unit","percent");
-    const aMinPct=Number(await page.$eval("#a-min-value",el=>el.value));
-    const expectedAMinPct=100*(.2+.8*Math.log(aMinExact/20)/Math.log(1000));
-    assert.ok(Math.abs(aMinPct-expectedAMinPct)<.051);
-    await page.select("#a-min-unit","note");
-    await page.$eval("#a-min-value",el=>{
-      el.value="garbage";el.dispatchEvent(new Event("change",{bubbles:true}));
-    });
-    await page.select("#a-min-unit","hz");
-    await page.focus("#a-min-value");
-    assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.dataset.fwCanonical))-aMinExact)<1e-9);
-    await page.$eval("#a-min-value",el=>el.blur());
-    const aMinStep=Math.round(200+800*Math.log(440/20)/Math.log(1000));
-    await page.$eval("#a-min",(el,step)=>{
-      el.value=String(step);el.dispatchEvent(new Event("input",{bubbles:true}));
-    },aMinStep);
-    await page.focus("#a-min-value");
-    assert.ok(Math.abs(Number(await page.$eval("#a-min-value",el=>el.value))-440)<1e-8);
-    await page.$eval("#a-min-value",el=>el.blur());
+    assert.equal(await page.$$eval("#a-min, #a-min-value, #a-min-unit",els=>els.length),0);
 
     await page.click("#settings-reset");
     assert.equal(await page.$eval("#decimal-digits",el=>el.value),"1",
       "Settings reset must restore an actual selected one-decimal option");
-    assert.equal(await page.$eval("#a-min-unit",el=>el.value),"hz");
-    assert.equal(await page.$eval("#a-min",el=>el.dataset.fwSnap),"on");
-    assert.equal(await page.$eval("#a-min-value",el=>Number(el.value)),20);
+    assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),0.001,
+      "global reset restores the common minimum L");
     assert.equal(await page.$eval("#pitch-ratio-unit",el=>el.value),"ratio");
     assert.equal(await page.$eval("#pitch-ratio-range",el=>el.dataset.fwSnap),"on");
     assert.equal(await page.$eval("#pitch-ratio",el=>Number(el.value)),1);
@@ -858,8 +827,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#high-value",el=>Number(el.value)),16000);
     assert.equal(await page.$eval("#low-unit",el=>el.value),"hz");
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
-    assert.equal(await page.$eval("#low-value",el=>Number(el.value)),20);
-    assert.equal(await page.$eval("#low",el=>el.value),"200");
+    assert.equal(await page.$eval("#low-value",el=>Number(el.value)),0.001);
+    assert.equal(await page.$eval("#low",el=>el.value),"0");
     // #321: editing L within the valid interval must preserve H exactly.
     await page.$eval("#low-value",el=>{
       el.value="15500";el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -894,7 +863,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.click("#settings-open");
     await page.click("#settings-reset");
     await page.click("#settings-done");
-    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),20);
+    assert.equal(Number(await page.$eval("#low-value",el=>el.value)),0.001);
     assert.equal(Number(await page.$eval("#high-value",el=>el.value)),16000);
     // #295: m/n/q have one canonical integer owner, even while a number
     // input is temporarily empty or incomplete. A sibling update must not

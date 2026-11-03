@@ -164,6 +164,8 @@ impl Stream {
         self.axis_pivot=pivot;self.axis_slope=slope;Ok(())
     }
     pub fn set_a_options(&mut self,min_hz:f64,reverb:f64)->Result<(),&'static str>{
+        // Keep validating the legacy ABI argument, but never store or apply
+        // it as a second extraction floor; Engine A reads Settings.low only.
         if !min_hz.is_finite()||!(0.001..=20000.0).contains(&min_hz)
            || !reverb.is_finite()||!(0.0..=1.0).contains(&reverb){
             return Err("invalid A options");
@@ -518,7 +520,9 @@ impl Stream {
         }
         let threshold=(greatest*self.floor).max(1e-10);
         self.candidates.clear();
-        for k in 2..half-1{
+        // Bin 1 is the first positive-frequency partial. Excluding it creates
+        // an accidental sample-rate-dependent floor above the shared L.
+        for k in 1..half-1{
             if k<self.a_peak_band_bins || k+self.a_peak_band_bins>=half {continue;}
             // One stronger local maximum inside each adjustable FFT-bin band.
             // No FFT extra allocation or copy on the audio render thread.

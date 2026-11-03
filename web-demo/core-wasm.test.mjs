@@ -436,6 +436,84 @@ test("A uses common L and retains reverb without affecting B PCM",async()=>{
   }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
 });
 
+test("Engine A reconstructs sub-20Hz PCM from the first non-DC FFT bin",async()=>{
+  const e=await load();
+  const measurements=[];
+  const measure=(pcm,rate,frequency)=>{
+    const start=Math.floor(rate*1),count=pcm.length-start;
+    let re=0,im=0;
+    for(let i=start;i<pcm.length;i++){
+      const phase=2*Math.PI*frequency*i/rate;
+      re+=pcm[i]*Math.cos(phase);im+=pcm[i]*Math.sin(phase);
+    }
+    return 2*Math.hypot(re,im)/count;
+  };
+  for(const rate of [44100,48000,96000]){
+    for(const frequency of [5,15,19.999]){
+      const frames=rate*3,src=e.warp_alloc_f32(frames),dst=e.warp_alloc_f32(frames);
+      assert.ok(src&&dst);
+      try{
+        const input=new Float32Array(e.memory.buffer,src,frames);
+        for(let i=0;i<frames;i++)input[i]=.45*Math.cos(2*Math.PI*frequency*i/rate);
+        const rc=e.warp_stream_render_f32_a_ext(src,dst,frames,1,rate,
+          0.001,20000,1,0,0,2,0,0,1,0,0,0,4,0,1,0,350,0,0,350,1,900,0);
+        assert.equal(rc,0,`valid low-frequency PCM rejected: ${frequency}Hz at ${rate}Hz`);
+        const output=Float32Array.from(new Float32Array(e.memory.buffer,dst,frames));
+        const amplitude=measure(output,rate,frequency);
+        measurements.push({rate,frequency,amplitude:Number(amplitude.toFixed(6))});
+        assert.ok(amplitude>0.1,
+          `Engine A should reconstruct ${frequency}Hz below 20Hz with L=.001; measured ${amplitude} at ${rate}Hz`);
+      }finally{
+        e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);
+      }
+    }
+  }
+  console.log("LOW_PCM_A_OFFLINE "+JSON.stringify(measurements));
+});
+
+test("128-frame realtime Engine A streams retain sub-20Hz PCM and sub-1Hz R",async()=>{
+  const e=await load(),block=128,inputPtr=e.warp_alloc_f32(block),outputPtr=e.warp_alloc_f32(block);
+  const measurements=[];
+  const amplitude=(pcm,rate,frequency)=>{
+    const start=rate,count=pcm.length-start;
+    let re=0,im=0;
+    for(let i=start;i<pcm.length;i++){
+      const phase=2*Math.PI*frequency*i/rate;
+      re+=pcm[i]*Math.cos(phase);im+=pcm[i]*Math.sin(phase);
+    }
+    return 2*Math.hypot(re,im)/count;
+  };
+  try{
+    for(const rate of [44100,48000,96000]){
+      for(const frequency of [5,15]){
+        const stream=e.warp_stream_create_ext(rate,1,0.001,20000,1,0,0,2,0,0,1,0,0,0,4);
+        assert.ok(stream);
+        try{
+          assert.equal(e.warp_stream_set_transform(stream,0,0.000875,0,0),0,
+            "positive sub-1Hz R must remain exact at "+rate+"Hz");
+          assert.equal(e.warp_stream_set_a_options(stream,900,0),0,
+            "legacy ABI cutoff must not block common L");
+          const total=Math.floor(rate*3/block)*block,pcm=new Float32Array(total);
+          for(let offset=0;offset<total;offset+=block){
+            const input=new Float32Array(e.memory.buffer,inputPtr,block);
+            for(let i=0;i<block;i++)
+              input[i]=.45*Math.cos(2*Math.PI*frequency*(offset+i)/rate);
+            assert.equal(e.warp_stream_process(stream,inputPtr,outputPtr,block),0);
+            pcm.set(new Float32Array(e.memory.buffer,outputPtr,block),offset);
+          }
+          const measured=amplitude(pcm,rate,frequency);
+          measurements.push({rate,frequency,amplitude:Number(measured.toFixed(6)),block,R:0.000875,L:0.001});
+          assert.ok(measured>0.1,
+            `${frequency}Hz realtime PCM should survive at ${rate}Hz; measured ${measured}`);
+        }finally{e.warp_stream_free(stream);}
+      }
+    }
+  }finally{
+    e.warp_free_f32(inputPtr,block);e.warp_free_f32(outputPtr,block);
+  }
+  console.log("LOW_PCM_A_REALTIME "+JSON.stringify(measurements));
+});
+
 test("A spectral peak band is independently adjustable in live Rust DSP",async()=>{
   const e=await load();
   assert.ok(e.warp_stream_set_a_band);

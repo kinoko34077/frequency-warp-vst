@@ -237,14 +237,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.click("#tab-map");
     // A22: optional L→P minimum constraint remains distinct from the
-    // H↔P harmonic link; it changes the real physical pivot numeric field.
+    // H↔P harmonic link; current L=.001 allows P=10 instead of imposing 20.
     await page.$eval("#pivot-follow-low",el=>{
       el.checked=true;el.dispatchEvent(new Event("change",{bubbles:true}));
     });
     await page.$eval("#axis-pivot-value",el=>{
       el.value="10";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-20)<.01);
+    assert.ok(Math.abs(await page.$eval("#axis-pivot-value",el=>Number(el.value))-10)<.01);
     await page.$eval("#low-value",el=>{
       el.value="30";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -1190,8 +1190,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),{timeout:25000});
     await page.select("#engine","0");
     assert.equal(await page.$eval("#engine-a-settings",el=>el.hidden),false);
-    await page.$eval("#a-min",el=>{el.value="570";el.dispatchEvent(new Event("input",{bubbles:true}));});
-    assert.ok(await page.$eval("#a-min-value",el=>Number(el.value))>100);
+    assert.equal(await page.$$eval("#a-min, #a-min-value, #a-min-unit",els=>els.length),0,
+      "Engine A has no separate extraction-floor control");
+    await page.$eval("#low-value",el=>{el.value="12.345";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),12.345,
+      "Engine A shares the exact typed common L");
     await page.$eval("#a-band",el=>{el.value="6";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#a-band-value",el=>Number(el.value)),6);
     await page.$eval("#a-quality",el=>{el.value="80";el.dispatchEvent(new Event("input",{bubbles:true}));});

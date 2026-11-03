@@ -377,7 +377,7 @@ function captureCurrentConfiguration(){
       low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
       axisPivot:p.axisPivot,axisSlope:p.axisSlope,axisShift:p.axisShift,
       wet:p.wet,zeroReflectGain:p.zeroReflectGain,zeroReflectDecay:p.zeroReflectDecay,
-      aMinHz:p.low,aReverb:p.aReverb,aBandBins:p.aBandBins,aQuality:p.aQuality,
+      aReverb:p.aReverb,aBandBins:p.aBandBins,aQuality:p.aQuality,
       crusherRateHz:p.crusherRateHz,crusherBits:p.crusherBits,manualCrusherBits
     },
     selectors:{

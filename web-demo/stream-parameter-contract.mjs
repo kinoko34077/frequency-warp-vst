@@ -6,7 +6,7 @@ export function validateStreamSettings(p){
   if(!p||typeof p!=="object")return failed("settings","DSP設定がありません。");
   const ranges=[
     ["low",0.001,20000,"処理下限 L"],["high",0.001,20000,"処理上限 H"],
-    ["axisPivot",0,20000,"物理起点 P"],["aMinHz",0.001,20000,"A抽出下限"],
+    ["axisPivot",0,20000,"物理起点 P"],
     ["pitchRatio",0.000000000001,4,"ピッチ比 r"],["carrierHz",-1,20000,"搬送波 c"],
     ["axisShift",-4,4,"変換位置 u"],["axisSlope",-4,4,"物理傾き s"],
     // Each later Rust stream setter validates independently after set_ext.
@@ -65,5 +65,8 @@ export function prepareStreamSettings(theoretical){
     return {settings:theoretical,warnings:[],...validateStreamSettings(theoretical)};
   const settings={...theoretical};
   const warnings=[];
+  // Compatibility field for older Rust/WASM function signatures. The
+  // effective payload always mirrors the single canonical processing floor.
+  settings.aMinHz=settings.low;
   return {settings,warnings,...validateStreamSettings(settings)};
 }
