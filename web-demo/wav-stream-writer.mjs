@@ -69,7 +69,7 @@ export async function writePcm16WavToSink({sink,...params}){
     for await(const data of encodePcm16Wav(params))await sink.write(data);
     if(typeof sink.close==="function")await sink.close();
   }catch(error){
-    if(typeof sink.abort==="function")await sink.abort(error).catch(()=>{});
+    if(typeof sink.abort==="function"){try{await sink.abort(error);}catch{}}
     throw error;
   }
 }
