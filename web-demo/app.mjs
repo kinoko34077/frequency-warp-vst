@@ -417,7 +417,6 @@ function applyConfigurationSilently(c){
   for(const [id,val] of Object.entries({
     curvature:v.curvature,
     "axis-shift":v.axisShift,
-    "a-band":v.aBandBins,"a-quality":v.aQuality,
     "crusher-bits":v.manualCrusherBits
   }))$("#"+id).value=String(val);
   refreshWetView(true);
