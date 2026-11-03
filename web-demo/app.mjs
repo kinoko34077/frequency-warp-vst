@@ -364,6 +364,8 @@ function captureCurrentConfiguration(){
   return createSoundConfiguration({
     sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
     harmonic:h,audio:p,
+    transport:{mode:state.player?.mode??"stopped",
+      position:clamp(playPosition(),0,duration()),duration:duration()},
     view:{virtualRoot:virtualRootWorkbench.captureView(),
       interface:captureComparisonView($(".workspace-grid"),{
         graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value,
