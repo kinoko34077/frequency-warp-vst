@@ -193,6 +193,19 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
         input.files=data.files;input.dispatchEvent(new Event("change",{bubbles:true}));
       });
       await page.waitForFunction(()=>!document.querySelector("#play-dry").disabled,{timeout:25000});
+      await page.select("#vr-placement","keep-spacing");
+      await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+      // Regression: legacy r=2 must not be misrepresented as currently
+      // audible keep-spacing H=F/m, nor silently reset on an A/B refresh.
+      await page.$eval("#pitch-ratio",el=>{
+        el.value="2";el.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+      await page.waitForFunction(()=>!document.querySelector("#vr-sync-note").hidden,{timeout:10000});
+      assert.equal(await page.$eval("#vr-placement",el=>el.value),"keep-spacing");
+      assert.equal(await page.$eval("#vr-target-h",el=>el.value),"87.5");
+      assert.ok(Math.abs(Number(await page.$eval("#pitch-ratio",el=>el.dataset.fwCanonical))-2)<1e-9,
+        "legacy ratio is still canonical until workbench is deliberately edited");
+      assert.match(await page.$eval("#vr-sync-note",el=>el.textContent),/H=175/);
       await page.$eval("#vr-first-index",el=>{
         el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
