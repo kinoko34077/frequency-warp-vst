@@ -34,11 +34,11 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   root.innerHTML=`
     <div class="section-header"><h2>倍音を配置する</h2></div>
     <div class="vr-inputs">
-      ${field("source-f","元基音 F",350,.01,5120000,.01)}
+      ${field("source-f","元基音 F",350,.001,5120000,"any")}
       <div class="vr-control"><label for="vr-placement">音程の配置</label><select id="vr-placement">
         <option value="target">仮想基音を動かす</option><option value="keep-spacing" selected>元の倍音間隔を維持</option>
       </select></div>
-      ${field("target-h","仮想基音 H",87.5,.01,20000,.01)}
+      ${field("target-h","仮想基音 H",87.5,.001,20000,"any")}
       ${field("step-m","番号間隔",4,1,64,1)}
       ${field("first-index","初項",1,-129,129,1)}
     </div>
@@ -107,9 +107,9 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
         const el=controls[key],selectedUnit=getUnit(key);
         el.type=selectedUnit==="note"?"text":"number";
         el.inputMode=selectedUnit==="note"?"text":"decimal";
-        el.step=selectedUnit==="note"?"any":".001";
+        el.step="any";
         root.querySelector('[data-vr-digit="'+id+'"]').hidden=selectedUnit==="note";
-        el.min=selectedUnit==="percent"?"0":".01";
+        el.min=selectedUnit==="percent"?"0":".001";
         el.max=selectedUnit==="percent"?"100":String(key==="H"?20000:5120000);
         render();
       }
@@ -126,7 +126,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
   function fromText(key,raw){
     if(!String(raw).trim())return null;
     const unit=getUnit(key);
-    if(unit!=="note"&&!/^-?\d+(?:\.\d{0,3})?$/.test(String(raw)))return null;
+    if(unit!=="note"&&!/^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(String(raw)))return null;
     try{
       const n=(key==="H"||key==="F")?
         parseView(raw,unit,percentOpts(key)):Number(raw);
@@ -239,7 +239,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     const el=controls[key];
     el.addEventListener("focus",()=>{
       if((key==="F"||key==="H")&&getUnit(key)!=="note"){
-        el.value=displayValue(key,3);el.select();
+        el.value=getUnit(key)==="hz"?String(state[key]):String(frequencyBindings[key].display(12));el.select();
       }
     });
     el.addEventListener("input",()=>changed(key));
