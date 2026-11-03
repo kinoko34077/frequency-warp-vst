@@ -409,7 +409,7 @@ test("negative, zero and positive physical slope change actual WASM PCM in engin
  }finally{e.warp_free_f32(src,frames);e.warp_free_f32(dst,frames);}
 });
 
-test("A minimum partial frequency and synthesis reverb change real PCM without affecting B",async()=>{
+test("A uses common L and retains reverb without affecting B PCM",async()=>{
   const e=await load();
   assert.equal(typeof e.warp_stream_render_f32_a_ext,"function");
   assert.equal(typeof e.warp_stream_set_a_options,"function");
@@ -429,7 +429,7 @@ test("A minimum partial frequency and synthesis reverb change real PCM without a
     const normal=render(0,20,0),cut=render(0,900,0),
       wet=render(0,20,.5),bin=render(1,900,1);
     assert.ok(energy(normal)>100,"A should reconstruct the 500Hz partial");
-    assert.ok(energy(cut)<energy(normal)*.02,"A minimum Hz cutoff not applied");
+    assert.ok(Math.abs(energy(cut)-energy(normal))<energy(normal)*1e-5,"legacy A min must not filter an in-band 500 Hz partial");
     assert.ok(energy(bin)>100,"A settings leaked into B");
     const delta=normal.slice(2500,14000).reduce((v,x,i)=>v+Math.abs(x-wet[i+2500]),0);
     assert.ok(delta>20,"A reverb amount didn't alter actual sound");
