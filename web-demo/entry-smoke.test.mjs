@@ -243,8 +243,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.ok(Math.abs(await canonicalWet()-.12345)<1e-12,
       "A/B restore must retain Float64, not slider proxy");
     assert.equal(await page.$eval("#wet-value",el=>el.value),"12.3");
-    assert.ok(Math.abs(await canonicalAReverb()-.33333)<1e-12,
-      "A/B restores reverb Float64 independently of whole-percent slider");
+    assert.ok(Math.abs(await canonicalAReverb()-.75)<1e-12,
+      "A-engine reverb is a shared Settings value; A/B must not restore its saved value");
     assert.ok(Math.abs(await canonicalReflectGain()-.37125)<1e-12,
       "A/B must preserve reflection gain Float64, not the 37% dual thumb proxy");
     assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),37);
