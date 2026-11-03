@@ -13,7 +13,7 @@ import {createSoundConfiguration,validateSoundConfiguration,effectiveComparisonA
 import {captureComparisonView,restoreComparisonView,validateComparisonView} from "./comparison-view.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {mountFrequencyUnitField,mountParameterUnitField,mountPercentParameterField} from "./frequency-unit-field.mjs";
-import {reconcileFrequencyBounds} from "./frequency-bounds.mjs";
+import {reconcileFrequencyBounds,audioFrequencyCap} from "./frequency-bounds.mjs";
 import {formatView} from "./parameter-units.mjs";
 import {prepareStreamSettings} from "./stream-parameter-contract.mjs";
 import {createPlaybackFeedback} from "./playback-feedback.mjs";
@@ -214,7 +214,7 @@ function indicator(text){
   syncAuditionFeedback();
 }
 function bounds(changed=""){
-  const cap=state.decoded?Math.min(20000,state.decoded.sampleRate*.45):20000;
+  const cap=state.decoded?audioFrequencyCap(state.decoded.sampleRate):20000;
   // Reconcile physical Hz ONCE. Previously the computed peer correction was
   // overwritten by scalar() re-reading stale canonical binding values.
   const {low,high}=reconcileFrequencyBounds({
