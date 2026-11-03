@@ -29,7 +29,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
   });
   let browser;
   try{
-    const wav=join(root,"picker.wav");await writeFile(wav,shortWav());
+    const wav=join(root,"picker.wav");await writeFile(wav,shortWav(8));
     browser=await puppeteer.launch({
       executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",
       headless:true,
@@ -37,6 +37,22 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     });
     const page=await browser.newPage();
     await page.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+    await page.evaluateOnNewDocument(()=>{
+      const Native=window.AudioContext;
+      if(!Native)return;
+      window.__comparisonSourceStarts=[];
+      window.AudioContext=class extends Native{
+        createBufferSource(...args){
+          const source=super.createBufferSource(...args);
+          const start=source.start.bind(source);
+          source.start=(when=0,offset=0,...rest)=>{
+            window.__comparisonSourceStarts.push(offset);
+            return start(when,offset,...rest);
+          };
+          return source;
+        }
+      };
+    });
     const errors=[];
     page.on("pageerror",e=>errors.push(String(e.message)));
     page.on("response",r=>{
@@ -259,6 +275,57 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.equal(await canonicalReflectGain(),.8);
     assert.equal(await canonicalReflectDecay(),.8);
     assert.equal(await canonicalInvert(),.7);
+
+    // A/B also remembers the user's actual transport choice and source-local
+    // playhead. Exercise real BufferSource offsets and a Rust/WASM Wet start.
+    const seekTo=seconds=>page.$eval("#wave",(wave,value)=>{
+      const bounds=wave.getBoundingClientRect();
+      wave.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,
+        clientX:bounds.left+bounds.width*value/8,clientY:bounds.top+bounds.height/2}));
+    },seconds);
+    await page.click("#play-dry");
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:10000});
+    await seekTo(2.4);
+    await page.click("#compare-save-a");
+    const aOffset=await page.evaluate(()=>window.__comparisonSourceStarts.at(-1));
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+    await seekTo(5.6);
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    await seekTo(5.6);
+    await page.click("#compare-save-b");
+    const bOffset=await page.evaluate(()=>window.__comparisonSourceStarts.at(-1));
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+
+    await page.click("#compare-load-a");
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#status").textContent.includes("原音再生中"),{timeout:12000});
+    const restoredA=await page.evaluate(()=>window.__comparisonSourceStarts.at(-1));
+    assert.ok(Math.abs(restoredA-aOffset)<.15,
+      "A restores its saved original-audio mode and playhead");
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+    await page.click("#compare-load-b");
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    const restoredB=await page.evaluate(()=>window.__comparisonSourceStarts.at(-1));
+    assert.ok(Math.abs(restoredB-bOffset)<.15,
+      "B restores its saved Rust/WASM processed mode and playhead");
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+    await page.evaluate(()=>{
+      document.querySelector("#compare-load-a").click();
+      document.querySelector("#compare-load-b").click();
+    });
+    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied"&&
+      document.querySelector("#comparison-status").textContent.includes("設定B")&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    assert.ok(Math.abs(await page.evaluate(()=>window.__comparisonSourceStarts.at(-1))-bOffset)<.15,
+      "rapid A→B selection leaves the latest slot's mode and playhead active");
+    await page.click("#stop");
     await page.$eval("#invert-value",el=>{
       el.value="";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
