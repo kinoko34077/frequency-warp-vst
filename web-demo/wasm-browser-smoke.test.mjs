@@ -564,6 +564,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true);
+    assert.match(await page.$eval("#low-frequency-capability-help",el=>el.textContent),
+      /入力できる下限.*再現限界|再現限界.*入力できる下限/,
+      "the numeric L minimum must be distinguished from demonstrated PCM capability");
+    assert.match(await page.$eval("#low-frequency-capability-help",el=>el.textContent),
+      /Mix 0%.*原音|原音.*Mix 0%/,
+      "unqualified low-frequency output must name an original-audio fallback");
     assert.equal(await page.$eval("#engine-auto",el=>el.checked),false);
     // Graph-negative even WITHOUT raw invert: physical shift -700Hz and
     // target-0 Reflect turn the audible low band into a descending curve.

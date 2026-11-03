@@ -275,7 +275,7 @@
       <label for="processing-min-hz">最低処理周波数 L（Hz）</label>
       <input id="processing-min-hz" type="number" min="0.001" max="20000" step="any" value="0.001" inputmode="decimal">
        <label class="setting-checkbox" for="pivot-follow-low"><input id="pivot-follow-low" type="checkbox"> 起点Pを処理下限L以上へ連動（0Hzは例外）</label>
-      <p class="setting-help">Lは処理する帯域の下限、Pは周波数座標の起点で別の値です。連動ON時だけPがLを下回らないよう調整します。変換範囲の下限Lと共通。FFT分解能以下の音響的分離は保証されません。処理外もグラフに細破線で表示します。</p>
+      <p class="setting-help" id="low-frequency-capability-help">Lは処理する帯域の下限、Pは周波数座標の起点で別の値です。連動ON時だけPがLを下回らないよう調整します。変換範囲の下限Lと共通。Lの入力できる下限と実PCMの再現限界は異なります。WASM既知単音試験（N=4096、44.1/48/96kHz）では、Engine Aは1Hz以上の測定点で合格し、0.1Hzは不合格。Engine Bは0.1〜20.001Hzの測定点で目標音ゲート未達でした。これは単音試験の結果で、一般的な音質保証ではありません。未確認の低域はMix 0%または「原音」で比較してください。処理外もグラフに細破線で表示します。</p>
     </fieldset>
     <fieldset><legend>倍音表示</legend><label for="harmonic-count">詳細に表示する倍音数</label>
       <select id="harmonic-count"><option value="3">3倍音</option><option value="5" selected>5倍音</option><option value="7">7倍音</option><option value="12">12倍音</option><option value="16">16倍音</option><option value="24">24倍音</option><option value="32">32倍音</option></select>
