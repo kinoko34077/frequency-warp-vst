@@ -275,3 +275,12 @@ Crusher 打刻速度は既存の共通単位切替（Hz／音高／レール%）
 - DSPは非整数 `Fs/Hz` に対してfractional clockで指定平均Hzを実現し、浮動小数点誤差範囲で厳密に `Fs/N` と一致する周波数は整数N周期でスケジュールする。単に周波数指定を `round(Fs/Hz)` へ丸める旧動作は避ける。
 - A/Bは Hz正本・選択中samples単位・他の非Settings表示状態・吸着状態をそれぞれ保存復元する。現行表示では小数1桁、編集時は最低3桁精度を使用し、描画丸めをDSPへ逆流させない。
 - 48kHz/44.1kHzで整数Nの全tick間隔、非整数Hzの平均更新率、Chrome unit toggle/typed/slider、A/B復元、realtime/offline一致を機械検証。0Hz・1sample・440Hz/109samplesを反例境界として固定する。
+
+
+## A/B sound-state scope vs shared Settings (#309)
+
+A/B slots own **all front-panel sound/effect controls and non-Settings view state**. Settings-dialog-only controls are common to both slots and must **not be rewritten when selecting A or B**, even if their historical values are present as snapshot validation metadata. The current shared Settings are applied to either saved sound state before DSP validation.
+
+Shared: engine selection/auto, inversion mode, outside-band policy, FFT quality and overlap, Engine A minimum frequency, reverb, peak bins/quality, physical pivot-follow-low policy, displayed harmonic count, numerical display precision and gesture-range preferences. The front-panel **L** bound is a per-slot sound parameter even though Settings also exposes a mirror of it. Likewise, waveform/graph view, frequency unit, snap preferences and auxiliary monitor state are per-slot.
+
+A/B restore must validate the saved source identity; preflight the stored front-panel values **together with the current shared Settings**; silently apply only per-slot values; verify the effective result without equating historical shared values; and issue one DSP parameter update. Incompatible per-slot values under a newly selected shared Setting must fail with a recoverable rollback rather than silently switching global settings. Do not claim this scope solves subjective audio-quality or physical iOS acceptance.
