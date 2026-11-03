@@ -29,7 +29,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
   });
   let browser;
   try{
-    const wav=join(root,"picker.wav");await writeFile(wav,shortWav(8));
+    const wav=join(root,"picker.wav");await writeFile(wav,shortWav());
+    const transportWav=join(root,"transport.wav");await writeFile(transportWav,shortWav(8));
     browser=await puppeteer.launch({
       executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",
       headless:true,
@@ -278,6 +279,9 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
 
     // A/B also remembers the user's actual transport choice and source-local
     // playhead. Exercise real BufferSource offsets and a Rust/WASM Wet start.
+    await (await page.$("#audio-file")).uploadFile(transportWav);
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("transport.wav")&&
+      !document.querySelector("#play-wet").disabled,{timeout:20000});
     const seekTo=seconds=>page.$eval("#wave",(wave,value)=>{
       const bounds=wave.getBoundingClientRect();
       wave.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,
