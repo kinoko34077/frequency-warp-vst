@@ -506,6 +506,11 @@ function switchSoundConfiguration(slot){
       comparisonMessage("設定"+slot+"を復帰 · "+
         (state.player?"原音再生中（変換未確認）":"停止中（変換未確認）"),"ready");
     }
+    const token=state.sourceGeneration;
+    if(saved.transport)void restoreComparisonTransport(saved.transport,token).catch(error=>{
+      if(token===state.sourceGeneration)
+        comparisonMessage("再生状態の復帰失敗："+error.message,"error");
+    });
   }catch(error){
     comparisonMessage("切替不可："+error.message,"error");
   }
