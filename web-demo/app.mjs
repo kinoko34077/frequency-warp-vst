@@ -405,7 +405,6 @@ function applyConfigurationSilently(c){
   restoreHarmonicConfiguration(c.harmonic);
   if(c.view?.virtualRoot)virtualRootWorkbench.restoreView(c.view.virtualRoot);
   wetBinding.setCanonical(v.wet,{notify:false});
-  aReverbBinding.setCanonical(v.aReverb,{notify:false});
   zeroReflectBinding.setCanonical(v.zeroReflectGain,{notify:false});
   zeroDecayBinding.setCanonical(v.zeroReflectDecay,{notify:false});
   invertBinding.setCanonical(v.invert,{notify:false});
