@@ -445,6 +445,29 @@ function applyConfigurationSilently(c){
     }
   });
 }
+async function restoreComparisonTransport(saved,sourceToken){
+  if(!saved||sourceToken!==state.sourceGeneration)return;
+  if(Math.abs(duration()-saved.duration)>1e-6)
+    throw Error("保存時の音源の長さと現在の音源が一致しません");
+  const position=clamp(saved.position,0,Math.max(0,duration()-.001));
+  if(saved.mode==="stopped"){
+    if(state.player)await stop();
+    if(sourceToken!==state.sourceGeneration)return;
+    state.seek=position;
+    refreshStatusSeek();
+    return;
+  }
+  if(state.player?.mode===saved.mode){
+    seek(position);
+    refreshStatusSeek();
+    return;
+  }
+  await play(saved.mode,position);
+  if(sourceToken!==state.sourceGeneration)return;
+  if(state.player?.mode!==saved.mode)
+    throw Error("保存された再生モードの復帰に失敗しました");
+  refreshStatusSeek();
+}
 function switchSoundConfiguration(slot){
   const saved=comparisonSlots[slot];
   if(!saved)return;
