@@ -5,6 +5,8 @@ import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
+import {openWavChunkSource} from "./wav-chunk-source.mjs";
+import {browserAudioMemory,planBufferedPreview,planCompressedPredecode} from "./processing-capability.mjs";
 import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration,captureHarmonicSnapState,restoreHarmonicSnapState} from "./harmonics-panel.mjs";
@@ -21,7 +23,6 @@ import {auditionFeedbackView} from "./audition-feedback-view.mjs";
 import {axisShiftUnits,axisShiftCanonical,axisShiftView} from "./axis-shift-view.mjs";
 
 const $=id=>document.querySelector(id);
-const MAX_PREVIEW_SECONDS=600;
 let graphMax=2000;
 let graphAlphaBeforeZoom=0;
 const controls={
@@ -1592,15 +1593,40 @@ async function load(file){
   // Never discard the current song merely because a *replacement* failed.
   // Decode/validate into local state, then commit only after full success.
   try{
-    if(file.size>75_000_000)throw Error("最大75MBです");
     $("#file-meta").textContent=file.name+" · 読み込み中"+(previousReady?"（現在の音声は保持）":"");
     message("音声を開いています…"+(previousReady?" 現在の音声はそのまま使えます。":""));
-    const data=await decodeFileWithoutPlayback(file,token);
-    if(token!==state.loadToken||!data)return;
-    const count=Math.min(2,data.numberOfChannels);
-    const length=Math.min(data.length,Math.floor(data.sampleRate*MAX_PREVIEW_SECONDS));
-    if(length<4096)throw Error("短すぎる音声です");
-    const dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice(0,length));
+    const memory=browserAudioMemory({navigator,performance});
+    let wav=null,dry,rate,count;
+    try{wav=await openWavChunkSource(file);}
+    catch(error){if(error?.code!=="NOT_WAV")throw error;}
+    if(token!==state.loadToken)return;
+    if(wav){
+      const plan=planBufferedPreview(wav.info,{memory});
+      if(plan.status!=="supported")throw Error(plan.reasons.map(x=>x.message).join(" / "));
+      rate=wav.info.sampleRate;count=wav.info.channels;
+      if(wav.info.frames<4096)throw Error("短すぎる音声です");
+      // WAV is read in bounded slices; no fixed file-byte or preview-duration cutoff.
+      // Playback is still buffered. Insufficient-memory cases fail visibly
+      // rather than truncating the user's file or channels.
+      dry=Array.from({length:count},()=>new Float32Array(wav.info.frames));
+      for await(const part of wav.iterateFrames({chunkFrames:8192})){
+        if(token!==state.loadToken)return;
+        for(let c=0;c<count;c++)dry[c].set(part.channels[c],part.start);
+      }
+    }else{
+      const pre=planCompressedPredecode(file.size,{memory});
+      if(pre.status==="unavailable")
+        throw Error("音源の一括デコード用メモリが不足しています。圧縮形式の逐次デコーダは未対応です");
+      const data=await decodeFileWithoutPlayback(file,token);
+      if(token!==state.loadToken||!data)return;
+      const plan=planBufferedPreview({
+        frames:data.length,channels:data.numberOfChannels,sampleRate:data.sampleRate
+      },{memory,kind:"compressed"});
+      if(plan.status!=="supported")throw Error(plan.reasons.map(x=>x.message).join(" / "));
+      if(data.length<4096)throw Error("短すぎる音声です");
+      rate=data.sampleRate;count=data.numberOfChannels;
+      dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice());
+    }
     if(token!==state.loadToken)return;
 
     // Atomic replacement boundary: old playable audio and completed offline
@@ -1610,7 +1636,7 @@ async function load(file){
     if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
     if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
     state.offline=null;state.exportIdentity=null;state.sourceGeneration++;
-    state.decoded={sampleRate:data.sampleRate};
+    state.decoded={sampleRate:rate};
     state.dry=dry;state.seek=0;state.lastStats=null;
     state.sourceGeneration++;
     comparisonSlots.A=null;comparisonSlots.B=null;
@@ -1619,7 +1645,7 @@ async function load(file){
     comparisonMessage("新しい音源です · A/Bを記録してください","idle");
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
-    state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
+    state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+rate+"Hz · "+count+"ch";
     $("#file-meta").textContent=state.fileMeta;
     labels("high");drawCurve();drawAudio();refreshStatusSeek();
     controls.dry.disabled=false;controls.wet.disabled=false;
