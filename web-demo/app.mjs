@@ -1598,7 +1598,7 @@ async function load(file){
     const memory=browserAudioMemory({navigator,performance});
     let wav=null,dry,rate,count;
     try{wav=await openWavChunkSource(file);}
-    catch(error){if(error?.code!=="NOT_WAV")throw error;}
+    catch(error){if(!["NOT_WAV","UNSUPPORTED_CODEC"].includes(error?.code))throw error;}
     if(token!==state.loadToken)return;
     if(wav){
       const plan=planBufferedPreview(wav.info,{memory});
