@@ -209,7 +209,9 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       await page.$eval("#vr-first-index",el=>{
         el.value="3";el.dispatchEvent(new Event("input",{bubbles:true}));
       });
-      await page.waitForFunction(()=>document.querySelector("#numerator").value==="-1",{timeout:10000});
+      await page.waitForFunction(()=>document.querySelector("#numerator").value==="-1" &&
+        Number(document.querySelector("#pitch-ratio").dataset.fwCanonical)===1 &&
+        document.querySelector("#vr-sync-note").hidden,{timeout:10000});
       await page.click("#compare-save-a");
       // A retains the default ON preferences, B independently stores OFF.
       for(const selector of ["#low","#fundamental-range"]){
