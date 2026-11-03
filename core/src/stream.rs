@@ -148,7 +148,7 @@ impl Stream {
     pub fn set_transform(&mut self,shift:f64,reference:f64,ring_enabled:u32,
         rational_enabled:u32)->Result<(),&'static str>{
         if !shift.is_finite()||shift.abs()>4.0||!reference.is_finite()
-           ||!(1.0..=20000.0).contains(&reference)||ring_enabled>1||rational_enabled>1{
+           ||reference<=0.0||ring_enabled>1||rational_enabled>1{
             return Err("invalid axis shift / effect parameters");
         }
         self.axis_shift=shift;
@@ -1447,6 +1447,8 @@ mod tests{
         a.set_transform(0.0,400.0,1,0).unwrap();
         assert!(a.ring_enabled);
         a.set_transform(0.0,400.0,0,0).unwrap();
+        a.set_transform(0.0,0.001,0,0).unwrap();
+        assert_eq!(a.axis_reference,0.001);
         assert!(!a.ring_enabled);
         assert!(a.set_transform(0.0,0.0,0,0).is_err());
     }

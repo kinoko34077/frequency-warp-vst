@@ -48,10 +48,8 @@ export function validateStreamSettings(p){
   // clamp or secretly change the theoretical F to make a rejected packet pass.
   if(!finite(p.shiftHz)||Math.abs(p.shiftHz)>20000)
     return failed("shiftHz","理論上のシフト Δ が±20,000Hzを超えています。20kHz超の実処理は将来のオーバーサンプリング領域です。現在の音声処理へは未反映です。");
-  if(!finite(p.axisReference)||p.axisReference<1||p.axisReference>20000)
-    return failed("axisReference",p.axisReference>20000?
-      "基準周波数 R が20,000Hz超です。これは将来のオーバーサンプリング領域で、現行DSPには適用されません（理論Fは保持）。":
-      "基準周波数 R が1Hz未満です。グラフ表示は維持できますが、現行DSPには適用されません（対応1〜20,000Hz）。");
+  if(!finite(p.axisReference)||p.axisReference<=0)
+    return failed("axisReference","基準周波数 R は有限の正値が必要です。");
   return {ok:true,field:null,message:""};
 }
 
@@ -59,20 +57,13 @@ export function validateStreamSettings(p){
 /**
  * Build the EFFECTIVE, Rust-compatible audio snapshot without mutating the
  * user's theoretical controls or graph. Sub-1 Hz reference frequencies are
- * displayable but Rust's transform setter currently accepts >=1 Hz.
- * Treat this one known capability gap as a visible warning, not a startup
- * failure; all other invalid numeric/semantic fields remain fail-closed.
+ * accepted by Rust when finite and positive without any silent 1-Hz substitution.
+ * All invalid numeric and semantic fields remain fail-closed.
  */
 export function prepareStreamSettings(theoretical){
   if(!theoretical || typeof theoretical!=="object")
     return {settings:theoretical,warnings:[],...validateStreamSettings(theoretical)};
   const settings={...theoretical};
   const warnings=[];
-  if(finite(settings.axisReference) &&
-     settings.axisReference>=0 && settings.axisReference<1){
-    settings.axisReference=1;
-    warnings.push("基準周波数 R は現行DSPでは1 Hzからです。指定した"+
-      theoretical.axisReference+" Hzは表示・入力に保持し、音声処理には1 Hzを適用します。");
-  }
   return {settings,warnings,...validateStreamSettings(settings)};
 }

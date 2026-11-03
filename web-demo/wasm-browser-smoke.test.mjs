@@ -1074,8 +1074,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(await page.$eval("#stop",el=>el.disabled),false,
       "Live comparison must retain the chosen source and transport mode");
 
-    // A19: 0.001 Hz theoretical F is allowed to coexist with a 1 Hz
-    // effective Rust transform reference. It must not stop audible playback.
+    // #321: 0.001Hz source F remains exact in the effective DSP request;
+    // no hidden conversion to an arbitrary 1Hz reference is allowed.
     // Floating HUD changes also must NOT move the player buttons.
     const priorButtons=await page.$eval("#play-wet",node=>{
       const r=node.getBoundingClientRect();
@@ -1089,7 +1089,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     });
     await page.waitForFunction(rev=>
       Number(document.querySelector("#rt-indicator").dataset.appliedRevision||0)>rev
-      &&document.querySelector("#status").textContent.includes("1 Hz"),{
+      &&!document.querySelector("#status").textContent.includes("1 Hz"),{
         timeout:16000
       },priorAck);
     assert.equal(await page.$eval("#fundamental",el=>Number(el.value)),.001,
