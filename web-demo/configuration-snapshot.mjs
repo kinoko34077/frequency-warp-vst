@@ -113,9 +113,10 @@ export function validateSoundConfiguration(c,{sourceToken,sampleRate}={}){
     throw Error("DSP/harmonic canonical mismatch");
   return c;
 }
-export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio,view}){
+export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values,selectors,flags,audio,view,transport}){
   const c={version:1,sourceToken,sampleRate,
     harmonic:{...harmonic},values:{...values},selectors:{...selectors},flags:{...flags},audio:{...audio},
+    ...(transport?{transport:{...transport}}:{}),
     ...(view?{view:{virtualRoot:{...view.virtualRoot,
       scopes:{...view.virtualRoot.scopes},units:{...view.virtualRoot.units},snaps:{...view.virtualRoot.snaps}},
       ...(view.interface?{interface:{...view.interface,units:{...view.interface.units},
@@ -124,6 +125,7 @@ export function createSoundConfiguration({sourceToken,sampleRate,harmonic,values
         ...(view.interface.snaps?{snaps:{...view.interface.snaps}}:{})}}:{})}}:{})};
   validateSoundConfiguration(c);
   for(const value of [c.harmonic,c.values,c.selectors,c.flags,c.audio])Object.freeze(value);
+  if(c.transport)Object.freeze(c.transport);
   if(c.view){
     for(const value of [c.view.virtualRoot.scopes,c.view.virtualRoot.units,c.view.virtualRoot.snaps])Object.freeze(value);
     Object.freeze(c.view.virtualRoot);
