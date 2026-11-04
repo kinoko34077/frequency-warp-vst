@@ -4,6 +4,7 @@
  * Ownership: #332.  The consumer decides whether it has a streaming output path.
  */
 const FORMATS=new Set([1,3]);
+export const DEFAULT_WAV_READ_BUDGET_BYTES=1_048_576;
 const MAX_META_READ=64;
 export class WavSourceError extends Error {
   constructor(code,message){super(message);this.name="WavSourceError";this.code=code;}
@@ -51,9 +52,13 @@ function decodeSample(v,offset,format,bits){
   const x=v.getUint8(offset)|(v.getUint8(offset+1)<<8)|(v.getUint8(offset+2)<<16);
   return ((x&0x800000)?x-0x1000000:x)/8388608;
 }
-export async function openWavChunkSource(file,{signal}={}){
+export async function openWavChunkSource(file,{
+  signal,maxReadBytes=DEFAULT_WAV_READ_BUDGET_BYTES
+}={}){
   if(!file||!Number.isSafeInteger(file.size)||typeof file.slice!=="function")
     fail("INVALID_FILE","Blob互換ファイルが必要です");
+  if(!Number.isSafeInteger(maxReadBytes)||maxReadBytes<1)
+    fail("INVALID_READ_BUDGET","WAV読込バイト予算が不正です");
   if(file.size<44)fail("NOT_WAV","RIFF/WAVEヘッダーがありません");
   const head=await slice(file,0,12,signal);
   if(fourcc(head,0)!=="RIFF"||fourcc(head,8)!=="WAVE")
@@ -81,13 +86,17 @@ export async function openWavChunkSource(file,{signal}={}){
     fail("TRUNCATED","WAVデータがサンプルフレーム途中で終わっています");
   const frames=data.byteLength/format.blockAlign;
   if(!Number.isSafeInteger(frames))fail("UNSUPPORTED_SIZE","フレーム数が安全な整数ではありません");
-  const info=Object.freeze({...format,frames,durationSeconds:frames/format.sampleRate,encodedBytes:file.size,kind:"pcm-wav"});
+  const info=Object.freeze({...format,frames,durationSeconds:frames/format.sampleRate,
+    dataByteLength:data.byteLength,encodedBytes:file.size,kind:"pcm-wav"});
   async function readFrames(start,count,{signal:readSignal}={}){
     if(!Number.isSafeInteger(start)||!Number.isSafeInteger(count)||start<0||count<0||start+count>frames)
       fail("INVALID_RANGE","WAVフレーム位置が範囲外です");
     // One read must be bounded; read the whole source via iterateFrames below.
     if(count>8192)fail("CHUNK_TOO_LARGE","一度の読込は8192フレーム以内です");
-    const view=await slice(file,data.offset+start*format.blockAlign,count*format.blockAlign,readSignal);
+    const byteLength=count*format.blockAlign;
+    if(!Number.isSafeInteger(byteLength)||byteLength>maxReadBytes)
+      fail("READ_BUDGET_EXCEEDED","WAV読込が1回あたりのバイト予算を超えています");
+    const view=await slice(file,data.offset+start*format.blockAlign,byteLength,readSignal);
     const channels=Array.from({length:format.channels},()=>new Float32Array(count));
     for(let i=0;i<count;i++)for(let c=0;c<format.channels;c++){
       const x=decodeSample(view,(i*format.channels+c)*format.bytesPerSample,format.format,format.bits);
@@ -101,9 +110,11 @@ export async function openWavChunkSource(file,{signal}={}){
       fail("INVALID_RANGE","WAV走査範囲が不正です");
     if(!Number.isInteger(chunkFrames)||chunkFrames<1||chunkFrames>8192)
       fail("INVALID_CHUNK_SIZE","チャンクは1〜8192フレームが必要です");
-    for(let at=start;at<end;at+=chunkFrames){
+    const boundedChunkFrames=Math.min(chunkFrames,Math.floor(maxReadBytes/format.blockAlign));
+    if(boundedChunkFrames<1)fail("READ_BUDGET_EXCEEDED","1フレーム分のWAV読込予算がありません");
+    for(let at=start;at<end;at+=boundedChunkFrames){
       if(readSignal?.aborted)fail("ABORTED","読み込みを中断しました");
-      yield {start:at,channels:await readFrames(at,Math.min(chunkFrames,end-at),{signal:readSignal})};
+      yield {start:at,channels:await readFrames(at,Math.min(boundedChunkFrames,end-at),{signal:readSignal})};
     }
   }
   return Object.freeze({info,readFrames,iterateFrames});

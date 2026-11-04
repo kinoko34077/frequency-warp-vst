@@ -116,3 +116,32 @@ test("PCM WAV: canceled reads fail instead of returning stale data",async()=>{
   await assert.rejects(source.readFrames(0,1,{signal:controller.signal}),
     error=>error.name==="AbortError");
 });
+
+test("PCM WAV compatibility API decodes extensible PCM and preserves its byte budget",async()=>{
+  const file=extensiblePcmWav([16384,-16384]);
+  const source=await openPcmWavSource(file,{maxReadBytes:2});
+  assert.deepEqual(source.info,{
+    kind:"pcm-wav",format:1,channels:1,sampleRate:48000,blockAlign:2,
+    bitsPerSample:16,sampleBytes:2,sampleFormat:"integer",frames:2,
+    durationSeconds:2/48000,byteLength:4,sourceByteLength:file.size
+  });
+  assert.deepEqual(Array.from((await source.readFrames(0,1))[0]),[0.5]);
+  await assert.rejects(source.readFrames(0,2),/per-call read budget/);
+});
+
+function extensiblePcmWav(samples){
+  const dataBytes=samples.length*2,total=12+8+40+8+dataBytes;
+  const bytes=new Uint8Array(total),view=new DataView(bytes.buffer);
+  const tag=(at,value)=>{for(let i=0;i<4;i++)bytes[at+i]=value.charCodeAt(i);};
+  tag(0,"RIFF");view.setUint32(4,total-8,true);tag(8,"WAVE");
+  tag(12,"fmt ");view.setUint32(16,40,true);
+  view.setUint16(20,0xfffe,true);view.setUint16(22,1,true);
+  view.setUint32(24,48000,true);view.setUint32(28,96000,true);
+  view.setUint16(32,2,true);view.setUint16(34,16,true);
+  view.setUint16(36,22,true);view.setUint16(38,16,true);view.setUint32(40,4,true);
+  view.setUint32(44,1,true);
+  bytes.set([0,0,16,0,128,0,0,170,0,56,155,113],48);
+  tag(60,"data");view.setUint32(64,dataBytes,true);
+  samples.forEach((sample,i)=>view.setInt16(68+i*2,sample,true));
+  return new Blob([bytes],{type:"audio/wav"});
+}
