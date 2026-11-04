@@ -57,6 +57,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
             this.__auditSourceStarts.push({
               sourceId,
               when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
+              length:source.buffer?.length??null,sampleRate:source.buffer?.sampleRate??null,
+              loop:source.loop,loopStart:source.loopStart,loopEnd:source.loopEnd,
               activeAtStart:this.currentTime,stateAtStart:this.state
             });
             return start(...inputs);
@@ -989,7 +991,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "original-audio transport must not instantiate a wet AudioWorklet");
 
     const timeline=[];
-    for(let attempt=0;attempt<12;attempt++){
+    const observationStarted=Date.now();
+    while(Date.now()-observationStarted<1800){
       const snapshot=await page.evaluate(()=>{
         const contexts=window.__originalPlaybackAuditContexts??[];
         const owner=[...contexts].reverse().find(ctx=>ctx.__auditSourceStarts.length>0);
@@ -1007,10 +1010,6 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         };
       });
       timeline.push(snapshot);
-      const first=timeline[0];
-      if(snapshot.starts.length>=1&&snapshot.audioState==="running"&&
-          Number.isFinite(snapshot.audioTime)&&
-          snapshot.audioTime-first.audioTime>.2&&snapshot.uiSeconds>.1)break;
       await new Promise(resolve=>setTimeout(resolve,140));
     }
     const firstAudio=timeline[0],lastAudio=timeline.at(-1);
@@ -1022,6 +1021,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       events:window.__timelineEvents??[]
     }));
     const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length,diagnostic});
+    assert.equal(diagnostic.events.some(event=>event.type==="source-stop"),false,
+      "looping original-audio source must not receive stop() during observation: "+evidence);
     assert.ok(lastAudio.starts.length>=1 &&
       lastAudio.starts.some(source=>source.duration>0),
       "direct original-audio buffer must schedule its own source: "+evidence);
