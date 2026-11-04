@@ -692,7 +692,7 @@ mod tests {
         // stream engine; no generated tone or parallel DSP is involved.
         let expected=source.0*19.0/23.0;
         let mut measurements=Vec::new();
-        for (engine,low) in [(0,0.001),(1,0.001),(1,20.0)]{
+        for (engine,low) in [(0,0.001),(1,0.001),(1,40.0)]{
             let settings=Settings{low,high:20000.0,curvature:1.0,invert:0.0,
                 mode:Progression::Reciprocal,quality:2};
             let mut stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
@@ -727,10 +727,10 @@ mod tests {
             }
         }
 
-        // Engine B with L=20 is the same recorded source and transform with the
-        // <=3-bin peak excluded, so it exercises the ordinary FFT-bin path as
-        // a baseline for upper partials. The L=0.001 fallback must not erase
-        // those already-measurable recorded partials.
+        // Engine B with L=40 excludes bins 1..3 (3*48000/4096 < 40),
+        // so this same-recording transform exercises the ordinary FFT-bin path
+        // as a baseline for partials above 100Hz. The L=0.001 fallback must
+        // retain those already-measurable recorded harmonics.
         let fallback=measurements.iter().find(|m|m.0==1&&m.1<1.0).unwrap();
         let baseline=measurements.iter().find(|m|m.0==1&&m.1>=1.0).unwrap();
         for (index,(source_hz,source_mag,output_hz,output_mag)) in fallback.5.iter().enumerate(){
