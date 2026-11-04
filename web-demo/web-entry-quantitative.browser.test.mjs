@@ -20,7 +20,11 @@ function assertRecord(record){
   assert.equal(record.extraIds,0,who+" duplicated IDs");
   assert.equal(record.pageOverflowPx<=1,true,who+" horizontal overflow "+JSON.stringify(record));
   if(record.width<=390){
-    assert.ok(record.leftRight<=record.rightLeft+1,who+" left controls/right graph reversed");
+    assert.ok(record.controlsTop<=record.rightTop+1,who+" controls must precede the graph");
+    assert.ok(record.curveLeft>=0&&record.curveRight<=record.width+1,
+      who+" graph escapes the viewport "+JSON.stringify(record));
+    assert.ok(record.curveWidth>=record.width-100,
+      who+" graph is too narrow to use "+JSON.stringify(record));
     assert.ok(record.squareErrorPx<=2,who+" right graph not square");
   }
   for(const [id,hit] of Object.entries(record.hits)){
@@ -33,7 +37,8 @@ function assertRecord(record){
 test("W1: three independent entry modes × four widths, quantified reachability and state isolation",{
   timeout:180000
 },async()=>{
-  const server=spawn("python3",["-m","http.server","8799","--bind","127.0.0.1"],{
+  const server=spawn(process.env.PYTHON_BIN||(process.platform==="win32"?"python":"python3"),
+    ["-m","http.server","8799","--bind","127.0.0.1"],{
     cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"
   });
   let browser;
@@ -41,6 +46,77 @@ test("W1: three independent entry modes × four widths, quantified reachability 
     browser=await puppeteer.launch({executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",headless:true,
       args:["--no-sandbox","--disable-dev-shm-usage"]});
     const rows=[];
+    // The published default entry is a separate UX contract from the legacy
+    // harmonic lab below. Test the real source -> F/H -> controls -> graph
+    // reading order and the auxiliary panel's relationship to that graph.
+    for(const width of widths){
+      const page=await browser.newPage(),errors=[];
+      page.on("pageerror",e=>errors.push(e.message));
+      await page.setViewport({width,height:844,deviceScaleFactor:1,
+        isMobile:width<=390,hasTouch:width<=390});
+      await page.goto("http://127.0.0.1:8799/index.html",{waitUntil:"domcontentloaded"});
+      await page.waitForFunction(()=>
+        document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
+      const layout=await page.evaluate(()=>{
+        const box=selector=>{
+          const {x,y,left,top,right,bottom,width,height}=document.querySelector(selector).getBoundingClientRect();
+          return {x,y,left,top,right,bottom,width,height};
+        };
+        const measure=rect=>({x:rect.x,y:rect.y,left:rect.left,top:rect.top,
+          right:rect.right,bottom:rect.bottom,width:rect.width,height:rect.height});
+        const source=box(".player"),harmonics=box("#virtual-root-workbench");
+        const controls=box(".quick-panel"),graph=box(".workspace-right");
+        const curve=box(".curve-panel"),sine=box(".sine-monitor");
+        const shape=measure(document.querySelector("#axis-shift").closest(".control").getBoundingClientRect());
+        const wet=measure(document.querySelector("#wet").closest(".control").getBoundingClientRect());
+        const value=box("#wet-value"),label=box('label[for="wet"]');
+        const harmonicFields=["source-f","target-h","step-m","first-index"].map(key=>{
+          const field=document.querySelector(`[data-vr-control="${key}"]`);
+          const number=field.querySelector(".vr-number-row").getBoundingClientRect();
+          const rail=(field.querySelector(".vr-linear-rail")||
+            field.querySelector(':scope > input[type="range"]')).getBoundingClientRect();
+          return {key,height:field.getBoundingClientRect().height,
+            number:{left:number.left,right:number.right,top:number.top,bottom:number.bottom},
+            rail:{left:rail.left,right:rail.right,top:rail.top,bottom:rail.bottom}};
+        });
+        return {width:innerWidth,pageOverflowPx:Math.max(0,document.documentElement.scrollWidth-innerWidth),
+          source,harmonics,controls,graph,curve,sine,shape,wet,value,label,harmonicFields};
+      });
+      const context=`default/${width}`;
+      assert.equal(layout.pageOverflowPx<=1,true,context+" horizontal overflow "+JSON.stringify(layout));
+      assert.ok(layout.harmonics.bottom<=layout.graph.top+1,
+        context+" harmonic setup must precede the graph "+JSON.stringify(layout));
+      assert.ok(layout.sine.top>=layout.graph.bottom-1,
+        context+" auxiliary tone must sit below the graph "+JSON.stringify(layout));
+      assert.ok(Math.abs(layout.sine.right-layout.graph.right)<=2,
+        context+" auxiliary tone must align to the graph's right edge "+JSON.stringify(layout));
+      assert.ok(Math.abs((layout.value.top+layout.value.bottom)/2-
+        (layout.label.top+layout.label.bottom)/2)<=8,
+        context+" numeric value must remain inline with its label "+JSON.stringify(layout));
+      if(width<=800){
+        assert.ok(layout.curve.width>=width-100,
+          context+" graph is too narrow to use "+JSON.stringify(layout));
+        assert.ok(layout.curve.left>=0&&layout.curve.right<=width+1,
+          context+" graph must be fully visible "+JSON.stringify(layout));
+        assert.ok(layout.sine.width<layout.graph.width-20,
+          context+" auxiliary tone must not stretch across the full mobile row "+JSON.stringify(layout));
+        if(width<=390){
+          for(const field of layout.harmonicFields){
+            assert.ok(Math.abs(field.number.top-field.rail.top)<=4,
+              context+" "+field.key+" value and slider should share one row "+JSON.stringify(field));
+            assert.ok(field.rail.left>=field.number.right-1,
+              context+" "+field.key+" slider should sit beside its value "+JSON.stringify(field));
+          }
+        }
+        assert.ok(Math.abs(layout.shape.top-layout.wet.top)<=2,
+          context+" main controls should use two compact columns "+JSON.stringify(layout));
+      }else{
+        assert.ok(layout.source.left<layout.harmonics.left,
+          context+" source and harmonic setup should share the first row "+JSON.stringify(layout));
+      }
+      assert.deepEqual(errors,[],context+" runtime failures");
+      await page.close();
+    }
     for(const mode of modes){
       for(const width of widths){
         const page=await browser.newPage(),errors=[];
@@ -63,6 +139,7 @@ test("W1: three independent entry modes × four widths, quantified reachability 
         const metrics=await page.evaluate(async({width,name,host})=>{
           const box=selector=>document.querySelector(selector).getBoundingClientRect();
           const left=box(".workspace-left"),right=box(".workspace-right"),curve=box("#curve");
+          const controls=box(".quick-panel");
           const candidates=["#settings-open","#export-jump","#pivot-link-target"];
           const hits={};
           for(const selector of candidates){
@@ -78,7 +155,8 @@ test("W1: three independent entry modes × four widths, quantified reachability 
           const pageOverflowPx=Math.max(0,document.documentElement.scrollWidth-innerWidth);
           const editorVisible=Boolean(host&&document.querySelector(host)?.shadowRoot);
           return {mode:name,width,pageOverflowPx,leftRight:left.right,rightLeft:right.left,
-            squareErrorPx:Math.abs(curve.width-curve.height),extraIds,hits,editorVisible};
+            controlsTop:controls.top,rightTop:right.top,curveLeft:curve.left,curveRight:curve.right,
+            curveWidth:curve.width,squareErrorPx:Math.abs(curve.width-curve.height),extraIds,hits,editorVisible};
         },{name:mode.name,width,host:mode.host});
         metrics.bootMs=Date.now()-start;
         if(mode.name==="legacy"){

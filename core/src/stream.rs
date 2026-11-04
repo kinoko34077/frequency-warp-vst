@@ -411,7 +411,37 @@ impl Stream {
             self.mag[k]=m.sqrt();
             greatest=greatest.max(self.mag[k]);
         }
-        if self.engine==1 {
+        let threshold=(greatest*self.floor).max(1e-10);
+        // A low, selected peak can be inaudible as a transform when the
+        // requested destination rounds back to its source FFT bin. Reuse the
+        // existing peak tracker for that under-resolved case; leave Engine B's
+        // normal integer-bin path and neutral mappings unchanged.
+        let engine_b_would_round_low_peak_to_same_bin=self.engine==1 &&
+            (1..half-1).any(|k|{
+                let f=k as f64*step;
+                if f<self.settings.low||f>self.settings.high||f>3.0*step||
+                    self.mag[k]<threshold||
+                    k<self.a_peak_band_bins||k+self.a_peak_band_bins>=half||
+                    !(1..=self.a_peak_band_bins).all(|d|
+                        self.mag[k]>=self.mag[k-d]&&self.mag[k]>self.mag[k+d]){
+                    return false;
+                }
+                let base=map_frequency(f,self.settings).unwrap_or(f);
+                let staged=if self.rational_enabled{
+                    self.pitch_ratio*base+self.shift_hz
+                }else{base};
+                let target=if staged<=0.0{staged}else{
+                    translate_frequency_anchored(staged,source_anchor,
+                        self.axis_pivot,self.axis_slope,self.axis_reference,
+                        self.settings.curvature,self.axis_shift)
+                };
+                match self.resolve_all(f,target,step,source_anchor){
+                    Some((resolved,_))=>resolved>0.0&&(resolved-f).abs()>1e-9&&
+                        (resolved/step).round()==k as f64,
+                    None=>false
+                }
+            });
+        if self.engine==1&&!engine_b_would_round_low_peak_to_same_bin {
             // FFT-bin spectral relocation. Distinct from partial/oscillator synthesis:
             // bin grid quantization and imperfect phase continuity are known limits.
             for c in 0..self.channels {
@@ -518,7 +548,6 @@ impl Stream {
             std::mem::swap(&mut self.previous,&mut self.spectrum);
             return;
         }
-        let threshold=(greatest*self.floor).max(1e-10);
         self.candidates.clear();
         // Bin 1 is the first positive-frequency partial. Excluding it creates
         // an accidental sample-rate-dependent floor above the shared L.

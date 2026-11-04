@@ -483,12 +483,60 @@ pub unsafe extern "C" fn warp_process_f32_ex(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     fn config()->Settings {
         Settings{low:20.0,high:3000.0,curvature:1.0,invert:1.0,
             mode:Progression::FoldHigh,quality:0}
     }
     fn tone(freq:f64,phase:f64,gain:f64,n:usize)->Vec<f32>{
         (0..n).map(|i| (gain*(TAU*freq*i as f64/8192.0+phase).cos()) as f32).collect()
+    }
+    fn recorded_wav_pcm16()->(Vec<f32>,f64){
+        let path=PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../web-demo/test-fixtures/meta-piano-a0-cc0-3s-48khz.wav");
+        let bytes=std::fs::read(&path).expect("read CC0 recorded piano fixture");
+        assert_eq!(&bytes[0..4],b"RIFF");assert_eq!(&bytes[8..12],b"WAVE");
+        let mut offset=12usize;let mut rate=0u32;let mut channels=0u16;let mut bits=0u16;
+        let mut codec=0u16;let mut data=None;
+        while offset+8<=bytes.len(){
+            let id=&bytes[offset..offset+4];
+            let size=u32::from_le_bytes(bytes[offset+4..offset+8].try_into().unwrap()) as usize;
+            let begin=offset+8;let end=begin+size;assert!(end<=bytes.len(),"valid WAV chunk bounds");
+            if id==b"fmt "{
+                codec=u16::from_le_bytes(bytes[begin..begin+2].try_into().unwrap());
+                channels=u16::from_le_bytes(bytes[begin+2..begin+4].try_into().unwrap());
+                rate=u32::from_le_bytes(bytes[begin+4..begin+8].try_into().unwrap());
+                bits=u16::from_le_bytes(bytes[begin+14..begin+16].try_into().unwrap());
+            }else if id==b"data"{data=Some((begin,end));break;}
+            offset=end+(size&1);
+        }
+        assert_eq!(codec,1,"linear PCM WAV");assert_eq!(channels,1,"mono source recording");
+        assert_eq!(rate,48000);assert_eq!(bits,16);
+        let (begin,end)=data.expect("WAV audio data chunk");
+        let pcm=bytes[begin..end].chunks_exact(2)
+            .map(|sample|i16::from_le_bytes([sample[0],sample[1]]) as f32/32768.0).collect();
+        (pcm,rate as f64)
+    }
+    fn measured_peak(signal:&[f32],rate:f64,start:usize,end:usize,
+        low:f64,high:f64,step:f64)->(f64,f64){
+        assert!(end<=signal.len()&&end>start);
+        let length=end-start;
+        let window=(0..length).map(|i|0.5-0.5*(TAU*i as f64/(length-1) as f64).cos())
+            .collect::<Vec<_>>();
+        let mut best=(0.0,0.0);
+        let mut hz=low;
+        while hz<=high{
+            let omega=TAU*hz/rate;let coefficient=2.0*omega.cos();
+            let (mut prior,mut before_prior)=(0.0,0.0);
+            for i in 0..length{
+                let next=signal[start+i] as f64*window[i]+coefficient*prior-before_prior;
+                before_prior=prior;prior=next;
+            }
+            let power=prior*prior+before_prior*before_prior-coefficient*prior*before_prior;
+            if power>best.1{best=(hz,power);}
+            hz+=step;
+        }
+        (best.0,best.1.sqrt())
     }
     #[test]
     fn exact_curve() {
@@ -624,5 +672,44 @@ mod tests {
             input.len() as u32,1,8192.0,20.0,3000.0,1.0,1.0,0,0)};
         assert_eq!(status,0);
         assert!(output.iter().map(|x|x.abs()).fold(0.0f32,f32::max)>0.5);
+    }
+    #[test]
+    fn recorded_cc0_a0_pcm_moves_under_24hz_with_virtual_root_23_to_19(){
+        let (input,rate)=recorded_wav_pcm16();
+        let frame=(rate as usize)/2;
+        let source=measured_peak(&input,rate,frame,3*frame,25.0,30.0,0.05);
+        assert!((26.0..=29.0).contains(&source.0),
+            "recorded piano A0 input peak should be near 27.5Hz: {source:?}");
+        let settings=Settings{low:0.001,high:20000.0,curvature:1.0,invert:0.0,
+            mode:Progression::Reciprocal,quality:2};
+        // The existing workbench plan for F=23, H=19, m=1 yields r=19/23,
+        // shift=0, and R=19Hz. Process the recorded PCM through the shared
+        // Rust stream engine; no generated tone or parallel DSP is involved.
+        let expected=source.0*19.0/23.0;
+        let mut measurements=Vec::new();
+        for engine in [0,1]{
+            let mut stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
+                0.0,0.0,0,4).unwrap();
+            stream.set_transform(0.0,19.0,0,1).unwrap();
+            stream.set_geometry(350.0,1.0).unwrap();
+            let mut output=Vec::with_capacity(input.len());
+            for block in input.chunks_exact(128){
+                let mut rendered=[0.0f32;128];
+                stream.process(block,&mut rendered,128).unwrap();
+                output.extend_from_slice(&rendered);
+            }
+            let latency=stream.latency();
+            let target=measured_peak(&output,rate,latency+frame,latency+3*frame,
+                18.0,28.0,0.05);
+            let rms=(output[latency+frame..latency+3*frame].iter()
+                .map(|x|(*x as f64).powi(2)).sum::<f64>()/(2*frame) as f64).sqrt();
+            measurements.push((engine,target.0,target.1,rms));
+        }
+        println!("RECORDED_A0_PCM input={source:?} expected={expected:.3} engines={measurements:?} F=23 H=19 L=0.001");
+        for (engine,target,magnitude,rms) in measurements{
+            assert!(rms>0.001,"engine {engine} recorded audio output must not be silent");
+            assert!(target<24.5&&source.0-target>2.0,
+                "engine {engine} should move the recorded A0 partial below 24Hz; input={source:?}, target={target:.3}, magnitude={magnitude:.3}, rms={rms:.3}, ideal={expected:.3}");
+        }
     }
 }
