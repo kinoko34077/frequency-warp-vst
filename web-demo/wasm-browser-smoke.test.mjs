@@ -707,10 +707,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "A/B restores while stopped must never silently launch audio");
     const desktopViewport=page.viewport();
     for(const width of [320,390]){
-      // Exercise the smartphone CSS width and coarse-pointer layout without
-      // toggling mobile device mode, which can reload the page and discard its
-      // in-memory audio source during this end-to-end test.
-      await page.setViewport({width,height:844,deviceScaleFactor:1,hasTouch:true});
+      // This end-to-end page retains a live audio source. The dedicated
+      // default-entry Browser test opens fresh mobile contexts and checks
+      // coarse-pointer layout; here only the CSS viewport width changes.
+      await page.setViewport({width,height:844,deviceScaleFactor:1});
       const geometry=await page.evaluate(()=>{
         const left=document.querySelector(".workspace-left").getBoundingClientRect();
         const right=document.querySelector(".workspace-right").getBoundingClientRect();
