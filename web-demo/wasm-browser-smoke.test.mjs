@@ -732,7 +732,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         "A/B actual touch hit targets at "+width+": "+JSON.stringify(geometry));
     }
     await page.setViewport(desktopViewport);
-    assert.match(await page.$eval("#file-meta",el=>el.textContent),/12\\.0秒/,
+    assert.match(await page.$eval("#file-meta",el=>el.textContent),/12\.0秒/,
       "mobile-width layout checks must retain the loaded real WAV source");
 
     // U5: short real WAV render belongs to one source+DSP+Wet configuration.
