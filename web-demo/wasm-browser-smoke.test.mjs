@@ -707,7 +707,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "A/B restores while stopped must never silently launch audio");
     const desktopViewport=page.viewport();
     for(const width of [320,390]){
-      await page.setViewport({width,height:844,deviceScaleFactor:1,isMobile:true,hasTouch:true});
+      // Exercise the smartphone CSS width and coarse-pointer layout without
+      // toggling mobile device mode, which can reload the page and discard its
+      // in-memory audio source during this end-to-end test.
+      await page.setViewport({width,height:844,deviceScaleFactor:1,hasTouch:true});
       const geometry=await page.evaluate(()=>{
         const left=document.querySelector(".workspace-left").getBoundingClientRect();
         const right=document.querySelector(".workspace-right").getBoundingClientRect();
@@ -729,6 +732,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         "A/B actual touch hit targets at "+width+": "+JSON.stringify(geometry));
     }
     await page.setViewport(desktopViewport);
+    assert.match(await page.$eval("#file-meta",el=>el.textContent),/12\\.0秒/,
+      "mobile-width layout checks must retain the loaded real WAV source");
 
     // U5: short real WAV render belongs to one source+DSP+Wet configuration.
     // Prepare exactly-zero u before rendering: pressing zero again later
