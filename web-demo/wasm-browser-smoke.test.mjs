@@ -1311,7 +1311,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
       settingsRect:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#settings-open").getBoundingClientRect()),
       curve:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#curve").getBoundingClientRect()),
-      leftPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".quick-panel").getBoundingClientRect()),
+      leftPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top,bottom:r.bottom}))(document.querySelector(".quick-panel").getBoundingClientRect()),
       rightPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".workspace-right").getBoundingClientRect()),
 
       viewHidden:document.querySelector("#view-map").hidden,
