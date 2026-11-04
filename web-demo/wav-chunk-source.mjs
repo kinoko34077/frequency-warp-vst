@@ -42,7 +42,7 @@ function formatFromView(v){
     fail("UNSUPPORTED_PARAMETERS","WAVチャンネル・サンプルレート・ビット深度が未対応です");
   if((format===1&&![8,16,24,32].includes(bits))||
      (format===3&&![32,64].includes(bits)))
-    fail("UNSUPPORTED_PARAMETERS","未対応のPCMビット深度です");
+    fail("UNSUPPORTED_CODEC","未対応のPCMビット深度です","unsupported format parameters");
   const bytes=bits/8;
   if(blockAlign!==channels*bytes||byteRate!==sampleRate*blockAlign)
     fail("BAD_FORMAT","WAVのブロック長またはバイトレートが矛盾しています");

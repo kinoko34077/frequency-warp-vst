@@ -45,6 +45,10 @@ test("float32 and signed 24-bit sample coding and 4ch source topology",async()=>
    assert.equal(plan.requested.channels,4);
  }
 });
+test("unsupported PCM bit depth remains eligible for the browser decoder fallback",async()=>{
+ const unsupported=smallWav({channels:1,bits:64,frames:1});
+ await assert.rejects(openWavChunkSource(unsupported),error=>error.code==="UNSUPPORTED_CODEC");
+});
 test("120MB 625-second PCM WAV is inspected and seek-read without whole-file reads",async()=>{
  const size=120_000_000,header=smallWav({frames:0}).slice(0,44);
  const head=new Uint8Array(await header.arrayBuffer()),dv=new DataView(head.buffer);
