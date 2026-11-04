@@ -674,26 +674,30 @@ mod tests {
         assert!(output.iter().map(|x|x.abs()).fold(0.0f32,f32::max)>0.5);
     }
     #[test]
-    fn recorded_cc0_a0_pcm_moves_under_24hz_with_virtual_root_23_to_19(){
+    fn recorded_cc0_a0_pcm_moves_under_24hz_and_keeps_upper_partials(){
         let (input,rate)=recorded_wav_pcm16();
         let frame=(rate as usize)/2;
         let source=measured_peak(&input,rate,frame,3*frame,25.0,30.0,0.05);
         assert!((26.0..=29.0).contains(&source.0),
             "recorded piano A0 input peak should be near 27.5Hz: {source:?}");
-        let source_upper=measured_peak(&input,rate,frame,3*frame,100.0,1000.0,4.0);
-        assert!(source_upper.1>source.1*0.05,
-            "recorded piano fixture must contain measurable upper harmonics: low={source:?}, upper={source_upper:?}");
-        let settings=Settings{low:0.001,high:20000.0,curvature:1.0,invert:0.0,
-            mode:Progression::Reciprocal,quality:2};
+        let bands=[(100.0,180.0),(180.0,300.0),(300.0,500.0),(500.0,1000.0)];
+        let source_partials=bands.map(|(low,high)|
+            measured_peak(&input,rate,frame,3*frame,low,high,2.0));
+        let meaningful=source_partials.iter().filter(|partial|partial.1>source.1*0.01).count();
+        assert!(meaningful>=2,
+            "recorded piano fixture must contain multiple measurable upper partials: low={source:?}, upper={source_partials:?}");
+
         // The existing workbench plan for F=23, H=19, m=1 yields r=19/23,
-        // shift=0, and R=19Hz. Process the recorded PCM through the shared
-        // Rust stream engine; no generated tone or parallel DSP is involved.
+        // shift=0, and R=19Hz. Process recorded PCM through the shared Rust
+        // stream engine; no generated tone or parallel DSP is involved.
         let expected=source.0*19.0/23.0;
-        let expected_upper=source_upper.0*19.0/23.0;
         let mut measurements=Vec::new();
-        for engine in [0,1]{
-            let mut stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
+        for (engine,low) in [(0,0.001),(1,0.001),(1,20.0)]{
+            let settings=Settings{low,high:20000.0,curvature:1.0,invert:0.0,
+                mode:Progression::Reciprocal,quality:2};
+            let stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
                 0.0,0.0,0,4).unwrap();
+            let mut stream=stream;
             stream.set_transform(0.0,19.0,0,1).unwrap();
             stream.set_geometry(350.0,1.0).unwrap();
             let mut output=Vec::with_capacity(input.len());
@@ -705,19 +709,38 @@ mod tests {
             let latency=stream.latency();
             let target=measured_peak(&output,rate,latency+frame,latency+3*frame,
                 18.0,28.0,0.05);
-            let upper=measured_peak(&output,rate,latency+frame,latency+3*frame,
-                (expected_upper-12.0).max(75.0),expected_upper+12.0,0.5);
             let rms=(output[latency+frame..latency+3*frame].iter()
                 .map(|x|(*x as f64).powi(2)).sum::<f64>()/(2*frame) as f64).sqrt();
-            measurements.push((engine,target.0,target.1,rms,upper.0,upper.1));
+            let upper=source_partials.iter().map(|partial|{
+                let expected_hz=partial.0*19.0/23.0;
+                let measured=measured_peak(&output,rate,latency+frame,latency+3*frame,
+                    (expected_hz-12.0).max(60.0),expected_hz+12.0,0.5);
+                (partial.0,partial.1,measured.0,measured.1)
+            }).collect::<Vec<_>>();
+            measurements.push((engine,low,target.0,target.1,rms,upper));
         }
-        println!("RECORDED_A0_PCM input={source:?} upper_input={source_upper:?} expected={expected:.3} expected_upper={expected_upper:.1} engines={measurements:?} F=23 H=19 L=0.001");
-        for (engine,target,magnitude,rms,upper_hz,upper_magnitude) in measurements{
-            assert!(rms>0.001,"engine {engine} recorded audio output must not be silent");
-            assert!(upper_magnitude>source_upper.1*0.05,
-                "engine {engine} low-root fallback must retain a recorded upper harmonic; input={source_upper:?}, expected={expected_upper:.1}, output=({upper_hz:.1},{upper_magnitude:.3})");
-            assert!(target<24.5&&source.0-target>2.0,
-                "engine {engine} should move the recorded A0 partial below 24Hz; input={source:?}, target={target:.3}, magnitude={magnitude:.3}, rms={rms:.3}, ideal={expected:.3}");
+        println!("RECORDED_A0_PCM input={source:?} expected={expected:.3} engines={measurements:?} F=23 H=19 L=0.001");
+        for (engine,low,target,magnitude,rms,_) in &measurements{
+            if *low<1.0{
+                assert!(*rms>0.001,"engine {engine} recorded audio output must not be silent");
+                assert!(*target<24.5&&source.0-*target>2.0,
+                    "engine {engine} should move the recorded A0 partial below 24Hz; input={source:?}, target={target:.3}, magnitude={magnitude:.3}, rms={rms:.3}, ideal={expected:.3}");
+            }
+        }
+
+        // Engine B with L=20 is the same recorded source and transform with the
+        // <=3-bin peak excluded, so it exercises the ordinary FFT-bin path as
+        // a baseline for upper partials. The L=0.001 fallback must not erase
+        // those already-measurable recorded partials.
+        let fallback=measurements.iter().find(|m|m.0==1&&m.1<1.0).unwrap();
+        let baseline=measurements.iter().find(|m|m.0==1&&m.1>=1.0).unwrap();
+        for (index,(source_hz,source_mag,output_hz,output_mag)) in fallback.5.iter().enumerate(){
+            if *source_mag<=source.1*0.01{continue;}
+            let baseline_mag=baseline.5[index].3;
+            assert!(baseline_mag>source_mag*0.01,
+                "ordinary Engine B path must retain the recorded partial at {source_hz:.1}Hz: source={source_mag:.3}, baseline={baseline_mag:.3}");
+            assert!(*output_mag>=baseline_mag*0.15,
+                "low-root Engine B fallback must retain partials outside the low bins: source={source_hz:.1}Hz, transformed={output_hz:.1}Hz, fallback={output_mag:.3}, normal-B={baseline_mag:.3}");
         }
     }
 }
