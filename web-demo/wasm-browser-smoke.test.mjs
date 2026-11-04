@@ -34,6 +34,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // #240: independently observe the real AudioContext clock in the Chrome
     // page; do not mistake a stalled UI label for stopped source playback.
     await page.evaluateOnNewDocument(()=>{
+      // This smoke measures the AudioContext clock and waveform timeline only.
+      // Native MediaSession actions are outside this check; a separate browser
+      // test covers the hidden-document HTMLMediaElement pause fallback.
+      Object.defineProperty(navigator,"mediaSession",{configurable:true,value:undefined});
       const Native=window.AudioContext;
       if(!Native)return;
       window.__originalPlaybackAuditContexts=[];
@@ -46,12 +50,17 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         createBufferSource(...args){
           const source=super.createBufferSource(...args);
           const start=source.start.bind(source);
+          const stop=source.stop.bind(source);
           source.start=(...inputs)=>{
             this.__auditSourceStarts.push({
               when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
               activeAtStart:this.currentTime,stateAtStart:this.state
             });
             return start(...inputs);
+          };
+          source.stop=(...inputs)=>{
+            window.__timelineEvents?.push({type:"source-stop",audioTime:this.currentTime});
+            return stop(...inputs);
           };
           return source;
         }
@@ -68,6 +77,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(r=>setTimeout(r,250));
     }
     assert.ok(okay,"page not served");
+    assert.equal(await page.evaluate(()=>navigator.mediaSession),undefined,
+      "timeline smoke must isolate native MediaSession actions");
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height&&
       document.querySelectorAll("#math-results math").length>=5 && document.querySelector("#mini-fundamental")?.textContent.includes("→"),{timeout:16000})
       .catch(async err=>{throw Error("UI boot failed: "+JSON.stringify(await page.evaluate(()=>({
@@ -940,6 +951,26 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       for(const ctx of window.__originalPlaybackAuditContexts??[])
         ctx.__auditSourceStarts.length=0;
     });
+    // A second tab was opened and closed above; keep this transport check in
+    // the foreground so Chrome's hidden-page media pause policy is irrelevant.
+    await page.bringToFront();
+    await page.evaluate(()=>{
+      window.__timelineEvents=[];
+      const record=(type,details={})=>window.__timelineEvents.push({
+        type,time:performance.now(),visibility:document.visibilityState,
+        mediaSession:navigator.mediaSession?.playbackState??"unavailable",
+        stopDisabled:document.querySelector("#stop")?.disabled,
+        ...details
+      });
+      document.addEventListener("visibilitychange",()=>record("visibilitychange"));
+      window.addEventListener("pagehide",event=>record("pagehide",{persisted:event.persisted}));
+      window.addEventListener("pageshow",event=>record("pageshow",{persisted:event.persisted}));
+      const output=document.querySelector("#background-output");
+      for(const type of ["pause","playing","waiting","stalled","error"])
+        output.addEventListener(type,()=>record("media-"+type,{
+          paused:output.paused,readyState:output.readyState,hasStream:Boolean(output.srcObject)
+        }));
+    });
     await page.click("#play-dry");
     await page.waitForFunction(()=>
       !document.querySelector("#stop").disabled&&
@@ -958,6 +989,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
           uiSeconds:Number(document.querySelector("#elapsed")?.textContent?.split(":")[1]??0),
           audioTime:owner?.currentTime??null,
           audioState:owner?.state??"missing",
+          visibility:document.visibilityState,
+          mediaPlaybackState:navigator.mediaSession?.playbackState??"unavailable",
           starts:owner?.__auditSourceStarts??[],
           trackedContexts:contexts.length,
           otherContexts:contexts.filter(ctx=>ctx!==owner).map(ctx=>({time:ctx.currentTime,state:ctx.state,starts:ctx.__auditSourceStarts.length})),
@@ -972,7 +1005,14 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       await new Promise(resolve=>setTimeout(resolve,140));
     }
     const firstAudio=timeline[0],lastAudio=timeline.at(-1);
-    const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length});
+    const diagnostic=await page.evaluate(()=>({
+      fileMeta:document.querySelector("#file-meta")?.textContent??"",
+      duration:document.querySelector("#duration")?.textContent??"",
+      indicator:document.querySelector("#rt-indicator")?.textContent??"",
+      stopDisabled:document.querySelector("#stop")?.disabled,
+      events:window.__timelineEvents??[]
+    }));
+    const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length,diagnostic});
     assert.ok(lastAudio.starts.length>=1 &&
       lastAudio.starts.some(source=>source.duration>0),
       "direct original-audio buffer must schedule its own source: "+evidence);
@@ -1352,12 +1392,12 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.equal(harmonics,12);
     await page.click("#tab-map");
 
-    // Check a 601s source is trimmed to 600s without rendering the track.
+    // Check a 601s source retains its complete duration, without silent 600s truncation.
     const longPath=path.join(temp,"six-hundred.wav");
     await writeFile(longPath,sineWav(601));
     await (await page.$("#audio-file")).uploadFile(longPath);
-    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("600.0秒"),{timeout:45000});
-    assert.equal(await page.$eval("#duration",el=>el.textContent),"10:00.0");
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("601.0秒"),{timeout:45000});
+    assert.equal(await page.$eval("#duration",el=>el.textContent),"10:01.0");
     await page.$eval("#wave",el=>el.scrollIntoView({block:"center",behavior:"instant"}));
     const longWave=await (await page.$("#wave")).boundingBox();
     assert.equal(await page.$eval("#stop",el=>el.disabled),true);

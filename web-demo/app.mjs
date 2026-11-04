@@ -5,6 +5,9 @@ import {mountDualThumb} from "./dual-thumb.mjs";
 import {switchAudioRoute} from "./audio-route.mjs";
 import {engineForInbandCurve} from "./engine-policy.mjs";
 import {canExportChannels} from "./export-policy.mjs";
+import {encodePcm16Wav} from "./wav-stream-writer.mjs";
+import {openWavChunkSource} from "./wav-chunk-source.mjs";
+import {browserAudioMemory,planBufferedPreview,planCompressedPredecode} from "./processing-capability.mjs";
 import {freezeExportIdentity,matchesExportIdentity} from "./export-identity.mjs";
 import {mapAtFrequency} from "./harmonics.mjs";
 import {harmonicParameters,setFundamentalFromPivot,attachHarmonicPanel,renderHarmonicPanel,resolvedCarrierHz,resetHarmonicControls,captureHarmonicConfiguration,restoreHarmonicConfiguration,captureHarmonicSnapState,restoreHarmonicSnapState} from "./harmonics-panel.mjs";
@@ -21,7 +24,6 @@ import {auditionFeedbackView} from "./audition-feedback-view.mjs";
 import {axisShiftUnits,axisShiftCanonical,axisShiftView} from "./axis-shift-view.mjs";
 
 const $=id=>document.querySelector(id);
-const MAX_PREVIEW_SECONDS=600;
 let graphMax=2000;
 let graphAlphaBeforeZoom=0;
 const controls={
@@ -369,6 +371,8 @@ function captureCurrentConfiguration(){
   return createSoundConfiguration({
     sourceToken:state.sourceGeneration,sampleRate:state.decoded.sampleRate,
     harmonic:h,audio:p,
+    transport:{mode:state.player?.mode??"stopped",
+      position:clamp(playPosition(),0,duration()),duration:duration()},
     view:{virtualRoot:virtualRootWorkbench.captureView(),
       interface:captureComparisonView($(".workspace-grid"),{
         graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value,
@@ -448,6 +452,33 @@ function applyConfigurationSilently(c){
     }
   });
 }
+async function restoreComparisonTransport(saved,sourceToken,operation){
+  if(!saved||sourceToken!==state.sourceGeneration||comparisonPending!==operation)return false;
+  if(Math.abs(duration()-saved.duration)>1e-6)
+    throw Error("保存時の音源の長さと現在の音源が一致しません");
+  const position=clamp(saved.position,0,Math.max(0,duration()-.001));
+  if(saved.mode==="stopped"){
+    // Always fence pending async play launches, even when no player exists yet.
+    const expectedEpoch=state.transportEpoch+1;
+    await stop();
+    if(sourceToken!==state.sourceGeneration||comparisonPending!==operation||
+      state.transportEpoch!==expectedEpoch)return false;
+    state.seek=position;
+    refreshStatusSeek();
+    return true;
+  }
+  if(state.player?.mode===saved.mode){
+    seek(position);
+    refreshStatusSeek();
+    return true;
+  }
+  await play(saved.mode,position);
+  if(sourceToken!==state.sourceGeneration||comparisonPending!==operation)return false;
+  if(state.player?.mode!==saved.mode)
+    throw Error("保存された再生モードの復帰に失敗しました");
+  refreshStatusSeek();
+  return true;
+}
 function switchSoundConfiguration(slot){
   const saved=comparisonSlots[slot];
   if(!saved)return;
@@ -477,7 +508,38 @@ function switchSoundConfiguration(slot){
     }finally{applyingConfiguration=false;}
     document.dispatchEvent(new Event("fw:virtual-root-external-change"));
     comparisonCurrent=null;
-    if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
+    if(saved.transport){
+      const operation={slot,revision:null};
+      comparisonPending=operation;
+      const token=state.sourceGeneration;
+      if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
+        const f=state.player.feedback.current;
+        operation.revision=f.phase==="pending"?f.requestedRevision:null;
+      }
+      comparisonMessage("設定"+slot+"：再生状態を復帰中","pending");
+      void restoreComparisonTransport(saved.transport,token,operation).then(restored=>{
+        if(!restored||comparisonPending!==operation)return;
+        const p=state.player;
+        if(p&&!p.directDry&&p.mode==="wet"&&settings().wet>0){
+          const f=p.feedback.current;
+          if(operation.revision===null&&f.phase==="pending")
+            operation.revision=f.requestedRevision;
+          if(operation.revision===null){
+            comparisonPending=null;comparisonCurrent=slot;
+            comparisonMessage("設定"+slot+"：DSP最新設定の受理を確認","applied");
+          }
+          return;
+        }
+        comparisonPending=null;
+        const mode=p?.mode??"stopped";
+        const label=mode==="dry"?"原音再生中":mode==="wet"?"変換再生中":"停止中";
+        comparisonMessage("設定"+slot+"を復帰 · "+label,"ready");
+      }).catch(error=>{
+        if(comparisonPending!==operation)return;
+        comparisonPending=null;
+        comparisonMessage("再生状態の復帰失敗："+error.message,"error");
+      });
+    }else if(state.player&&!state.player.directDry&&state.player.mode==="wet"&&settings().wet>0){
       const f=state.player.feedback.current;
       comparisonPending={slot,revision:f.phase==="pending"?f.requestedRevision:null};
       comparisonMessage("設定"+slot+"：DSP反映確認中","pending");
@@ -1538,8 +1600,8 @@ for(const id of ["crusher-enabled","crusher-bits"]){
   });
 }
 
-controls.dry.addEventListener("click",()=>play("dry"));
-controls.wet.addEventListener("click",()=>play("wet"));
+controls.dry.addEventListener("click",()=>{comparisonPending=null;void play("dry");});
+controls.wet.addEventListener("click",()=>{comparisonPending=null;void play("wet");});
 controls.stop.addEventListener("click",()=>{
   if(comparisonPending){
     comparisonPending=null;
@@ -1592,15 +1654,40 @@ async function load(file){
   // Never discard the current song merely because a *replacement* failed.
   // Decode/validate into local state, then commit only after full success.
   try{
-    if(file.size>75_000_000)throw Error("最大75MBです");
     $("#file-meta").textContent=file.name+" · 読み込み中"+(previousReady?"（現在の音声は保持）":"");
     message("音声を開いています…"+(previousReady?" 現在の音声はそのまま使えます。":""));
-    const data=await decodeFileWithoutPlayback(file,token);
-    if(token!==state.loadToken||!data)return;
-    const count=Math.min(2,data.numberOfChannels);
-    const length=Math.min(data.length,Math.floor(data.sampleRate*MAX_PREVIEW_SECONDS));
-    if(length<4096)throw Error("短すぎる音声です");
-    const dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice(0,length));
+    const memory=browserAudioMemory({navigator,performance});
+    let wav=null,dry,rate,count;
+    try{wav=await openWavChunkSource(file);}
+    catch(error){if(!["NOT_WAV","UNSUPPORTED_CODEC"].includes(error?.code))throw error;}
+    if(token!==state.loadToken)return;
+    if(wav){
+      const plan=planBufferedPreview(wav.info,{memory});
+      if(plan.status!=="supported")throw Error(plan.reasons.map(x=>x.message).join(" / "));
+      rate=wav.info.sampleRate;count=wav.info.channels;
+      if(wav.info.frames<4096)throw Error("短すぎる音声です");
+      // WAV is read in bounded slices; no fixed file-byte or preview-duration cutoff.
+      // Playback is still buffered. Insufficient-memory cases fail visibly
+      // rather than truncating the user's file or channels.
+      dry=Array.from({length:count},()=>new Float32Array(wav.info.frames));
+      for await(const part of wav.iterateFrames({chunkFrames:8192})){
+        if(token!==state.loadToken)return;
+        for(let c=0;c<count;c++)dry[c].set(part.channels[c],part.start);
+      }
+    }else{
+      const pre=planCompressedPredecode(file.size,{memory});
+      if(pre.status==="unavailable")
+        throw Error("音源の一括デコード用メモリが不足しています。圧縮形式の逐次デコーダは未対応です");
+      const data=await decodeFileWithoutPlayback(file,token);
+      if(token!==state.loadToken||!data)return;
+      const plan=planBufferedPreview({
+        frames:data.length,channels:data.numberOfChannels,sampleRate:data.sampleRate
+      },{memory,kind:"compressed"});
+      if(plan.status!=="supported")throw Error(plan.reasons.map(x=>x.message).join(" / "));
+      if(data.length<4096)throw Error("短すぎる音声です");
+      rate=data.sampleRate;count=data.numberOfChannels;
+      dry=Array.from({length:count},(_,i)=>data.getChannelData(i).slice());
+    }
     if(token!==state.loadToken)return;
 
     // Atomic replacement boundary: old playable audio and completed offline
@@ -1610,7 +1697,7 @@ async function load(file){
     if(state.rebuildTimer){clearTimeout(state.rebuildTimer);state.rebuildTimer=null;}
     if(state.offlineWorker){state.offlineWorker.terminate();state.offlineWorker=null;}
     state.offline=null;state.exportIdentity=null;state.sourceGeneration++;
-    state.decoded={sampleRate:data.sampleRate};
+    state.decoded={sampleRate:rate};
     state.dry=dry;state.seek=0;state.lastStats=null;
     state.sourceGeneration++;
     comparisonSlots.A=null;comparisonSlots.B=null;
@@ -1619,7 +1706,7 @@ async function load(file){
     comparisonMessage("新しい音源です · A/Bを記録してください","idle");
     state.name=file.name.replace(/\.[^.]+$/,"");
     mediaStatus(false);
-    state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+data.sampleRate+"Hz · "+count+"ch";
+    state.fileMeta=file.name+" · "+duration().toFixed(1)+"秒 · "+rate+"Hz · "+count+"ch";
     $("#file-meta").textContent=state.fileMeta;
     labels("high");drawCurve();drawAudio();refreshStatusSeek();
     controls.dry.disabled=false;controls.wet.disabled=false;
@@ -1723,25 +1810,11 @@ controls.render.addEventListener("click",()=>{
     type:"process",channels:copies,sampleRate:state.decoded.sampleRate,settings:renderSettings
   },copies.map(c=>c.buffer));
 });
-function makeWav(channels,rate){
-  const n=channels[0].length,count=channels.length;
-  const ab=new ArrayBuffer(44+n*count*2),view=new DataView(ab);
-  const write=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i));};
-  write(0,"RIFF");view.setUint32(4,36+n*count*2,true);write(8,"WAVE");
-  write(12,"fmt ");view.setUint32(16,16,true);view.setUint16(20,1,true);
-  view.setUint16(22,count,true);view.setUint32(24,rate,true);
-  view.setUint32(28,rate*count*2,true);view.setUint16(32,count*2,true);
-  view.setUint16(34,16,true);write(36,"data");view.setUint32(40,n*count*2,true);
-  let offset=44;
-  for(let i=0;i<n;i++)for(let c=0;c<count;c++){
-    const sample=clamp(channels[c][i],-1,1);
-    view.setInt16(offset,sample<0?Math.round(sample*32768):Math.round(sample*32767),true);
-    offset+=2;
-  }
-  return new Blob([ab],{type:"audio/wav"});
-}
-controls.download.addEventListener("click",()=>{
-  if(!state.offline)return;
+// The WASM renderer still has a separate 40M-sample resource bound. PCM16
+// encoding and Wet mix are now chunked; no full mixed Float32Array or one
+// monolithic WAV ArrayBuffer is allocated on download.
+controls.download.addEventListener("click",async()=>{
+  if(!state.offline||controls.download.disabled)return;
   const check=prepareStreamSettings({
     ...settings(),sampleRate:state.decoded.sampleRate
   });
@@ -1752,11 +1825,29 @@ controls.download.addEventListener("click",()=>{
     message("変更後の設定に一致するWAVではありません。再度変換してください。","warning");
     return;
   }
-  const mixed=state.offline.map((ch,i)=>mixWet(state.dry[i],ch,currentMix));
-  const url=URL.createObjectURL(makeWav(mixed,state.decoded.sampleRate));
-  const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
-  document.body.append(el);el.click();el.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const rendered=state.offline,original=state.dry,identity=state.exportIdentity;
+  const generation=state.sourceGeneration;
+  controls.download.disabled=true;
+  try{
+    const chunks=[];
+    const frames=rendered[0].length,channels=rendered.length;
+    for await(const bytes of encodePcm16Wav({
+      frames,channels,sampleRate:state.decoded.sampleRate,
+      readFrames:(start,count)=>rendered.map((ch,i)=>mixWet(
+        original[i].subarray(start,start+count),ch.subarray(start,start+count),currentMix))
+    }))chunks.push(bytes);
+    if(rendered!==state.offline||generation!==state.sourceGeneration||
+      !matchesExportIdentity(identity,state.sourceGeneration,spectralNow))
+      throw Error("書出し処理中に音声または設定が変化しました");
+    const url=URL.createObjectURL(new Blob(chunks,{type:"audio/wav"}));
+    const el=document.createElement("a");el.href=url;el.download=state.name+"-frequency-warp.wav";
+    document.body.append(el);el.click();el.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60_000);
+  }catch(error){
+    message("WAV生成失敗: "+error.message,"error");
+  }finally{
+    controls.download.disabled=!state.offline;
+  }
 });
 // Settings are part of the same live parameter model as the front-panel knobs.
 // Modal entry/exit lives in the minimal, separately loaded entry-controls.js.
