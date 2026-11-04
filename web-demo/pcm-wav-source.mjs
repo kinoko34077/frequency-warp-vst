@@ -82,7 +82,7 @@ export async function openPcmWavSource(file,{
         const part=await source.readFrames(startFrame+offset,size,{signal:activeSignal});
         for(let channel=0;channel<info.channels;channel++)result[channel].set(part[channel],offset);
       }
-      if(count===0)return source.readFrames(startFrame,0,{signal:activeSignal});
+      if(count===0)return await source.readFrames(startFrame,0,{signal:activeSignal});
       return result;
     }catch(error){throw legacyError(error);}
   }

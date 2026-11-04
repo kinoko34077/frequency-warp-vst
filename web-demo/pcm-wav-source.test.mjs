@@ -128,6 +128,8 @@ test("PCM WAV: canceled reads fail instead of returning stale data",async()=>{
   const controller=new AbortController();
   const source=await openPcmWavSource(wav(1,[[0],[.5]]));
   controller.abort();
+  await assert.rejects(source.readFrames(0,0,{signal:controller.signal}),
+    error=>error instanceof DOMException&&error.name==="AbortError");
   await assert.rejects(source.readFrames(0,1,{signal:controller.signal}),
     error=>error instanceof DOMException&&error.name==="AbortError");
 });
