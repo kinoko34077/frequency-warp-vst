@@ -937,8 +937,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       delete window.__auditWorkletProto;
     });
     await (await page.$("#audio-file")).uploadFile(wavPath);
-    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("twelve.wav"),
-      {timeout:20000});
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent===
+      "twelve.wav · 12.0秒 · 16000Hz · 1ch"&&
+      document.querySelector("#duration").textContent==="0:12.0"&&
+      document.querySelector("#stop").disabled,{timeout:20000});
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
     // A16: stopped→original audio must bypass invalid wet DSP settings.
@@ -1023,9 +1025,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length,diagnostic});
     assert.equal(diagnostic.events.some(event=>event.type==="source-stop"),false,
       "looping original-audio source must not receive stop() during observation: "+evidence);
-    assert.ok(lastAudio.starts.length>=1 &&
-      lastAudio.starts.some(source=>source.duration>0),
-      "direct original-audio buffer must schedule its own source: "+evidence);
+    assert.ok(lastAudio.starts.some(source=>source.duration===12&&source.length===192000&&
+      source.sampleRate===16000),
+      "direct original-audio buffer must use the fully committed 12-second WAV: "+evidence);
     assert.equal(lastAudio.audioState,"running",
       "direct original-audio context must remain active: "+evidence);
     assert.ok(Number.isFinite(lastAudio.audioTime) &&
