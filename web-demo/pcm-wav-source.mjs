@@ -14,30 +14,19 @@ function legacyError(error){
     return new RangeError("PCM WAV: readFrames exceeds source frame range");
   if(error?.code==="CHUNK_TOO_LARGE"||error?.code==="READ_BUDGET_EXCEEDED")
     return new RangeError("PCM WAV: readFrames exceeds per-call read budget");
-  const detail=error?.message||"";
+  if(error?.legacyMessage)return Error("PCM WAV: "+error.legacyMessage);
   const messages={
     INVALID_FILE:"a seekable Blob/File is required",
     INVALID_READ_BUDGET:"invalid read budget",
     NOT_WAV:"not a standard RIFF/WAVE file",
+    TRUNCATED:"truncated RIFF chunk",
+    BAD_FORMAT:"invalid byte rate or block alignment",
+    UNSUPPORTED_PARAMETERS:"unsupported format parameters",
+    UNSUPPORTED_RF64:"RF64 requires a separate decoder",
+    UNSUPPORTED_CODEC:"unsupported encoding (PCM/IEEE float only)",
     INVALID_CHUNK_SIZE:"invalid chunk size",
     INVALID_SAMPLE:"non-finite floating-point audio sample"
   };
-  if(error?.code==="TRUNCATED"){
-    if(detail.includes("宣言サイズ"))return Error("PCM WAV: truncated RIFF container");
-    if(detail.includes("サンプルフレーム途中"))return Error("PCM WAV: partial PCM frame");
-    return Error("PCM WAV: truncated RIFF chunk");
-  }
-  if(error?.code==="BAD_FORMAT"){
-    if(detail.includes("fmtが不足")||detail.includes("fmtが短すぎ"))
-      return Error("PCM WAV: short fmt chunk");
-    if(detail.includes("fmtまたはdataがありません"))
-      return Error("PCM WAV: missing fmt or data chunk");
-    return Error("PCM WAV: invalid byte rate or block alignment");
-  }
-  if(error?.code==="UNSUPPORTED_CODEC"){
-    if(detail.includes("PCMビット深度"))return Error("PCM WAV: unsupported format parameters");
-    return Error("PCM WAV: unsupported encoding (PCM/IEEE float only)");
-  }
   if(error?.code&&messages[error.code])return Error("PCM WAV: "+messages[error.code]);
   return error;
 }
@@ -54,7 +43,8 @@ export async function openPcmWavSource(file,{
   let source;
   try{source=await openWavChunkSource(file,{signal,maxReadBytes});}
   catch(error){
-    if(file?.size<12)throw Error("PCM WAV: incomplete or invalid chunk");
+    if(error?.code==="NOT_WAV"&&file?.size<12)
+      throw Error("PCM WAV: incomplete or invalid chunk");
     throw legacyError(error);
   }
   const info=Object.freeze({

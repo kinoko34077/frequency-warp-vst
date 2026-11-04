@@ -85,6 +85,11 @@ test("capability planner never truncates duration, preserves requested source on
  assert.equal(availableAudioMemory({heapLimitBytes:1e9,heapUsedBytes:2e8}).bytes,4e8);
  assert.equal(planCompressedPredecode(50_000_000,{memory:{bytes:80_000_000}}).status,"unavailable");
 });
+test("RF64 source is explicitly unsupported instead of mislabeled truncated",async()=>{
+ const bytes=new Uint8Array(await smallWav({frames:1}).arrayBuffer());
+ new DataView(bytes.buffer).setUint32(4,0xffffffff,true);
+ await assert.rejects(openWavChunkSource(new Blob([bytes])),error=>error.code==="UNSUPPORTED_RF64");
+});
 test("unknown browser memory keeps buffered paths conditional without claiming a budget check",()=>{
  const memory={bytes:null,basis:"unknown"};
  const wavPlan=planBufferedPreview({channels:2,frames:48_000*30,sampleRate:48_000},{memory});

@@ -123,6 +123,19 @@ test("PCM WAV: invalid format or truncated data is rejected",async()=>{
   const truncatedContainer=new Uint8Array(await file.arrayBuffer());
   new DataView(truncatedContainer.buffer).setUint32(4,truncatedContainer.length+10,true);
   await assert.rejects(openPcmWavSource(new Blob([truncatedContainer])),/truncated RIFF container/);
+
+  const rf64=new Uint8Array(await file.arrayBuffer());
+  new DataView(rf64.buffer).setUint32(4,0xffffffff,true);
+  await assert.rejects(openPcmWavSource(new Blob([rf64])),/RF64 requires a separate decoder/);
+
+  for(const [offset,value,wide] of [[22,0,false],[24,0,true],[34,7,false]]){
+    const invalidParameters=new Uint8Array(await file.arrayBuffer());
+    const view=new DataView(invalidParameters.buffer);
+    if(wide)view.setUint32(offset,value,true);else view.setUint16(offset,value,true);
+    await assert.rejects(openPcmWavSource(new Blob([invalidParameters])),/unsupported format parameters/);
+  }
+  await assert.rejects(openPcmWavSource(new Blob([Uint8Array.of(1,2,3)]),{maxReadBytes:0}),
+    /invalid read budget/);
 });
 test("PCM WAV: canceled reads fail instead of returning stale data",async()=>{
   const controller=new AbortController();

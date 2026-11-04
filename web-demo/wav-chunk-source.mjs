@@ -7,9 +7,12 @@ const FORMATS=new Set([1,3]);
 export const DEFAULT_WAV_READ_BUDGET_BYTES=1_048_576;
 const MAX_META_READ=64;
 export class WavSourceError extends Error {
-  constructor(code,message){super(message);this.name="WavSourceError";this.code=code;}
+  constructor(code,message,legacyMessage=null){
+    super(message);this.name="WavSourceError";this.code=code;
+    if(legacyMessage)this.legacyMessage=legacyMessage;
+  }
 }
-const fail=(code,msg)=>{throw new WavSourceError(code,msg);};
+const fail=(code,msg,legacyMessage=null)=>{throw new WavSourceError(code,msg,legacyMessage);};
 const fourcc=(v,offset)=>String.fromCharCode(...new Uint8Array(v.buffer,v.byteOffset+offset,4));
 async function slice(file,offset,length,signal){
   if(signal?.aborted)fail("ABORTED","読み込みを中断しました");
@@ -21,12 +24,13 @@ async function slice(file,offset,length,signal){
   return new DataView(result);
 }
 function formatFromView(v){
-  if(v.byteLength<16)fail("BAD_FORMAT","WAV fmtが不足しています");
+  if(v.byteLength<16)fail("BAD_FORMAT","WAV fmtが不足しています","short fmt chunk");
   let format=v.getUint16(0,true);
   const channels=v.getUint16(2,true),sampleRate=v.getUint32(4,true);
   const byteRate=v.getUint32(8,true),blockAlign=v.getUint16(12,true),bits=v.getUint16(14,true);
   if(format===65534){
-    if(v.byteLength<40||v.getUint16(16,true)<22)fail("BAD_FORMAT","WAV拡張fmtが不足しています");
+    if(v.byteLength<40||v.getUint16(16,true)<22)
+      fail("BAD_FORMAT","WAV拡張fmtが不足しています","short fmt chunk");
     // WAVE_FORMAT_EXTENSIBLE: first four bytes of the canonical subformat GUID.
     const guidTail=[0,0,16,0,128,0,0,170,0,56,155,113];
     const tail=new Uint8Array(v.buffer,v.byteOffset+28,12);
@@ -35,9 +39,10 @@ function formatFromView(v){
   }
   if(!FORMATS.has(format))fail("UNSUPPORTED_CODEC","未対応のWAV符号化形式です");
   if(channels<1||sampleRate<1||bits%8!==0)
-    fail("BAD_FORMAT","WAVチャンネル・サンプルレート・ビット深度が不正です");
+    fail("UNSUPPORTED_PARAMETERS","WAVチャンネル・サンプルレート・ビット深度が未対応です");
   if((format===1&&![8,16,24,32].includes(bits))||
-     (format===3&&![32,64].includes(bits)))fail("UNSUPPORTED_CODEC","未対応のPCMビット深度です");
+     (format===3&&![32,64].includes(bits)))
+    fail("UNSUPPORTED_PARAMETERS","未対応のPCMビット深度です");
   const bytes=bits/8;
   if(blockAlign!==channels*bytes||byteRate!==sampleRate*blockAlign)
     fail("BAD_FORMAT","WAVのブロック長またはバイトレートが矛盾しています");
@@ -63,27 +68,30 @@ export async function openWavChunkSource(file,{
   const head=await slice(file,0,12,signal);
   if(fourcc(head,0)!=="RIFF"||fourcc(head,8)!=="WAVE")
     fail("NOT_WAV","RIFF/WAVEではありません（圧縮形式の扱いは別経路）");
-  const riffEnd=8+head.getUint32(4,true);
+  const riffSize=head.getUint32(4,true);
+  if(riffSize===0xFFFFFFFF)fail("UNSUPPORTED_RF64","RF64入力は未対応です");
+  const riffEnd=8+riffSize;
   if(riffEnd>file.size||riffEnd<44)
-    fail("TRUNCATED","RIFFの宣言サイズがファイルと一致しません");
+    fail("TRUNCATED","RIFFの宣言サイズがファイルと一致しません","truncated RIFF container");
   let pos=12,format=null,data=null;
   while(pos+8<=riffEnd){
     const header=await slice(file,pos,8,signal);
     const name=fourcc(header,0),n=header.getUint32(4,true);
     const start=pos+8,end=start+n;
-    if(end>riffEnd)fail("TRUNCATED","WAVのチャンク終端が不正です");
+    if(end>riffEnd)fail("TRUNCATED","WAVのチャンク終端が不正です","truncated RIFF chunk");
     if(name==="fmt "){
-      if(format)fail("BAD_FORMAT","重複するWAV fmtです");
-      if(n<16)fail("BAD_FORMAT","WAV fmtが短すぎます");
-      // Only 40 bytes are needed for canonical PCM/IEEE-float extensible.
-      format=formatFromView(await slice(file,start,Math.min(n,MAX_META_READ),signal));
+      if(!format){
+        if(n<16)fail("BAD_FORMAT","WAV fmtが短すぎます","short fmt chunk");
+        // Only 40 bytes are needed for canonical PCM/IEEE-float extensible.
+        format=formatFromView(await slice(file,start,Math.min(n,MAX_META_READ),signal));
+      }
     }else if(name==="data"&&!data)data={offset:start,byteLength:n};
     pos=end+(n&1);
     if(format&&data)break;
   }
-  if(!format||!data)fail("BAD_FORMAT","WAV fmtまたはdataがありません");
+  if(!format||!data)fail("BAD_FORMAT","WAV fmtまたはdataがありません","missing fmt or data chunk");
   if(data.byteLength%format.blockAlign!==0)
-    fail("TRUNCATED","WAVデータがサンプルフレーム途中で終わっています");
+    fail("TRUNCATED","WAVデータがサンプルフレーム途中で終わっています","partial PCM frame");
   const frames=data.byteLength/format.blockAlign;
   if(!Number.isSafeInteger(frames))fail("UNSUPPORTED_SIZE","フレーム数が安全な整数ではありません");
   const info=Object.freeze({...format,frames,durationSeconds:frames/format.sampleRate,
