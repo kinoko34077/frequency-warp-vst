@@ -58,7 +58,7 @@ function decodeSample(v,offset,format,bits){
   return ((x&0x800000)?x-0x1000000:x)/8388608;
 }
 export async function openWavChunkSource(file,{
-  signal,maxReadBytes=DEFAULT_WAV_READ_BUDGET_BYTES
+  signal,maxReadBytes=DEFAULT_WAV_READ_BUDGET_BYTES,legacyDuplicateFmtHandling=false
 }={}){
   if(!file||!Number.isSafeInteger(file.size)||typeof file.slice!=="function")
     fail("INVALID_FILE","Blob互換ファイルが必要です");
@@ -80,6 +80,7 @@ export async function openWavChunkSource(file,{
     const start=pos+8,end=start+n;
     if(end>riffEnd)fail("TRUNCATED","WAVのチャンク終端が不正です","truncated RIFF chunk");
     if(name==="fmt "){
+      if(format&&!legacyDuplicateFmtHandling)fail("BAD_FORMAT","重複するWAV fmtです");
       if(!format){
         if(n<16)fail("BAD_FORMAT","WAV fmtが短すぎます","short fmt chunk");
         // Only 40 bytes are needed for canonical PCM/IEEE-float extensible.

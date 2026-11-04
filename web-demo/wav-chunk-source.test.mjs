@@ -90,6 +90,19 @@ test("RF64 source is explicitly unsupported instead of mislabeled truncated",asy
  new DataView(bytes.buffer).setUint32(4,0xffffffff,true);
  await assert.rejects(openWavChunkSource(new Blob([bytes])),error=>error.code==="UNSUPPORTED_RF64");
 });
+test("canonical WAV source rejects conflicting duplicate fmt chunks",async()=>{
+ const original=new Uint8Array(await smallWav({channels:1,frames:1}).arrayBuffer());
+ const firstFmt=original.slice(12,36),conflictingFmt=firstFmt.slice(),data=original.slice(36);
+ const view=new DataView(conflictingFmt.buffer);
+ view.setUint16(10,2,true);view.setUint32(12,96000,true);
+ view.setUint32(16,192000,true);view.setUint16(20,4,true);
+ const size=12+firstFmt.length+conflictingFmt.length+data.length;
+ const file=new Uint8Array(size),header=new DataView(file.buffer);
+ file.set(Uint8Array.of(82,73,70,70),0);header.setUint32(4,size-8,true);
+ file.set(Uint8Array.of(87,65,86,69),8);
+ file.set(firstFmt,12);file.set(conflictingFmt,36);file.set(data,60);
+ await assert.rejects(openWavChunkSource(new Blob([file])),error=>error.code==="BAD_FORMAT");
+});
 test("unknown browser memory keeps buffered paths conditional without claiming a budget check",()=>{
  const memory={bytes:null,basis:"unknown"};
  const wavPlan=planBufferedPreview({channels:2,frames:48_000*30,sampleRate:48_000},{memory});

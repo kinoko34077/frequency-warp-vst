@@ -41,7 +41,7 @@ export async function openPcmWavSource(file,{
   signal,maxReadBytes=DEFAULT_WAV_READ_BUDGET_BYTES
 }={}){
   let source;
-  try{source=await openWavChunkSource(file,{signal,maxReadBytes});}
+  try{source=await openWavChunkSource(file,{signal,maxReadBytes,legacyDuplicateFmtHandling:true});}
   catch(error){
     if(error?.code==="NOT_WAV"&&file?.size<12)
       throw Error("PCM WAV: incomplete or invalid chunk");

@@ -158,6 +158,20 @@ test("PCM WAV compatibility API decodes extensible PCM and preserves its byte bu
   assert.deepEqual(Array.from((await source.readFrames(0,1))[0]),[0.5]);
   await assert.rejects(source.readFrames(0,2),/per-call read budget/);
 });
+test("PCM WAV compatibility preserves the legacy first-fmt behavior",async()=>{
+  const source=await openPcmWavSource(await duplicateFmtWav());
+  assert.equal(source.info.channels,1);
+  assert.deepEqual(Array.from((await source.readFrames(0,1))[0]),[0.5]);
+});
+
+async function duplicateFmtWav(){
+  const original=new Uint8Array(await wav(1,[[0.5]]).arrayBuffer());
+  const firstFmt=original.slice(12,36),conflictingFmt=firstFmt.slice(),data=original.slice(36);
+  const view=new DataView(conflictingFmt.buffer);
+  view.setUint16(10,2,true);view.setUint32(12,96000,true);
+  view.setUint32(16,192000,true);view.setUint16(20,4,true);
+  return riff([firstFmt,conflictingFmt,data]);
+}
 
 function extensiblePcmWav(samples){
   const dataBytes=samples.length*2,total=12+8+40+8+dataBytes;
