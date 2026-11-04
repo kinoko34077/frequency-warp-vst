@@ -45,6 +45,14 @@ test("float32 and signed 24-bit sample coding and 4ch source topology",async()=>
    assert.equal(plan.requested.channels,4);
  }
 });
+test("unsupported PCM bit depth remains eligible for the browser decoder fallback",async()=>{
+ const unsupported=smallWav({channels:1,bits:64,frames:1});
+ await assert.rejects(openWavChunkSource(unsupported),error=>error.code==="UNSUPPORTED_CODEC");
+});
+test("odd RIFF chunks must include their required padding byte",async()=>{
+ const unpadded=smallWav({channels:1,bits:8,frames:1});
+ await assert.rejects(openWavChunkSource(unpadded),error=>error.code==="TRUNCATED");
+});
 test("120MB 625-second PCM WAV is inspected and seek-read without whole-file reads",async()=>{
  const size=120_000_000,header=smallWav({frames:0}).slice(0,44);
  const head=new Uint8Array(await header.arrayBuffer()),dv=new DataView(head.buffer);
@@ -84,6 +92,33 @@ test("capability planner never truncates duration, preserves requested source on
  assert.deepEqual(plan.reasonCodes,["INSUFFICIENT_BUFFER_MEMORY"]);
  assert.equal(availableAudioMemory({heapLimitBytes:1e9,heapUsedBytes:2e8}).bytes,4e8);
  assert.equal(planCompressedPredecode(50_000_000,{memory:{bytes:80_000_000}}).status,"unavailable");
+});
+test("RF64 source is explicitly unsupported instead of mislabeled truncated",async()=>{
+ const bytes=new Uint8Array(await smallWav({frames:1}).arrayBuffer());
+ new DataView(bytes.buffer).setUint32(4,0xffffffff,true);
+ await assert.rejects(openWavChunkSource(new Blob([bytes])),error=>error.code==="UNSUPPORTED_RF64");
+});
+test("canonical WAV source rejects conflicting duplicate fmt chunks",async()=>{
+ const original=new Uint8Array(await smallWav({channels:1,frames:1}).arrayBuffer());
+ const firstFmt=original.slice(12,36),conflictingFmt=firstFmt.slice(),data=original.slice(36);
+ const view=new DataView(conflictingFmt.buffer);
+ view.setUint16(10,2,true);view.setUint32(12,96000,true);
+ view.setUint32(16,192000,true);view.setUint16(20,4,true);
+ const size=12+firstFmt.length+conflictingFmt.length+data.length;
+ const file=new Uint8Array(size),header=new DataView(file.buffer);
+ file.set(Uint8Array.of(82,73,70,70),0);header.setUint32(4,size-8,true);
+ file.set(Uint8Array.of(87,65,86,69),8);
+ file.set(firstFmt,12);file.set(conflictingFmt,36);file.set(data,60);
+ await assert.rejects(openWavChunkSource(new Blob([file])),error=>error.code==="BAD_FORMAT");
+});
+test("unknown browser memory keeps buffered paths conditional without claiming a budget check",()=>{
+ const memory={bytes:null,basis:"unknown"};
+ const wavPlan=planBufferedPreview({channels:2,frames:48_000*30,sampleRate:48_000},{memory});
+ assert.equal(wavPlan.status,"supported");
+ assert.equal(wavPlan.estimates.budgetBytes,null);
+ const compressedPlan=planCompressedPredecode(50_000_000,{memory});
+ assert.equal(compressedPlan.status,"conditional");
+ assert.deepEqual(compressedPlan.reasonCodes,["MEMORY_UNVERIFIED"]);
 });
 function MIB(){return 1024*1024;}
 test("malformed WAV, out-of-range reads and aborted read fail without narrowing requested data",async()=>{
