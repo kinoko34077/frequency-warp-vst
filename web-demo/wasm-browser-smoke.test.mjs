@@ -739,8 +739,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.click("#export-jump");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "Source → WAV action must expand the offline tool directly");
-    assert.equal(await page.evaluate(()=>document.activeElement?.id),"render",
-      "Navigation must land on the next enabled export action");
+    const exportFocus=await page.evaluate(()=>({
+      activeId:document.activeElement?.id||"",
+      activeTag:document.activeElement?.tagName||"",
+      renderDisabled:document.querySelector("#render").disabled,
+      summaryFocused:document.activeElement===document.querySelector(".offline-tool summary"),
+      sourceReady:Boolean(document.querySelector("#file-meta").textContent),
+      offlineOpen:document.querySelector(".offline-tool").open
+    }));
+    assert.equal(exportFocus.activeId,"render",
+      "Navigation must land on the next enabled export action: "+JSON.stringify(exportFocus));
     await page.click("#render");
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});
