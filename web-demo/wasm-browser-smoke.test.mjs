@@ -41,6 +41,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       const Native=window.AudioContext;
       if(!Native)return;
       window.__originalPlaybackAuditContexts=[];
+      window.__originalPlaybackAuditNextSourceId=0;
       window.AudioContext=class extends Native{
         constructor(...args){
           super(...args);
@@ -49,19 +50,29 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         }
         createBufferSource(...args){
           const source=super.createBufferSource(...args);
+          const sourceId=++window.__originalPlaybackAuditNextSourceId;
           const start=source.start.bind(source);
           const stop=source.stop.bind(source);
           source.start=(...inputs)=>{
             this.__auditSourceStarts.push({
+              sourceId,
               when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
+              length:source.buffer?.length??null,sampleRate:source.buffer?.sampleRate??null,
+              loop:source.loop,loopStart:source.loopStart,loopEnd:source.loopEnd,
               activeAtStart:this.currentTime,stateAtStart:this.state
             });
             return start(...inputs);
           };
           source.stop=(...inputs)=>{
-            window.__timelineEvents?.push({type:"source-stop",audioTime:this.currentTime});
+            window.__timelineEvents?.push({
+              type:"source-stop",sourceId,audioTime:this.currentTime,args:inputs,
+              callStack:new Error("AudioBufferSourceNode.stop caller").stack
+            });
             return stop(...inputs);
           };
+          source.addEventListener("ended",()=>window.__timelineEvents?.push({
+            type:"source-ended",sourceId,audioTime:this.currentTime
+          }));
           return source;
         }
       };
@@ -926,8 +937,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       delete window.__auditWorkletProto;
     });
     await (await page.$("#audio-file")).uploadFile(wavPath);
-    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("twelve.wav"),
-      {timeout:20000});
+    await page.waitForFunction(()=>document.querySelector("#file-meta").textContent===
+      "twelve.wav · 12.0秒 · 16000Hz · 1ch"&&
+      document.querySelector("#duration").textContent==="0:12.0"&&
+      document.querySelector("#stop").disabled,{timeout:20000});
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
 
     // A16: stopped→original audio must bypass invalid wet DSP settings.
@@ -980,7 +993,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "original-audio transport must not instantiate a wet AudioWorklet");
 
     const timeline=[];
-    for(let attempt=0;attempt<12;attempt++){
+    const observationStarted=Date.now();
+    while(Date.now()-observationStarted<1800){
       const snapshot=await page.evaluate(()=>{
         const contexts=window.__originalPlaybackAuditContexts??[];
         const owner=[...contexts].reverse().find(ctx=>ctx.__auditSourceStarts.length>0);
@@ -998,10 +1012,6 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         };
       });
       timeline.push(snapshot);
-      const first=timeline[0];
-      if(snapshot.starts.length>=1&&snapshot.audioState==="running"&&
-          Number.isFinite(snapshot.audioTime)&&
-          snapshot.audioTime-first.audioTime>.2&&snapshot.uiSeconds>.1)break;
       await new Promise(resolve=>setTimeout(resolve,140));
     }
     const firstAudio=timeline[0],lastAudio=timeline.at(-1);
@@ -1013,9 +1023,11 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       events:window.__timelineEvents??[]
     }));
     const evidence=JSON.stringify({first:firstAudio,last:lastAudio,samples:timeline.length,diagnostic});
-    assert.ok(lastAudio.starts.length>=1 &&
-      lastAudio.starts.some(source=>source.duration>0),
-      "direct original-audio buffer must schedule its own source: "+evidence);
+    assert.equal(diagnostic.events.some(event=>event.type==="source-stop"),false,
+      "looping original-audio source must not receive stop() during observation: "+evidence);
+    assert.ok(lastAudio.starts.some(source=>source.duration===12&&source.length===192000&&
+      source.sampleRate===16000),
+      "direct original-audio buffer must use the fully committed 12-second WAV: "+evidence);
     assert.equal(lastAudio.audioState,"running",
       "direct original-audio context must remain active: "+evidence);
     assert.ok(Number.isFinite(lastAudio.audioTime) &&
