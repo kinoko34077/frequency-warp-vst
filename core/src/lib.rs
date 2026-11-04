@@ -680,12 +680,16 @@ mod tests {
         let source=measured_peak(&input,rate,frame,3*frame,25.0,30.0,0.05);
         assert!((26.0..=29.0).contains(&source.0),
             "recorded piano A0 input peak should be near 27.5Hz: {source:?}");
+        let source_upper=measured_peak(&input,rate,frame,3*frame,100.0,1000.0,4.0);
+        assert!(source_upper.1>source.1*0.05,
+            "recorded piano fixture must contain measurable upper harmonics: low={source:?}, upper={source_upper:?}");
         let settings=Settings{low:0.001,high:20000.0,curvature:1.0,invert:0.0,
             mode:Progression::Reciprocal,quality:2};
         // The existing workbench plan for F=23, H=19, m=1 yields r=19/23,
         // shift=0, and R=19Hz. Process the recorded PCM through the shared
         // Rust stream engine; no generated tone or parallel DSP is involved.
         let expected=source.0*19.0/23.0;
+        let expected_upper=source_upper.0*19.0/23.0;
         let mut measurements=Vec::new();
         for engine in [0,1]{
             let mut stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
@@ -701,13 +705,17 @@ mod tests {
             let latency=stream.latency();
             let target=measured_peak(&output,rate,latency+frame,latency+3*frame,
                 18.0,28.0,0.05);
+            let upper=measured_peak(&output,rate,latency+frame,latency+3*frame,
+                (expected_upper-12.0).max(75.0),expected_upper+12.0,0.5);
             let rms=(output[latency+frame..latency+3*frame].iter()
                 .map(|x|(*x as f64).powi(2)).sum::<f64>()/(2*frame) as f64).sqrt();
-            measurements.push((engine,target.0,target.1,rms));
+            measurements.push((engine,target.0,target.1,rms,upper.0,upper.1));
         }
-        println!("RECORDED_A0_PCM input={source:?} expected={expected:.3} engines={measurements:?} F=23 H=19 L=0.001");
-        for (engine,target,magnitude,rms) in measurements{
+        println!("RECORDED_A0_PCM input={source:?} upper_input={source_upper:?} expected={expected:.3} expected_upper={expected_upper:.1} engines={measurements:?} F=23 H=19 L=0.001");
+        for (engine,target,magnitude,rms,upper_hz,upper_magnitude) in measurements{
             assert!(rms>0.001,"engine {engine} recorded audio output must not be silent");
+            assert!(upper_magnitude>source_upper.1*0.05,
+                "engine {engine} low-root fallback must retain a recorded upper harmonic; input={source_upper:?}, expected={expected_upper:.1}, output=({upper_hz:.1},{upper_magnitude:.3})");
             assert!(target<24.5&&source.0-target>2.0,
                 "engine {engine} should move the recorded A0 partial below 24Hz; input={source:?}, target={target:.3}, magnitude={magnitude:.3}, rms={rms:.3}, ideal={expected:.3}");
         }
