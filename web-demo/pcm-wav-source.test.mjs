@@ -31,6 +31,7 @@ function wav(channels,frames,{rate=48000,format=1,bits=16,junk=false}={}){
   for(let i=0;i<frames.length;i++)for(let c=0;c<channels;c++){
     const offset=i*block+c*sampleBytes,v=frames[i][c];
     if(format===3)view.setFloat32(offset,v,true);
+    else if(bits===8)view.setUint8(offset,Math.round(v*128+128));
     else if(bits===16)view.setInt16(offset,Math.round(v*32767),true);
     else if(bits===24){
       const n=Math.round(v*8388607);
@@ -137,6 +138,10 @@ test("PCM WAV: invalid format or truncated data is rejected",async()=>{
     await assert.rejects(openPcmWavSource(new Blob([invalidParameters])),/unsupported format parameters/);
   }
   await assert.rejects(openPcmWavSource(wav(1,[[0]],{bits:64})),/unsupported format parameters/);
+  const padded8=new Uint8Array(await wav(1,[[0]],{bits:8}).arrayBuffer());
+  const unpadded8=padded8.slice(0,-1);
+  new DataView(unpadded8.buffer).setUint32(4,unpadded8.length-8,true);
+  await assert.rejects(openPcmWavSource(new Blob([unpadded8])),/truncated RIFF chunk/);
   await assert.rejects(openPcmWavSource(new Blob([Uint8Array.of(1,2,3)]),{maxReadBytes:0}),
     /invalid read budget/);
 });

@@ -77,8 +77,9 @@ export async function openWavChunkSource(file,{
   while(pos+8<=riffEnd){
     const header=await slice(file,pos,8,signal);
     const name=fourcc(header,0),n=header.getUint32(4,true);
-    const start=pos+8,end=start+n;
-    if(end>riffEnd)fail("TRUNCATED","WAVのチャンク終端が不正です","truncated RIFF chunk");
+    const start=pos+8,end=start+n,next=end+(n&1);
+    if(end>riffEnd||next>riffEnd)
+      fail("TRUNCATED","WAVのチャンク終端が不正です","truncated RIFF chunk");
     if(name==="fmt "){
       if(format&&!legacyDuplicateFmtHandling)fail("BAD_FORMAT","重複するWAV fmtです");
       if(!format){
@@ -87,7 +88,7 @@ export async function openWavChunkSource(file,{
         format=formatFromView(await slice(file,start,Math.min(n,MAX_META_READ),signal));
       }
     }else if(name==="data"&&!data)data={offset:start,byteLength:n};
-    pos=end+(n&1);
+    pos=next;
     if(format&&data)break;
   }
   if(!format||!data)fail("BAD_FORMAT","WAV fmtまたはdataがありません","missing fmt or data chunk");

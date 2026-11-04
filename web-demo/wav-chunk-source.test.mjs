@@ -49,6 +49,10 @@ test("unsupported PCM bit depth remains eligible for the browser decoder fallbac
  const unsupported=smallWav({channels:1,bits:64,frames:1});
  await assert.rejects(openWavChunkSource(unsupported),error=>error.code==="UNSUPPORTED_CODEC");
 });
+test("odd RIFF chunks must include their required padding byte",async()=>{
+ const unpadded=smallWav({channels:1,bits:8,frames:1});
+ await assert.rejects(openWavChunkSource(unpadded),error=>error.code==="TRUNCATED");
+});
 test("120MB 625-second PCM WAV is inspected and seek-read without whole-file reads",async()=>{
  const size=120_000_000,header=smallWav({frames:0}).slice(0,44);
  const head=new Uint8Array(await header.arrayBuffer()),dv=new DataView(head.buffer);
