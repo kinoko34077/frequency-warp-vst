@@ -85,6 +85,15 @@ test("capability planner never truncates duration, preserves requested source on
  assert.equal(availableAudioMemory({heapLimitBytes:1e9,heapUsedBytes:2e8}).bytes,4e8);
  assert.equal(planCompressedPredecode(50_000_000,{memory:{bytes:80_000_000}}).status,"unavailable");
 });
+test("unknown browser memory keeps buffered paths conditional without claiming a budget check",()=>{
+ const memory={bytes:null,basis:"unknown"};
+ const wavPlan=planBufferedPreview({channels:2,frames:48_000*30,sampleRate:48_000},{memory});
+ assert.equal(wavPlan.status,"supported");
+ assert.equal(wavPlan.estimates.budgetBytes,null);
+ const compressedPlan=planCompressedPredecode(50_000_000,{memory});
+ assert.equal(compressedPlan.status,"conditional");
+ assert.deepEqual(compressedPlan.reasonCodes,["MEMORY_UNVERIFIED"]);
+});
 function MIB(){return 1024*1024;}
 test("malformed WAV, out-of-range reads and aborted read fail without narrowing requested data",async()=>{
  await assert.rejects(openWavChunkSource(new Blob([new Uint8Array(44)])),e=>e.code==="NOT_WAV");

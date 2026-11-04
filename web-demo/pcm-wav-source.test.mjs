@@ -94,9 +94,12 @@ test("PCM WAV: original duration beyond 600 sec and size beyond 75 MB remain add
 });
 test("PCM WAV: reads are bounded and out-of-range reads never clamp silently",async()=>{
   const source=await openPcmWavSource(wav(2,[[0,0],[0,0],[0,0]]),{maxReadBytes:8});
-  await assert.rejects(source.readFrames(0,3),/per-call read budget/);
-  await assert.rejects(source.readFrames(2,2),/source frame range/);
-  await assert.rejects(source.readFrames(-1,1),/frame range/);
+  await assert.rejects(source.readFrames(0,3),error=>
+    error instanceof RangeError&&/per-call read budget/.test(error.message));
+  await assert.rejects(source.readFrames(2,2),error=>
+    error instanceof RangeError&&/source frame range/.test(error.message));
+  await assert.rejects(source.readFrames(-1,1),error=>
+    error instanceof RangeError&&/frame range/.test(error.message));
   assert.deepEqual((await source.readFrames(1,1)).map(a=>Array.from(a)),[[0],[0]]);
 });
 test("PCM WAV: invalid format or truncated data is rejected",async()=>{
@@ -108,13 +111,25 @@ test("PCM WAV: invalid format or truncated data is rejected",async()=>{
   data.set(new Uint8Array(await file.arrayBuffer()));
   new DataView(data.buffer).setUint32(40,1000,true);
   await assert.rejects(openPcmWavSource(new Blob([data])),/truncated RIFF chunk/);
+
+  const partial=new Uint8Array(await file.arrayBuffer());
+  new DataView(partial.buffer).setUint32(40,3,true);
+  await assert.rejects(openPcmWavSource(new Blob([partial])),/partial PCM frame/);
+
+  const shortFmt=riff([chunk("fmt ",new Uint8Array(12)),
+    chunk("JUNK",new Uint8Array(4)),chunk("data",new Uint8Array(0))]);
+  await assert.rejects(openPcmWavSource(shortFmt),/short fmt chunk/);
+
+  const truncatedContainer=new Uint8Array(await file.arrayBuffer());
+  new DataView(truncatedContainer.buffer).setUint32(4,truncatedContainer.length+10,true);
+  await assert.rejects(openPcmWavSource(new Blob([truncatedContainer])),/truncated RIFF container/);
 });
 test("PCM WAV: canceled reads fail instead of returning stale data",async()=>{
   const controller=new AbortController();
   const source=await openPcmWavSource(wav(1,[[0],[.5]]));
   controller.abort();
   await assert.rejects(source.readFrames(0,1,{signal:controller.signal}),
-    error=>error.name==="AbortError");
+    error=>error instanceof DOMException&&error.name==="AbortError");
 });
 
 test("PCM WAV compatibility API decodes extensible PCM and preserves its byte budget",async()=>{
