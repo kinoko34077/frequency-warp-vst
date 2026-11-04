@@ -7,8 +7,12 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
 .brand{display:flex;gap:12px;align-items:center}.logo{width:49px;height:49px;display:grid;place-items:center;color:#55e3bf;font-size:31px;border-radius:13px;background:#17373b;border:1px solid #376d69}.brand h1{font-size:clamp(21px,2.2vw,30px);letter-spacing:-.035em;font-weight:680}.brand p{font-size:10px;color:#8dacb3;letter-spacing:.14em;margin-top:4px}
 .gear{display:flex;align-items:center;gap:8px;border-color:#4d8076;background:#15352f;min-width:94px;justify-content:center}.gear span:first-child{font-size:24px;line-height:1}
-.workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,.92fr);gap:18px;align-items:start}
-.workspace-left{display:grid;gap:18px;min-width:0}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"source harmonics" "controls graph" "controls sine";gap:18px;align-items:start}
+.workspace-left{grid-area:source;min-width:0}
+.virtual-root-panel{grid-area:harmonics;min-width:0}
+.quick-panel{grid-area:controls;min-width:0}
+.workspace-right{grid-area:graph}
+.sine-monitor{grid-area:sine;justify-self:end;width:min(100%,420px);min-width:0}
 .panel{background:#132329;border:1px solid #2b474d;border-radius:16px;padding:20px;min-width:0;box-shadow:0 7px 26px #0002}
 .section-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:15px}.section-header h2{font-size:19px;letter-spacing:-.015em}
 .eyebrow{font-size:10px;color:#65d4b4;font-weight:750;letter-spacing:.17em;margin-bottom:5px}.micro-hint{font-size:11px;color:#9ebac0;white-space:nowrap}
@@ -76,7 +80,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .control-cue{min-height:74px;background:#0e2429;border:1px solid #2a4c51;border-radius:10px;display:flex;align-items:flex-start;flex-direction:column;padding:11px;gap:4px}
 .control-cue span{font-size:10px;color:#9cb9bb}.control-cue strong{font-size:12px}.text-button{background:transparent;border:0;color:#7ddfc7;font-size:11px;padding:1px 0;text-decoration:underline;text-underline-offset:3px}
 .bounds{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px;border-top:1px solid #2b464b;padding-top:19px}
-.workspace-right{position:sticky;top:14px;min-height:445px}
+.workspace-right{position:static;min-height:0}
 .panel-tabs{display:grid;grid-template-columns:1fr 1fr;background:#0a1b1f;border:1px solid #2f5155;border-radius:10px;padding:4px;gap:4px;margin-bottom:16px}
 .panel-tabs button{padding:10px 5px;background:transparent;border:0;color:#8aadb2;font-size:13px}
 .panel-tabs button[aria-selected=true]{background:#264a45;color:#a7f0d8;box-shadow:0 2px 8px #0004}
@@ -113,7 +117,7 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .settings-foot{border-top:1px solid #2e5054}.settings-foot button{width:100%;padding:12px}
 .reset-button{font-size:12px;color:#e0d3ad;background:#332d1f;border-color:#675b3c}
 @media(min-width:1100px){.workspace-grid{grid-template-columns:minmax(0,.97fr) minmax(0,1.03fr)}.workspace-right{max-width:730px}.control-grid{gap:22px 28px}}
-@media(max-width:800px){.workspace-grid{grid-template-columns:1fr}.workspace-right{position:static}.workspace-left{grid-template-columns:1fr}.panel{padding:17px}.curve-panel{max-width:min(560px,100%)}}
+@media(max-width:800px){.workspace-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"source" "harmonics" "controls" "graph" "sine"}.workspace-right{position:static}.panel{padding:17px}.curve-panel{max-width:100%}}
 @media(max-width:450px){.studio{padding:13px 10px 22px}.header{margin-bottom:14px}.brand{gap:8px}.logo{width:41px;height:41px;font-size:26px}.brand h1{font-size:21px}.brand p{font-size:8px;letter-spacing:.055em}.gear{min-width:74px;padding:9px 8px}.panel{padding:13px}.drop{gap:5px 8px;padding:13px}.drop strong{font-size:12px}.drop small{padding-left:31px;font-size:10px}.math-controls{grid-template-columns:1fr}.math-input input[type=number]{width:80px}.control-grid{gap:16px 12px}.bounds{gap:14px}.control-heading{align-items:flex-start}.control-heading output{font-size:11px}.actions button{min-width:0;font-size:12px}.workspace-grid,.workspace-left{gap:12px}.settings-pair{grid-template-columns:1fr}dialog{width:96vw;max-height:96dvh}.settings-body{padding:8px 16px;max-height:calc(96dvh - 170px)}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
@@ -149,36 +153,33 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .sine-meta strong{color:#71dfbc}
 @media(max-width:450px){.sine-monitor{padding:12px}.sine-meta{font-size:11px}.axis-explainer{font-size:9px}}
 
-/* Issue #27: use the freed horizontal space on phones rather than
-   shrinking the graph and stacking every control below it. */
+/* Keep source, harmonic setup, controls, graph, and reference tone in the
+   same reading order at each width. */
 .axis-value-tools{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .zero-button{font-size:11px;padding:4px 7px;line-height:1.15;border-radius:7px;background:#213e3b;color:#b5efdc;border-color:#52867d}
 .axis-mode-hint{display:block;font-size:10px;line-height:1.5;color:#c0d4cc;margin-top:6px}
 @media(max-width:800px){
   .workspace-grid{
-    display:grid;
-    grid-template-columns:minmax(0,1fr) minmax(145px,43%);
-    grid-template-areas:"player player" "controls graph" "sine sine";
-    column-gap:8px;row-gap:10px;
+    grid-template-columns:minmax(0,1fr);
+    grid-template-areas:"source" "harmonics" "controls" "graph" "sine";
+    column-gap:0;row-gap:10px;
     align-items:start;
   }
-  .workspace-left{display:contents}
-  .workspace-left>.player{grid-area:player;min-width:0}
-  .workspace-left>.quick-panel{grid-area:controls;min-width:0}
-  .workspace-left>.sine-monitor{grid-area:sine;min-width:0}
   .workspace-right{grid-area:graph;position:static;min-width:0;max-width:none;min-height:0}
-  .quick-panel .control-grid{grid-template-columns:minmax(0,1fr);gap:14px}
-  .quick-panel .bounds{grid-template-columns:minmax(0,1fr);gap:12px;margin-top:12px;padding-top:12px}
+  .sine-monitor{grid-area:sine;width:min(68vw,320px);max-width:100%;justify-self:end}
+  .quick-panel .control-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .quick-panel .control.shape-control,.quick-panel .control.reflect-control{grid-column:1/-1}
+  .quick-panel .bounds{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;padding-top:12px}
   .quick-panel .section-header{align-items:flex-start;flex-wrap:wrap}
   .quick-panel .control-heading{align-items:center;flex-wrap:wrap}
   .quick-panel .control input[type=range]{min-height:28px}
   .quick-panel .control-cue{min-height:0}
   .workspace-right .panel-tabs button{font-size:10px;padding:8px 3px}
   .workspace-right .graph-title{display:grid;gap:3px}
-  .workspace-right .graph-title strong{font-size:11px}
+  .workspace-right .graph-title strong{font-size:14px}
   .workspace-right .graph-legend{gap:4px;justify-content:flex-start;margin:7px 0}
-  .workspace-right .graph-legend span{font-size:9px}
-  .workspace-right .graph-note{font-size:9px;line-height:1.45}
+  .workspace-right .graph-legend span{font-size:10px}
+  .workspace-right .graph-note{font-size:11px;line-height:1.45}
   .workspace-right .harmonic-mini{padding:9px 0 3px;margin-top:7px}
   .workspace-right .mini-heading{display:grid;gap:3px;font-size:10px}
   .workspace-right .mini-heading span{font-size:9px;overflow-wrap:anywhere}
@@ -188,12 +189,12 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .workspace-right .performance-summary{font-size:10px}
   .workspace-right #engine-stats{font-size:9px}
   .workspace-right .curve-panel{width:100%;max-width:100%}
-  .workspace-right .math-controls{grid-template-columns:minmax(0,1fr)}
-  .workspace-right .math-input{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:3px}
+  .workspace-right .math-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .workspace-right .math-input{display:flex;gap:6px}
   .workspace-right .math-input input[type=number]{width:64px}
 }
 @media(max-width:450px){
-  .workspace-grid{column-gap:7px;grid-template-columns:minmax(0,1fr) minmax(146px,44%)}
+  .workspace-grid{column-gap:0;grid-template-columns:minmax(0,1fr)}
   .quick-panel,.workspace-right{padding:10px}
   .quick-panel .section-header h2{font-size:16px}
   .quick-panel .micro-hint{font-size:9px}
@@ -202,8 +203,7 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .quick-panel .ends{font-size:9px}
   .quick-panel .control-cue strong{font-size:10px}
   .workspace-right .curve-panel{max-width:100%}
-  .workspace-right .math-input{grid-template-columns:minmax(0,1fr)}
-  .workspace-right .math-input input[type=number]{width:100%}
+  .workspace-right .math-input input[type=number]{width:64px}
 }
 
 /* Listening-oriented effects status: small enough for the right panel on mobile. */
@@ -852,3 +852,17 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
   width:13ch!important;min-width:0!important;max-width:100%!important;
 }
 .vr-number-row input{flex:0 1 auto;width:min(100%,10ch)}
+
+/* On touch screens keep the editable value and its rail on the same row. */
+@media(pointer:coarse){
+  .vr-control{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);
+    grid-template-rows:auto auto;align-items:center;gap:4px 8px}
+  .vr-control>label{grid-column:1;grid-row:1;align-self:end}
+  .vr-control>.vr-unit-switch{grid-column:2;grid-row:1;justify-self:end;align-self:center}
+  .vr-control>.vr-number-row{grid-column:1;grid-row:2;align-self:center}
+  .vr-control>.vr-linear-rail,.vr-control>input[type="range"]{
+    grid-column:2;grid-row:2;align-self:center}
+  .vr-control:has(>select#vr-placement){grid-template-columns:minmax(0,1fr)}
+  .vr-control:has(>select#vr-placement)>label{grid-column:1;grid-row:1}
+  .vr-control:has(>select#vr-placement)>select{grid-column:1;grid-row:2}
+}

@@ -115,12 +115,16 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
         const right=document.querySelector(".workspace-right").getBoundingClientRect();
         const graph=document.querySelector("#curve").getBoundingClientRect();
         return {target:under===el||el.contains(under),
-          leftRight:left.right,rightLeft:right.left,graphW:graph.width,graphH:graph.height,
+          controlsBottom:left.bottom,graphPanelTop:right.top,
+          graphLeft:graph.left,graphRight:graph.right,viewport:innerWidth,
+          graphW:graph.width,graphH:graph.height,
           overflow:document.documentElement.scrollWidth>innerWidth};
       });
       assert.ok(hit.target,"Mobile status must not intercept virtual fundamental input at "+width+": "+JSON.stringify(hit));
-      assert.ok(hit.leftRight<=hit.rightLeft+1&&Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
-        "Keep compact LEFT controls / RIGHT square graph at "+width+": "+JSON.stringify(hit));
+      assert.ok(hit.controlsBottom<=hit.graphPanelTop+1&&
+        hit.graphW>=width-100&&hit.graphLeft>=0&&hit.graphRight<=width+1&&
+        Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
+        "Mobile controls must precede a visible full-width square graph at "+width+": "+JSON.stringify(hit));
       const exportTarget=await page.$eval("#export-jump",el=>{
         el.scrollIntoView({block:"center"});
         const r=el.getBoundingClientRect(),under=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);

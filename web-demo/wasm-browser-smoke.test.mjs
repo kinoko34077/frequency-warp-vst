@@ -718,6 +718,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       "A/B restores while stopped must never silently launch audio");
     const desktopViewport=page.viewport();
     for(const width of [320,390]){
+      // This end-to-end page retains a live audio source. The dedicated
+      // default-entry Browser test opens fresh mobile contexts and checks
+      // coarse-pointer layout; here only the CSS viewport width changes.
       await page.setViewport({width,height:844,deviceScaleFactor:1});
       const geometry=await page.evaluate(()=>{
         const left=document.querySelector(".workspace-left").getBoundingClientRect();
@@ -727,17 +730,21 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
           const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
           return {width:r.width,height:r.height,reachable:hit===el||el.contains(hit)};
         });
-        return {leftEdge:left.right,rightEdge:right.left,graphW:graph.width,
-          graphH:graph.height,overflow:document.documentElement.scrollWidth>innerWidth,
+        return {sourceBottom:left.bottom,graphPanelTop:right.top,graphLeft:graph.left,
+          graphRight:graph.right,graphW:graph.width,graphH:graph.height,
+          overflow:document.documentElement.scrollWidth>innerWidth,
           buttons};
       });
-      assert.ok(geometry.leftEdge<=geometry.rightEdge+1&&
+      assert.ok(geometry.sourceBottom<=geometry.graphPanelTop+1&&
+        geometry.graphW>=width-100&&geometry.graphLeft>=0&&geometry.graphRight<=width+1&&
         Math.abs(geometry.graphW-geometry.graphH)<2&&!geometry.overflow,
-        "A/B compare must retain left controls / right square graph at "+width+": "+JSON.stringify(geometry));
+        "A/B compare must follow mobile reading order with a full-width square graph at "+width+": "+JSON.stringify(geometry));
       assert.ok(geometry.buttons.every(v=>v.height>=40&&v.reachable),
         "A/B actual touch hit targets at "+width+": "+JSON.stringify(geometry));
     }
     await page.setViewport(desktopViewport);
+    assert.match(await page.$eval("#file-meta",el=>el.textContent),/12\.0秒/,
+      "mobile-width layout checks must retain the loaded real WAV source");
 
     // U5: short real WAV render belongs to one source+DSP+Wet configuration.
     // Prepare exactly-zero u before rendering: pressing zero again later
@@ -748,8 +755,16 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.click("#export-jump");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "Source → WAV action must expand the offline tool directly");
-    assert.equal(await page.evaluate(()=>document.activeElement?.id),"render",
-      "Navigation must land on the next enabled export action");
+    const exportFocus=await page.evaluate(()=>({
+      activeId:document.activeElement?.id||"",
+      activeTag:document.activeElement?.tagName||"",
+      renderDisabled:document.querySelector("#render").disabled,
+      summaryFocused:document.activeElement===document.querySelector(".offline-tool summary"),
+      sourceReady:Boolean(document.querySelector("#file-meta").textContent),
+      offlineOpen:document.querySelector(".offline-tool").open
+    }));
+    assert.equal(exportFocus.activeId,"render",
+      "Navigation must land on the next enabled export action: "+JSON.stringify(exportFocus));
     await page.click("#render");
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});
@@ -1302,13 +1317,13 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.click("#stop");
     assert.equal(await page.$eval("#stop",n=>n.disabled),true);
     // Check mobile layout without overriding current application state.
-    await page.setViewport({width:390,height:844,deviceScaleFactor:1});
+    await page.setViewport({width:390,height:844,deviceScaleFactor:1,isMobile:true,hasTouch:true});
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height);
     const layout=await page.evaluate(()=>({
       overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
       settingsRect:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#settings-open").getBoundingClientRect()),
       curve:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#curve").getBoundingClientRect()),
-      leftPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".quick-panel").getBoundingClientRect()),
+      leftPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top,bottom:r.bottom}))(document.querySelector(".quick-panel").getBoundingClientRect()),
       rightPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".workspace-right").getBoundingClientRect()),
 
       viewHidden:document.querySelector("#view-map").hidden,
@@ -1316,9 +1331,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       canvasSize:[document.querySelector("#curve").width,document.querySelector("#curve").height]
     }));
     assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
-    assert.ok(layout.curve.width>115,"Mobile graph should fit in right column "+JSON.stringify(layout));
-    assert.ok(layout.leftPanel.right<=layout.rightPanel.x+3,"Controls must be LEFT of graph "+JSON.stringify(layout));
-    assert.ok(Math.abs(layout.leftPanel.top-layout.rightPanel.top)<12,"Controls and graph must SHARE ROW "+JSON.stringify(layout));
+    assert.ok(layout.curve.width>=390-100&&layout.curve.x>=0&&layout.curve.right<=391,
+      "Mobile graph must use the available row width "+JSON.stringify(layout));
+    assert.ok(layout.leftPanel.top<layout.rightPanel.top&&layout.leftPanel.bottom<=layout.rightPanel.top+1,
+      "Controls must precede the graph in mobile reading order "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
     // Contextual help must remain on-screen when opened in the narrow graph column.
     await page.click(".graph-scale .info-tip summary");
@@ -1329,7 +1345,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(popoverBounds.left>=-1 && popoverBounds.right<=popoverBounds.screen+1,
       "mobile help panel escaped viewport "+JSON.stringify(popoverBounds));
     await page.click(".graph-scale .info-tip summary");
-    assert.ok(layout.curve.width<=210,"Mobile graph should use freed space for sliders "+JSON.stringify(layout));
+    assert.ok(layout.curve.width>=390-100,"Mobile help layout must preserve the full-width graph "+JSON.stringify(layout));
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);
     await page.click("#settings-open");
