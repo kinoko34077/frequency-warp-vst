@@ -695,9 +695,8 @@ mod tests {
         for (engine,low) in [(0,0.001),(1,0.001),(1,20.0)]{
             let settings=Settings{low,high:20000.0,curvature:1.0,invert:0.0,
                 mode:Progression::Reciprocal,quality:2};
-            let stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
+            let mut stream=Stream::new_extended(rate,1,settings,1,engine,19.0/23.0,
                 0.0,0.0,0,4).unwrap();
-            let mut stream=stream;
             stream.set_transform(0.0,19.0,0,1).unwrap();
             stream.set_geometry(350.0,1.0).unwrap();
             let mut output=Vec::with_capacity(input.len());
