@@ -41,6 +41,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       const Native=window.AudioContext;
       if(!Native)return;
       window.__originalPlaybackAuditContexts=[];
+      window.__originalPlaybackAuditNextSourceId=0;
       window.AudioContext=class extends Native{
         constructor(...args){
           super(...args);
@@ -49,19 +50,27 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
         }
         createBufferSource(...args){
           const source=super.createBufferSource(...args);
+          const sourceId=++window.__originalPlaybackAuditNextSourceId;
           const start=source.start.bind(source);
           const stop=source.stop.bind(source);
           source.start=(...inputs)=>{
             this.__auditSourceStarts.push({
+              sourceId,
               when:inputs[0],offset:inputs[1]??0,duration:source.buffer?.duration??null,
               activeAtStart:this.currentTime,stateAtStart:this.state
             });
             return start(...inputs);
           };
           source.stop=(...inputs)=>{
-            window.__timelineEvents?.push({type:"source-stop",audioTime:this.currentTime});
+            window.__timelineEvents?.push({
+              type:"source-stop",sourceId,audioTime:this.currentTime,args:inputs,
+              callStack:new Error("AudioBufferSourceNode.stop caller").stack
+            });
             return stop(...inputs);
           };
+          source.addEventListener("ended",()=>window.__timelineEvents?.push({
+            type:"source-ended",sourceId,audioTime:this.currentTime
+          }));
           return source;
         }
       };
