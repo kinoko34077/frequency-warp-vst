@@ -87,7 +87,10 @@ without a test.
 
 CI: native cargo tests, shared Rust wasm32 compile, Node oracle and
 real PCM output checks, Chrome 12-second playback/control/seek and
-responsive mobile viewport. Pages only publishes app/graph/harmonics
+responsive mobile viewport. Python-based offline reference tests, where used,
+validate their reference behavior on the actual supported Python environment;
+do not add redundant Python 3.10/3.11 CI jobs without a documented compatibility
+requirement. Rust/WASM, PCM and browser acceptance checks remain mandatory. Pages only publishes app/graph/harmonics
 UI, processor Worker/Worklet and Rust-built dsp_core.wasm.
 
 History: PRs #11, #13, #15, #18; current UX/common refactor PR #20
