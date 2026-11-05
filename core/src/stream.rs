@@ -650,8 +650,16 @@ impl Stream {
         // ghost. This is a bounded experiment, not an accepted R2.2 engine:
         // the peak mask remains approximate and transients/formants are
         // not specially modelled.
-        if self.a_quality_percent>0 {
-            let residual_gain=self.a_quality_percent as f64/100.0;
+        let residual_gain=if self.a_quality_percent>0 {
+            self.a_quality_percent as f64/100.0
+        }else if engine_b_would_round_low_peak_to_same_bin {
+            // Engine B was explicitly requested. When its low-bin safeguard
+            // borrows Engine A peak synthesis, retain the untracked spectrum
+            // through the existing mapped residual path instead of dropping
+            // it under Engine A's default oscillator-only quality setting.
+            1.0
+        }else{0.0};
+        if residual_gain>0.0 {
             for c in 0..self.channels {
                 self.relocated.fill(Complex::ZERO);
                 for k in 1..half {

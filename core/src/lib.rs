@@ -742,4 +742,43 @@ mod tests {
                 "low-root Engine B fallback must retain partials outside the low bins: source={source_hz:.1}Hz, transformed={output_hz:.1}Hz, fallback={output_mag:.3}, normal-B={baseline_mag:.3}");
         }
     }
+
+    #[test]
+    fn low_bin_fallback_preserves_a_transformed_quiet_upper_tone(){
+        // Reproduce the reviewer's mixed spectrum: the 27.5 Hz component
+        // needs the low-bin fallback, while the quiet 1171.875 Hz component
+        // is still within the requested processing band.
+        let rate=48000.0;
+        let frames=rate as usize*2;
+        let input=(0..frames).map(|i|{
+            let t=i as f64/rate;
+            (0.5*(TAU*27.5*t).cos()+0.005*(TAU*1171.875*t).cos()) as f32
+        }).collect::<Vec<_>>();
+        let render=|low:f64|{
+            let settings=Settings{low,high:20000.0,curvature:1.0,invert:0.0,
+                mode:Progression::Reciprocal,quality:2};
+            let mut stream=Stream::new_extended(rate,1,settings,1,1,19.0/23.0,
+                0.0,0.0,0,4).unwrap();
+            stream.set_transform(0.0,19.0,0,1).unwrap();
+            stream.set_geometry(350.0,1.0).unwrap();
+            let mut output=vec![0.0f32;frames];
+            for (source,destination) in input.chunks_exact(128).zip(output.chunks_exact_mut(128)){
+                stream.process(source,destination,128).unwrap();
+            }
+            (stream.latency(),output)
+        };
+        let (fallback_latency,fallback)=render(0.001);
+        let (baseline_latency,baseline)=render(40.0);
+        let start=fallback_latency+rate as usize/2;
+        let window=8192;
+        let fallback_peak=measured_peak(&fallback,rate,start,start+window,930.0,1000.0,0.25);
+        let baseline_start=baseline_latency+rate as usize/2;
+        let baseline_peak=measured_peak(&baseline,rate,baseline_start,
+            baseline_start+window,930.0,1000.0,0.25);
+        println!("mixed-spectrum fallback: fallback={fallback_peak:?}, ordinary-B={baseline_peak:?}, retained={:.6}%",
+            fallback_peak.1/baseline_peak.1*100.0);
+        assert!(baseline_peak.1>0.01,"ordinary Engine B must retain the transformed 1171.875Hz component: {baseline_peak:?}");
+        assert!(fallback_peak.1>=baseline_peak.1*0.15,
+            "low-bin Engine B fallback must retain the transformed quiet upper component: fallback={fallback_peak:?}, ordinary-B={baseline_peak:?}");
+    }
 }
