@@ -577,9 +577,28 @@ of general music fidelity or human listening acceptance.
   input as successful low-frequency reproduction.
 - The 128-frame streaming test matches latency-compensated offline output
   exactly for its tested A/B cases. For a known tone >=1Hz, Engine A is the
-  currently measured route; below 1Hz or when Engine B's low-bin mapping is
-  required, use the original/dry route (Mix 0 or “原音”) until a passing PCM
-  result exists. This fallback does not imply a general quality acceptance.
+  currently measured route; below 1Hz or whenever the requested target still
+  misses its measured gate, use the original/dry route (Mix 0 or “原音”) when
+  preserving the source is more important than an unqualified transform. A
+  non-silent output or a low-bin safeguard does not imply general quality
+  acceptance.
+
+### 2026-11-06 — Issue #309 Engine B fallback and mixed-spectrum evidence
+
+When a selected low peak's transformed destination rounds back to its source
+FFT bin, Engine B now borrows the existing Engine A peak tracker for that
+under-resolved peak. Untracked bins still pass through the existing mapped
+residual path; when A quality is at its default 0%, the fallback uses the full
+residual so quiet in-band components are not discarded. It does not apply
+Engine A's synthesis reverb.
+
+The regression reproducing the review finding uses a 48kHz signal containing
+0.5-amplitude 27.5Hz and 0.005-amplitude 1171.875Hz tones, with the 19/23
+transform and L=0.001Hz. The transformed upper component retains 83.36% of the
+ordinary Engine B comparison magnitude. A separate CC0 upright-piano A0 case
+shows Engine B moving 26.55Hz to 23.20Hz. These are bounded cases; the broader
+low-frequency target gates above remain unqualified where they fail, and this
+does not certify mixed music, transients, stereo, or device playback.
 
 ## 2026-10-14 — shape Hz marker, opt-in virtual root ↔ pivot, typed parameter units (#77 candidate)
 
