@@ -1,7 +1,8 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import {frequencyFromSlider,sliderFromFrequency,holdFromFrequency,
-  effectiveFrequency,aliasFrequency,sampleHoldImage,sampleHoldRepresentatives}
+  effectiveFrequency,aliasFrequency,sampleHoldImage,sampleHoldRepresentatives,
+  drawCrusherPreview}
   from "./crusher-visual.mjs";
 
 test("crusher 0..Fs Hz control: zero freezes, increasing knob decreases finite hold",()=>{
@@ -46,4 +47,17 @@ test("ZOH spectral images: exact folded frequencies and unit-gain kernel",()=>{
   assert.equal(aliasFrequency(3200,6000),2800);
   assert.equal(aliasFrequency(500,6000),500);
   assert.ok(Number.isNaN(aliasFrequency(500,0)));
+});
+
+test("crusher preview draws its axis labels and trace legend inside the canvas",()=>{
+  const labels=[];
+  const context={
+    clearRect(){},beginPath(){},moveTo(){},lineTo(){},stroke(){},fillRect(){},
+    fillText(text){labels.push(String(text));}
+  };
+  const canvas={getContext:()=>context,getBoundingClientRect:()=>({width:300})};
+  drawCrusherPreview(canvas,{bits:8,hold:4,sampleRate:48000});
+  for(const expected of ["振幅（正規化）","サンプル","原音","加工後","保持/量子化"]){
+    assert.ok(labels.includes(expected),`crusher preview is missing the in-figure label: ${expected}`);
+  }
 });

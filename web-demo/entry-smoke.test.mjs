@@ -688,6 +688,79 @@ test("Pages entry: 768px touch layout keeps transform controls beside the graph"
     await page.mouse.click(bounds.x+bounds.w*.1,bounds.y+bounds.h/2);
     assert.notEqual(await page.$eval("#axis-slope",el=>el.value),before,
       "The 768px transform rail must remain operable with the graph visible");
+
+    const assertInlineEffectHelp=async(width)=>{
+      await page.setViewport({width,height:844,deviceScaleFactor:2,
+        isMobile:width<=600,hasTouch:width<=800});
+      const rows=await page.evaluate(()=>({
+        width:innerWidth,
+        items:["ring-enabled","crusher-enabled"].map(id=>{
+          const input=document.querySelector("#"+id),item=input.closest(".fx-item");
+          const label=input.closest(".fx-toggle"),tip=item.querySelector(".info-tip");
+          const a=label.getBoundingClientRect(),b=tip.getBoundingClientRect();
+          return {id,sharedRow:Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>0,
+            iconRight:b.right};
+        })
+      }));
+      assert.ok(rows.items.every(x=>x.sharedRow&&x.iconRight<=rows.width+1),
+        "Ring/BitCrusher ⓘ must stay beside its label without leaving the viewport: "+JSON.stringify(rows));
+    };
+    for(const width of [320,390]){
+      await page.setViewport({width,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+      await page.goto(url,{waitUntil:"domcontentloaded"});
+      await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:15000});
+      for(const label of ["傾きの説明","変換範囲の説明","グラフ表示の説明",
+        "リング変調の説明","ビットクラッシャーの説明"]){
+        const summarySelector=`details.info-tip > summary[aria-label="${label}"]`;
+        const point=await page.$eval(summarySelector,summary=>{
+          summary.scrollIntoView({block:"center",inline:"nearest"});
+          const r=summary.getBoundingClientRect();
+          return {x:r.x+r.width/2,y:r.y+r.height/2};
+        });
+        await page.touchscreen.tap(point.x,point.y);
+        const opened=await page.$eval(summarySelector,summary=>summary.parentElement.open);
+        assert.ok(opened,`${label} must open from a mobile touch`);
+        const popup=await page.$eval(summarySelector,summary=>{
+          const body=summary.parentElement.querySelector(".info-body");
+          const r=body.getBoundingClientRect();
+          return {left:r.left,right:r.right,width:innerWidth,
+            visible:getComputedStyle(body).display!=="none",
+            text:body.innerText.trim()};
+        });
+        assert.ok(popup.visible&&popup.text&&popup.left>=-1&&popup.right<=width+1,
+          `${label} must open fully inside the ${width}px viewport: ${JSON.stringify(popup)}`);
+        await page.touchscreen.tap(point.x,point.y);
+        const closed=await page.$eval(summarySelector,summary=>!summary.parentElement.open);
+        assert.ok(closed,`${label} must close again from a mobile touch`);
+      }
+    }
+    await assertInlineEffectHelp(1280);
+    await assertInlineEffectHelp(390);
+
+    await page.evaluate(()=>{
+      window.__crusherPreviewLabels=[];
+      const draw=CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText=function(text,...args){
+        if(this.canvas?.id==="crusher-preview")window.__crusherPreviewLabels.push(String(text));
+        return draw.call(this,text,...args);
+      };
+    });
+    await page.click("#crusher-enabled");
+    await page.waitForFunction(()=>!document.querySelector("#fx-wave-preview").hidden);
+    const figure=await page.$eval("#crusher-preview",el=>({
+      label:el.getAttribute("aria-label"),
+      caption:document.querySelector("#fx-wave-caption").textContent
+    }));
+    assert.match(figure.label,/横軸.*サンプル/);
+    assert.match(figure.label,/縦軸.*振幅/);
+    assert.match(figure.label,/原音.*加工後/);
+    assert.match(figure.label,/保持.*量子化/);
+    assert.match(figure.caption,/合成モデル.*実測ではありません/);
+    const drawnLabels=await page.evaluate(()=>window.__crusherPreviewLabels);
+    for(const expected of ["振幅（正規化）","サンプル","原音","加工後","保持/量子化"]){
+      assert.ok(drawnLabels.includes(expected),
+        "Chrome must draw the label into the actual waveform canvas: "+expected);
+    }
   }finally{
     await browser?.close();
     server?.kill("SIGTERM");
