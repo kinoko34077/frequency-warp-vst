@@ -291,7 +291,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       assert.equal(shape.sources,2,root+" must preserve both native Rust parameters");
       assert.equal(shape.thumbs,2,root+" must have TWO accessible thumbs");
-      assert.ok(shape.track>=40&&shape.inner>=40,root+" must have one useable track");
+      assert.ok(shape.track>=36&&shape.track<=38&&shape.inner>=36&&shape.inner<=38,
+        root+" must keep a compact 36px track while preserving both 28px touch thumbs");
     }
     const dragDual=async(root,which,from,to)=>{
       await page.$eval("#"+root,el=>el.scrollIntoView({block:"center"}));
