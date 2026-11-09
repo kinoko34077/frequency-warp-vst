@@ -253,7 +253,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#harmonic-placement-details > summary");
     await page.click("#rational-enabled");
     await page.click("#play-wet");
-    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:20000});
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
     await page.click("#source-region > summary");
     assert.equal(await page.$eval("#source-region",el=>el.open),true,
       "Folding the source region during playback must keep Stop reachable");
@@ -462,7 +463,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
         clientX:bounds.left+bounds.width*value/8,clientY:bounds.top+bounds.height/2}));
     },seconds);
     await page.click("#play-dry");
-    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:10000});
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中"),{timeout:12000});
     await seekTo(2.4);
     await page.click("#compare-save-a");
     const aOffset=await page.evaluate(()=>window.__comparisonSourceStarts.at(-1));

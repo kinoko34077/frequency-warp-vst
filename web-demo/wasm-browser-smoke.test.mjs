@@ -824,7 +824,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await (await resetPage.$("#audio-file")).uploadFile(wavPath);
     await resetPage.waitForFunction(()=>!document.querySelector("#play-dry").disabled,{timeout:20000});
     await resetPage.click("#play-dry");
-    await resetPage.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:12000});
+    await resetPage.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中"),{timeout:15000});
     assert.equal(await resetPage.$eval("#harmonic-apply-evidence",el=>el.dataset.phase),"dry",
       "Original audio must not look like acknowledged processed playback near the graph");
     await resetPage.click("#settings-open");
@@ -1450,7 +1451,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(Math.abs(keyboardPosition-pausedPosition-2)<.2,"ArrowRight adds two seconds");
     // The deliberate transport choice owns playback mode and retains seek.
     await page.click("#play-wet");
-    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000})
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000})
       .catch(async err=>{
         const state=await page.evaluate(()=>({
           status:document.querySelector("#status").textContent,
