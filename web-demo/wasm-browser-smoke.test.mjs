@@ -291,8 +291,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       assert.equal(shape.sources,2,root+" must preserve both native Rust parameters");
       assert.equal(shape.thumbs,2,root+" must have TWO accessible thumbs");
-      assert.ok(shape.track>=36&&shape.track<=38&&shape.inner>=36&&shape.inner<=38,
-        root+" must keep a compact 36px track while preserving both 28px touch thumbs");
+      assert.ok(shape.track>=30&&shape.track<=32&&shape.inner>=30&&shape.inner<=32,
+        root+" must keep a compact 30px track while preserving both 28px touch targets");
     }
     const dragDual=async(root,which,from,to)=>{
       await page.$eval("#"+root,el=>el.scrollIntoView({block:"center"}));
@@ -593,8 +593,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       const b=el.getBoundingClientRect(),parent=el.closest(".quick-panel").getBoundingClientRect();
       return {x:b.x,right:b.right,parentRight:parent.right,height:b.height};
     });
-    assert.ok(mobileRail.right<=mobileRail.parentRight+2 && mobileRail.height>=42,
-      "iOS-sized dual-thumb must fit in controls "+JSON.stringify(mobileRail));
+    assert.ok(mobileRail.right<=mobileRail.parentRight+2&&mobileRail.height>=30&&mobileRail.height<=32,
+      "iOS-sized dual-thumb must fit in controls with a compact 30px track "+JSON.stringify(mobileRail));
     await page.$eval("#zero-decay",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");
@@ -1288,7 +1288,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
-    await page.click(".fx-more summary");
+    assert.equal(await page.$eval("#rational-enabled",el=>el.closest("label")?.parentElement?.id),
+      "virtual-root-workbench");
+    assert.equal(await page.$eval("#virtual-root-workbench",el=>
+      Boolean(el.querySelector("#harmonic-placement-details"))),false);
     await page.click("#rational-enabled");
     await page.click("#settings-open");
     // Ring and rational layout are *effects*, not synthesis engines.

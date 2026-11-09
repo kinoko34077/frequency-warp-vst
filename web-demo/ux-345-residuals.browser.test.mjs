@@ -42,8 +42,10 @@ test("#345 residual UI: auxiliary tone, status, export, harmonic toggle, and sha
         return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};
       };
       const thumbs=[...document.querySelectorAll(".shared-dual-track .shared-dual-thumb")].map(el=>{
-        const r=el.getBoundingClientRect(),grip=getComputedStyle(el,"::after");
-        return {width:r.width,height:r.height,radii:[grip.borderTopLeftRadius,grip.borderTopRightRadius,
+        const r=el.getBoundingClientRect(),body=getComputedStyle(el,"::before"),grip=getComputedStyle(el,"::after");
+        return {width:r.width,height:r.height,bodyHeight:body.height,
+          bodyRadii:[body.borderTopLeftRadius,body.borderTopRightRadius,
+            body.borderBottomRightRadius,body.borderBottomLeftRadius],radii:[grip.borderTopLeftRadius,grip.borderTopRightRadius,
           grip.borderBottomRightRadius,grip.borderBottomLeftRadius]};
       });
       const source=document.querySelector("#source-region"),hud=document.querySelector("#runtime-hud");
@@ -67,14 +69,23 @@ test("#345 residual UI: auxiliary tone, status, export, harmonic toggle, and sha
       "the actual WAV export disclosure must be directly available in the source panel");
     assert.ok(!mobile.redundantHarmonicDetails&&mobile.harmonicToggleLabel,
       "the existing harmonic checkbox must sit directly in the workbench without a second disclosure");
-    assert.ok(mobile.railHeights.every(height=>height<=38)&&mobile.thumbs.every((thumb,index)=>{
-      const half=index%2===0?thumb.radii[0]==="9px"&&thumb.radii[1]==="9px"&&
-        thumb.radii[2]==="1px"&&thumb.radii[3]==="1px":
-        thumb.radii[0]==="1px"&&thumb.radii[1]==="1px"&&
-        thumb.radii[2]==="9px"&&thumb.radii[3]==="9px";
-      return thumb.width>=24&&thumb.height>=24&&half;
+    assert.ok(mobile.railHeights.every(height=>height<=32)&&mobile.thumbs.every((thumb,index)=>{
+      const topHalf=index%2===0?thumb.bodyRadii[0]==="14px"&&thumb.bodyRadii[1]==="14px"&&
+        thumb.bodyRadii[2]==="0px"&&thumb.bodyRadii[3]==="0px":
+        thumb.bodyRadii[0]==="0px"&&thumb.bodyRadii[1]==="0px"&&
+        thumb.bodyRadii[2]==="14px"&&thumb.bodyRadii[3]==="14px";
+      const gripHalf=index%2===0?thumb.radii[0]==="6px"&&thumb.radii[1]==="6px"&&
+        thumb.radii[2]==="0px"&&thumb.radii[3]==="0px":
+        thumb.radii[0]==="0px"&&thumb.radii[1]==="0px"&&
+        thumb.radii[2]==="6px"&&thumb.radii[3]==="6px";
+      return thumb.width>=28&&thumb.height>=28&&thumb.bodyHeight==="14px"&&topHalf&&gripHalf;
     }),
-      "shared range rails must be compact with touch-sized, visibly half-rounded grips: "+JSON.stringify(mobile));
+      "shared range rails must stay 30px compact with 28px touch targets and genuinely semicircular split thumbs: "+JSON.stringify(mobile));
+    await page.tap("#sine-enabled");
+    assert.equal(await page.$eval("#sine-enabled",el=>el.checked),true,
+      "mobile auxiliary tone playback must remain reachable beneath the sticky graph");
+    await page.tap("#sine-enabled");
+    assert.equal(await page.$eval("#sine-enabled",el=>el.checked),false);
     await page.click("#export-toggle");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "the export summary must open its real nearby export controls");
