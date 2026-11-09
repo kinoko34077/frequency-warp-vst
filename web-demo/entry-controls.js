@@ -35,6 +35,10 @@
   const initiallyRequested=new URL(location.href).searchParams.get("layout_editor")==="1";
   try{debug.checked=initiallyRequested||localStorage.getItem(debugKey)==="1";}
   catch{debug.checked=initiallyRequested;}
+  if(debug.checked){
+    $("#prototype-info").open=true;
+    $("#developer-tools").open=true;
+  }
   const debugFeedback=$("#debug-mode-feedback");
   let debugRevision=0;
   debug.addEventListener("change",async()=>{

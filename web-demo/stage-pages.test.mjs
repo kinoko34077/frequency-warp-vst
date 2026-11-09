@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {collectAssets,stageSite} from "./stage-pages.mjs";
 
-test("L help separates accepted numeric input from low-frequency PCM evidence and names dry fallback",async()=>{
+test("L settings keep a short user caveat and collapse the detailed low-frequency PCM evidence",async()=>{
   const html=await readFile(new URL("./index.html",import.meta.url),"utf8");
   const match=html.match(/<p\b(?=[^>]*\bid="low-frequency-capability-help")[^>]*>([\s\S]*?)<\/p>/);
   assert.ok(match,"the low-frequency capability note must be present in the settings UI");
@@ -15,6 +15,12 @@ test("L help separates accepted numeric input from low-frequency PCM evidence an
   assert.match(match[1],/1Hz以上.*0\.1Hz/);
   assert.match(match[1],/0\.1.*20\.001Hz/);
   assert.match(match[1],/Mix 0%.*原音/);
+  const detail=html.match(/<details id="low-frequency-capability-details"([^>]*)>([\s\S]*?)<\/details>/);
+  assert.ok(detail,"the measurements should be available under a disclosure");
+  assert.doesNotMatch(detail[1],/\bopen\b/,"the long report should not expand by default");
+  assert.match(detail[2],/<summary>低域の実測範囲<\/summary>/);
+  assert.match(html,/<p\b(?=[^>]*\bid="low-frequency-short-note")[^>]*>入力できる下限と実PCMで確認した範囲は異なります。<\/p>/,
+    "the concise caveat should remain visible next to L");
 });
 
 test("Pages staging resolves transitive module/worker dependencies and fails closed",async()=>{
