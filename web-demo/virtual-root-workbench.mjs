@@ -31,8 +31,9 @@ const field=(key,title,value,min,max,step,rail=true)=>`
   </div>`;
 export function mountVirtualRootWorkbench({onApply,onCurrent}){
   const root=$("#virtual-root-workbench");if(!root)return;
+  const harmonicPlacement=root.querySelector("#harmonic-placement-details");
   root.innerHTML=`
-    <div class="section-header"><h2>倍音を配置する</h2></div>
+    <div class="section-header vr-header"><h2>倍音を配置する</h2></div>
     <div class="vr-inputs">
       ${field("source-f","元基音 F",350,.001,5120000,"any")}
       <div class="vr-control"><label for="vr-placement">音程の配置</label><select id="vr-placement">
@@ -51,6 +52,7 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
       <div id="vr-preview" class="vr-preview" role="list" aria-label="倍音配置の詳細"></div>
     </details>
     <p id="vr-error" class="vr-error" role="status" hidden></p>`;
+  if(harmonicPlacement)root.querySelector(".vr-header").append(harmonicPlacement);
   // Shared canonical bindings own F/H; the special virtual-root rails and digit
   // controls only adapt gestures. No parallel frequency/unit store in this UI.
   // A selected rail span is gesture-only state, never auto-grown by a typed
