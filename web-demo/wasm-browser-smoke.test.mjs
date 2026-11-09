@@ -1150,7 +1150,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
 
     // #321: 0.001Hz source F remains exact in the effective DSP request;
     // no hidden conversion to an arbitrary 1Hz reference is allowed.
-    // Floating HUD changes also must NOT move the player buttons.
+    // The status panel stays in normal flow unless the user explicitly drags
+    // it. Its changing text must not move the transport controls.
     const priorButtons=await page.$eval("#play-wet",node=>{
       const r=node.getBoundingClientRect();
       return {x:r.x,y:r.y,width:r.width,height:r.height};
@@ -1171,7 +1172,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.match(await page.$eval("#rt-indicator",el=>el.textContent),/稼働中/);
     assert.equal(await page.$eval("#stop",el=>el.disabled),false);
     assert.equal(await page.$eval("#runtime-hud",el=>
-      getComputedStyle(el).position),"fixed");
+      getComputedStyle(el).position),"static");
     const afterButtons=await page.$eval("#play-wet",node=>{
       const r=node.getBoundingClientRect();
       return {x:r.x,y:r.y,width:r.width,height:r.height};
