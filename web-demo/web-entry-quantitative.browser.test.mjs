@@ -88,15 +88,16 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         const harmonicFields=["source-f","target-h","step-m","first-index"].map(key=>{
           const field=document.querySelector(`[data-vr-control="${key}"]`);
           const number=field.querySelector(".vr-number-row").getBoundingClientRect();
-          const rail=(field.querySelector(".vr-linear-rail")||
-            field.querySelector(':scope > input[type="range"]')).getBoundingClientRect();
+          const rail=field.querySelector(".vr-linear-rail input[type=\"range\"]")||
+            field.querySelector(':scope > input[type="range"]');
           return {key,field:measure(field.getBoundingClientRect()),
             number:{left:number.left,right:number.right,top:number.top,bottom:number.bottom},
-            rail:{left:rail.left,right:rail.right,top:rail.top,bottom:rail.bottom}};
+            rail:measure(rail.getBoundingClientRect())};
         });
         return {width:innerWidth,pageOverflowPx:Math.max(0,document.documentElement.scrollWidth-innerWidth),
           source,harmonics,controls,graph,curve,sine,shape,wet,value,label,harmonicFields,
           harmonicColumns:getComputedStyle(harmonicInputs).gridTemplateColumns.trim().split(" ").filter(Boolean).length,
+          placement:measure(document.querySelector("#vr-placement").closest(".vr-control").getBoundingClientRect()),
           sourceGuidance:[...document.querySelectorAll("#source-region .micro-hint,#drop small")]
             .map(el=>el.textContent.trim()).join(" ")};
       });
@@ -129,6 +130,10 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           context+" compact integer controls should share one row "+JSON.stringify({stepM,firstIndex}));
         for(const field of [stepM,firstIndex])assert.ok(field.rail.right-field.rail.left>=80,
           context+" compact integer rail is too narrow "+JSON.stringify(field));
+        assert.ok(layout.placement.width>=width-48,
+          context+" placement selector should retain a full row "+JSON.stringify(layout.placement));
+        for(const field of [sourceF,targetH])assert.ok(field.rail.width>=100,
+          context+" F/H slider track is too narrow "+JSON.stringify(field));
       }
       if(width===320)assert.equal(layout.harmonicColumns,1,
         context+" narrowest phone layout should keep one usable control column");
