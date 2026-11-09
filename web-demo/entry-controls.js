@@ -94,12 +94,14 @@
   const hud=$("#runtime-hud"),hudHead=$("#runtime-hud-head");
   const collapse=$("#runtime-hud-collapse"),hide=$("#runtime-hud-hide");
   const restore=$("#runtime-hud-restore"),brief=$("#runtime-hud-brief");
+  const sourceRegion=$("#source-region"),sourceSummary=sourceRegion?.querySelector(":scope > summary"),stop=$("#stop");
   // A collapsed mobile badge must still disclose real warnings/failures.
   // Hiding the detailed HUD is not permission to hide a failed audio state.
   const status=$("#status");
   const updateBrief=()=>{
     const important=["error","warning"].includes(status.dataset.kind)
       ?status.textContent.trim():"";
+    if(status.dataset.kind==="error"&&sourceRegion&&!sourceRegion.open)sourceRegion.open=true;
     brief.textContent=(important||$("#rt-indicator")?.textContent||"停止中").slice(0,55);
   };
   const statusObserver=new MutationObserver(updateBrief);
@@ -127,7 +129,6 @@
   });
   // The Stop control lives in the source region. Keep that region open while
   // audio is active so folding it cannot hide the only playback recovery.
-  const sourceRegion=$("#source-region"),sourceSummary=sourceRegion?.querySelector(":scope > summary"),stop=$("#stop");
   sourceSummary?.addEventListener("click",event=>{
     if(!sourceRegion.open||stop.disabled)return;
     event.preventDefault();
