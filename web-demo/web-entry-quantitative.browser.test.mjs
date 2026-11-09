@@ -13,7 +13,8 @@ const modes=[
   {name:"v2",suffix:"&visual_editor_v2=1",host:"#visual-editor-v2"}
 ];
 const viewports=[
-  {width:320,height:844},{width:390,height:844},{width:768,height:844},{width:1280,height:844},
+  {width:320,height:844},{width:390,height:844},{width:768,height:844},
+  {width:1024,height:844},{width:1280,height:900},
   {width:390,height:320},{width:390,height:560},{width:390,height:561}
 ];
 const base="http://127.0.0.1:8799/index.html?legacy_lab=1";
@@ -47,7 +48,7 @@ function assertRecord(record){
   assert.equal(record.restoredFocus,"settings-open",who+" Settings return focus");
   assert.equal(record.editorVisible,record.mode!=="ordinary",who+" incorrect editor opt-in state");
 }
-test("W1: three entry modes × seven viewport sizes, quantified reachability and state isolation",{
+test("W1: three entry modes across mobile and desktop sizes, quantified reachability and state isolation",{
   timeout:180000
 },async()=>{
   const server=spawn(process.env.PYTHON_BIN||(process.platform==="win32"?"python":"python3"),
@@ -97,8 +98,6 @@ test("W1: three entry modes × seven viewport sizes, quantified reachability and
       });
       const context=`default/${width}`;
       assert.equal(layout.pageOverflowPx<=1,true,context+" horizontal overflow "+JSON.stringify(layout));
-      assert.ok(layout.harmonics.bottom<=layout.graph.top+1,
-        context+" harmonic setup must precede the graph "+JSON.stringify(layout));
       assert.ok(layout.sine.top>=layout.graph.bottom-1,
         context+" auxiliary tone must sit below the graph "+JSON.stringify(layout));
       assert.ok(Math.abs(layout.sine.right-layout.graph.right)<=2,
@@ -107,6 +106,8 @@ test("W1: three entry modes × seven viewport sizes, quantified reachability and
         (layout.label.top+layout.label.bottom)/2)<=8,
         context+" numeric value must remain inline with its label "+JSON.stringify(layout));
       if(width<=800){
+        assert.ok(layout.harmonics.bottom<=layout.graph.top+1,
+          context+" harmonic setup must precede the graph "+JSON.stringify(layout));
         const minimumCurveWidth=width>680?width*.35:width-100;
         assert.ok(layout.curve.width>=minimumCurveWidth,
           context+" graph is too narrow to use "+JSON.stringify(layout));
@@ -125,8 +126,44 @@ test("W1: three entry modes × seven viewport sizes, quantified reachability and
         assert.ok(Math.abs(layout.shape.top-layout.wet.top)<=2,
           context+" main controls should use two compact columns "+JSON.stringify(layout));
       }else{
-        assert.ok(layout.source.left<layout.harmonics.left,
-          context+" source and harmonic setup should share the first row "+JSON.stringify(layout));
+        assert.ok(Math.abs(layout.source.left-layout.harmonics.left)<=2&&
+          Math.abs(layout.source.left-layout.controls.left)<=2,
+          context+" source, harmonic setup and transform controls should form one work column "+JSON.stringify(layout));
+        assert.ok(layout.harmonics.top>=layout.source.bottom-1,
+          context+" harmonic setup should follow the source "+JSON.stringify(layout));
+        assert.ok(layout.controls.top>=layout.harmonics.bottom-1,
+          context+" transform controls should follow harmonic setup "+JSON.stringify(layout));
+        assert.ok(layout.graph.left>=layout.controls.right-1&&
+          Math.abs(layout.graph.top-layout.source.top)<=2,
+          context+" result graph should sit beside the full work column "+JSON.stringify(layout));
+      }
+      if(width===1280){
+        const before=await page.evaluate(async()=>{
+          const rail=document.querySelector("#axis-shift"),graph=document.querySelector("#curve");
+          rail.scrollIntoView({block:"center",inline:"nearest"});
+          await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+          const r=rail.getBoundingClientRect(),g=graph.getBoundingClientRect();
+          const rx=r.left+r.width*.75,ry=(r.top+r.bottom)/2;
+          const gx=(g.left+g.right)/2,gy=(g.top+g.bottom)/2;
+          return {rail:{left:r.left,right:r.right,top:r.top,bottom:r.bottom},
+            graph:{left:g.left,right:g.right,top:g.top,bottom:g.bottom},
+            width:innerWidth,height:innerHeight,railX:rx,railY:ry,
+            initialValue:Number(rail.value),graphImage:graph.toDataURL(),
+            railHit:document.elementFromPoint(rx,ry)===rail,
+            graphHit:document.elementFromPoint(gx,gy)===graph};
+        });
+        const simultaneouslyVisible=before.rail.top>=0&&before.rail.bottom<=before.height+1&&
+          before.graph.top>=0&&before.graph.bottom<=before.height+1;
+        const overlap=before.graph.left<before.rail.right&&before.graph.right>before.rail.left&&
+          before.graph.top<before.rail.bottom&&before.graph.bottom>before.rail.top;
+        assert.ok(simultaneouslyVisible&&!overlap&&before.railHit&&before.graphHit,
+          "desktop transform rail and result graph must stay visible and reachable together: "+JSON.stringify(before));
+        await page.mouse.click(before.railX,before.railY);
+        await page.waitForFunction(value=>Number(document.querySelector("#axis-shift").value)!==value,
+          {timeout:2500},before.initialValue);
+        const after=await page.$eval("#curve",graph=>graph.toDataURL());
+        assert.notEqual(after,before.graphImage,
+          "desktop transform interaction must update the visible result graph");
       }
       assert.deepEqual(errors,[],context+" runtime failures");
       await page.close();

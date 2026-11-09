@@ -7,7 +7,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
 .brand{display:flex;gap:12px;align-items:center}.logo{width:49px;height:49px;display:grid;place-items:center;color:#55e3bf;font-size:31px;border-radius:13px;background:#17373b;border:1px solid #376d69}.brand h1{font-size:clamp(21px,2.2vw,30px);letter-spacing:-.035em;font-weight:680}.brand p{font-size:10px;color:#8dacb3;letter-spacing:.14em;margin-top:4px}
 .gear{display:flex;align-items:center;gap:8px;border-color:#4d8076;background:#15352f;min-width:94px;justify-content:center}.gear span:first-child{font-size:24px;line-height:1}
-.workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"source harmonics" "controls graph" "controls sine";gap:18px;align-items:start}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"source graph" "harmonics graph" "controls graph" "sine sine";gap:18px;align-items:start}
 .workspace-left{grid-area:source;min-width:0;display:grid;gap:9px;align-content:start}
 .virtual-root-panel{grid-area:harmonics;min-width:0}
 .quick-panel{grid-area:controls;min-width:0}
@@ -82,6 +82,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .control-cue span{font-size:10px;color:#9cb9bb}.control-cue strong{font-size:12px}.text-button{background:transparent;border:0;color:#7ddfc7;font-size:11px;padding:1px 0;text-decoration:underline;text-underline-offset:3px}
 .bounds{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px;border-top:1px solid #2b464b;padding-top:19px}
 .workspace-right{position:static;min-height:0}
+@media(min-width:801px){.workspace-right{position:sticky;top:8px;align-self:start;z-index:5}}
 .panel-tabs{display:grid;grid-template-columns:1fr 1fr;background:#0a1b1f;border:1px solid #2f5155;border-radius:10px;padding:4px;gap:4px;margin-bottom:16px}
 .panel-tabs button{padding:10px 5px;background:transparent;border:0;color:#8aadb2;font-size:13px}
 .panel-tabs button[aria-selected=true]{background:#264a45;color:#a7f0d8;box-shadow:0 2px 8px #0004}
@@ -154,8 +155,8 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .sine-meta strong{color:#71dfbc}
 @media(max-width:450px){.sine-monitor{padding:12px}.sine-meta{font-size:11px}.axis-explainer{font-size:9px}}
 
-/* Keep source, harmonic setup, controls, graph, and reference tone in the
-   same reading order at each width. */
+/* Desktop keeps source -> F/H -> transform in one column beside a sticky
+   result graph. The mobile override below preserves graph/control co-visibility. */
 .axis-value-tools{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .zero-button{font-size:11px;padding:4px 7px;line-height:1.15;border-radius:7px;background:#213e3b;color:#b5efdc;border-color:#52867d}
 .axis-mode-hint{display:block;font-size:10px;line-height:1.5;color:#c0d4cc;margin-top:6px}
