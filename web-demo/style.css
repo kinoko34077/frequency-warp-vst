@@ -337,6 +337,10 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .effects-panel{border-top:1px solid #294447;margin-top:10px;padding-top:9px;display:grid;gap:6px}
 .effects-panel h3{font-size:11px;color:#82cab2;font-weight:650;margin:0}
 .fx-item{border-radius:7px;background:#0e2429;border:1px solid #284247;padding:7px 8px}
+.fx-heading{position:relative;display:flex;align-items:center;gap:6px;min-width:0;min-height:24px}
+.fx-heading>.fx-toggle{min-width:0}
+.fx-heading>.info-tip{position:static;margin-left:0}
+.fx-heading>.info-tip .info-body{left:auto;right:0}
 .fx-toggle{display:flex;align-items:center;gap:7px;font-size:11px;cursor:pointer}
 .fx-toggle input{accent-color:#6ddcbd}
 .fx-body{padding:6px 0 0}
@@ -537,8 +541,6 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .info-tip .info-body p{margin-top:7px}
 .info-tip .info-body .slider-formula{font-size:10px;margin-top:6px}
 .fx-item{position:relative}
-.fx-item>.info-tip{margin-left:6px}
-.fx-item>.info-tip .info-body{left:0;right:auto}
 .control-heading>.info-tip{margin-right:auto}
 .quick-panel .bounds-heading>.info-tip{margin:0 5px}
 .graph-scale>.info-tip .info-body{left:auto;right:0;width:min(215px,62vw)}
@@ -554,6 +556,15 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   .info-tip .info-body{width:min(260px,78vw)}
   .quick-panel .control-heading>.info-tip{margin-left:2px}
   .quick-panel .fx-pair .inline-value{width:54px!important}
+  .quick-panel .control-heading{position:relative}
+  .quick-panel .control-heading>.info-tip{position:static}
+  .quick-panel .control-heading>.info-tip .info-body{left:auto;right:0}
+  .quick-panel .bounds-heading{position:relative}
+  .quick-panel .bounds-heading>.info-tip{position:static}
+  .quick-panel .bounds-heading>.info-tip .info-body{left:auto;right:0}
+  .graph-scale{position:relative}
+  .graph-scale>.info-tip{position:static}
+  .graph-scale>.info-tip .info-body{left:0;right:auto}
 }
 
 /* #77: persistent concise shape marker and opt-in harmonic-to-axis link. */

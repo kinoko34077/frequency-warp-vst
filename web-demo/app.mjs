@@ -609,10 +609,11 @@ function labels(id=""){
   const fxActive=p.crusherBits>0||p.ringEnabled;
   $("#fx-wave-preview").hidden=!fxActive;
   if(fxActive){
+    const syntheticCaption="（合成モデル・読み込み音源の実測ではありません）";
     $("#fx-wave-caption").textContent=p.ringEnabled&&p.crusherBits>0?
-      "リング変調 → ビットクラッシャー（合成単音モデル）":
-      p.ringEnabled?"リング変調：入力×搬送波（合成単音モデル）":
-      "ビットクラッシャー：標本保持・量子化（合成単音モデル）";
+      "リング変調 → ビットクラッシャー"+syntheticCaption:
+      p.ringEnabled?"リング変調：入力×搬送波"+syntheticCaption:
+      "ビットクラッシャー"+syntheticCaption;
     drawCrusherPreview($("#crusher-preview"),{
       bits:p.crusherBits,hold:p.crusherHold,sampleRate:p.sampleRate,
       ringEnabled:p.ringEnabled,carrierHz:resolvedCarrierHz(foldPoint)
