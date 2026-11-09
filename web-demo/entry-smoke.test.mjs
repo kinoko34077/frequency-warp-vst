@@ -548,6 +548,93 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
 });
 
 
+test("Pages entry: Stop keeps source reachable during AudioWorklet startup",async()=>{
+  const root=await mkdtemp(join(tmpdir(),"warp-startup-race-"));
+  const server=liveUrl?null:spawn("python3",["-m","http.server","8767","--bind","127.0.0.1"],{
+    cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"
+  });
+  let browser;
+  try{
+    const wav=join(root,"startup.wav");await writeFile(wav,shortWav());
+    browser=await puppeteer.launch({
+      executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",
+      headless:true,
+      args:["--no-sandbox","--disable-dev-shm-usage","--autoplay-policy=no-user-gesture-required"]
+    });
+    const page=await browser.newPage();
+    await page.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+    const errors=[];page.on("pageerror",error=>errors.push(String(error.message)));
+    const url=liveUrl||"http://127.0.0.1:8767/index.html";
+    await page.goto(url,{waitUntil:"domcontentloaded",timeout:20000});
+    await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",
+      {timeout:15000});
+    const audioFile=join(root,"startup.wav");
+    await (await page.$("#audio-file")).uploadFile(audioFile);
+    await page.waitForFunction(()=>!document.querySelector("#play-wet").disabled,
+      {timeout:20000});
+    await page.evaluate(()=>{
+      const NativeContext=window.AudioContext;
+      window.__raceNativeAudioContext=NativeContext;
+      window.AudioContext=class extends NativeContext{
+        createBufferSource(...args){
+          const source=super.createBufferSource(...args);
+          const start=source.start.bind(source);
+          source.start=(...values)=>{
+            window.__raceSourceStarted=true;
+            return start(...values);
+          };
+          return source;
+        }
+      };
+      const NativeWorklet=window.AudioWorkletNode;
+      window.__raceNativeWorkletNode=NativeWorklet;
+      window.AudioWorkletNode=class extends NativeWorklet{
+        constructor(...args){
+          super(...args);
+          const send=this.port.postMessage.bind(this.port);
+          this.port.postMessage=(message,...rest)=>{
+            if(message?.type==="init"){
+              window.__raceReleaseWorkletInit=()=>send(message,...rest);
+              return;
+            }
+            return send(message,...rest);
+          };
+        }
+      };
+    });
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>typeof window.__raceReleaseWorkletInit==="function",
+      {timeout:20000});
+    assert.equal(await page.evaluate(()=>window.__raceSourceStarted),true,
+      "The regression window must occur after the source is scheduled but before Worklet readiness");
+    assert.equal(await page.$eval("#stop",element=>element.disabled),false,
+      "Stop must become available as soon as playback startup begins");
+    await page.click("#source-region > summary");
+    assert.equal(await page.$eval("#source-region",element=>element.open),true,
+      "The source region must remain open while its AudioWorklet is initializing");
+    assert.match(await page.$eval("#status",element=>element.textContent),/再生中.*停止/,
+      "Explain why the source region stays open during Worklet startup");
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+    assert.equal(await page.$eval("#play-wet",element=>element.disabled),false,
+      "Stopping a pending Worklet launch must restore the playback controls");
+    await page.evaluate(()=>{
+      window.__raceReleaseWorkletInit?.();
+      window.AudioWorkletNode=window.__raceNativeWorkletNode;
+      window.AudioContext=window.__raceNativeAudioContext;
+    });
+    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("停止中"),
+      {timeout:3000});
+    assert.equal(await page.$eval("#stop",element=>element.disabled),true,
+      "A canceled Worklet launch must not restart playback when init finishes");
+    assert.deepEqual(errors,[],"The startup cancellation must not cause a browser error");
+  }finally{
+    if(browser)await browser.close();
+    if(server){server.kill();await new Promise(resolve=>server.once("exit",resolve));}
+    await rm(root,{recursive:true,force:true});
+  }
+});
+
 test("Pages entry: 768px touch layout keeps transform controls beside the graph",async()=>{
   const server=liveUrl?null:spawn("python3",["-m","http.server","8768","--bind","127.0.0.1"],{
     cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"

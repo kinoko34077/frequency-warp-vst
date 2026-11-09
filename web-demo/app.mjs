@@ -1043,11 +1043,13 @@ async function stop(){
   const p=state.player;
   if(!p){
     controls.stop.disabled=true;mediaStatus(false);
+    controls.dry.disabled=!state.dry;controls.wet.disabled=!state.dry;
     indicator("停止中");
     return;
   }
   state.seek=playPosition();
   state.player=null;
+  p.cancelStartup?.();
   try{p.source?.stop();}catch{}
   try{p.source?.disconnect();p.worklet?.disconnect();p.wet?.disconnect();
     p.dry.disconnect();p.master.disconnect();p.directRoute.disconnect();
@@ -1057,6 +1059,7 @@ async function stop(){
   mediaStatus(false);
   if(p.worklet)p.worklet.port.onmessage=null;
   controls.stop.disabled=true;
+  controls.dry.disabled=!state.dry;controls.wet.disabled=!state.dry;
   $("#rt-telemetry").textContent="";
   indicator("停止中 · Rust / WASM AudioWorklet");
   refreshStatusSeek();
@@ -1086,6 +1089,10 @@ async function play(mode="wet",offset=null){
   }
   const launchEpoch=++state.transportEpoch;
   controls.dry.disabled=true;controls.wet.disabled=true;
+  // A source section can be collapsed while Core/AudioWorklet startup awaits.
+  // Make Stop available immediately so the only transport controls stay in
+  // view and the user can cancel the pending launch.
+  controls.stop.disabled=false;
   if(mode==="dry"){
     indicator("原音を起動中…");
     try{
@@ -1151,11 +1158,22 @@ async function play(mode="wet",offset=null){
     worklet.port.onmessage=playerMessage(worklet,player);
     worklet.addEventListener("processorerror",()=>message("AudioWorklet処理エラーが発生しました。再度再生してください。","error"));
     const ready=new Promise((resolve,reject)=>{
-      const timeout=setTimeout(()=>reject(Error("AudioWorkletの起動が時間切れです。")),10000);
+      let settled=false;
       const handler=worklet.port.onmessage;
+      const finish=(callback,value)=>{
+        if(settled)return;
+        settled=true;clearTimeout(timeout);worklet.port.onmessage=handler;
+        player.cancelStartup=null;callback(value);
+      };
+      const timeout=setTimeout(()=>finish(reject,Error("AudioWorkletの起動が時間切れです。")),10000);
+      player.cancelStartup=()=>{
+        if(settled)return;
+        settled=true;clearTimeout(timeout);worklet.port.onmessage=null;
+        player.cancelStartup=null;reject(Error("AudioWorklet起動を停止しました。"));
+      };
       worklet.port.onmessage=event=>{
-        if(event.data.type==="ready"){clearTimeout(timeout);worklet.port.onmessage=handler;resolve(event.data);}
-        else if(event.data.type==="error"){clearTimeout(timeout);reject(Error(event.data.message));}
+        if(event.data.type==="ready")finish(resolve,event.data);
+        else if(event.data.type==="error")finish(reject,Error(event.data.message));
       };
     });
     // AudioWorklet may remain unscheduled without an active connected input.
