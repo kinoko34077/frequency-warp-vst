@@ -273,9 +273,23 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       sine:await page.$eval("#sine-hz",el=>el.value),
       harmonicPlacement:await page.$eval("#rational-enabled",el=>el.checked)
     };
+    const beforeFoldScroll=await page.evaluate(()=>window.scrollY);
     for(const selector of ["#source-region","#virtual-root-workbench",
       ".quick-panel > .panel-fold",".workspace-right > .panel-fold",
       ".sine-monitor > .panel-fold"]){
+      if(selector===".sine-monitor > .panel-fold"){
+        // The graph is intentionally sticky while transform controls scroll.
+        // Bring the auxiliary card to its natural position directly below the
+        // graph before exercising its disclosure, rather than clicking through
+        // the pinned canvas at a later scroll offset.
+        await page.evaluate(()=>{
+          const graph=document.querySelector(".workspace-right");
+          const summary=document.querySelector(".sine-monitor > .panel-fold > summary");
+          const aux=summary.getBoundingClientRect();
+          const graphBottom=graph.getBoundingClientRect().bottom;
+          window.scrollTo(0,Math.max(0,aux.top+window.scrollY-graphBottom-18));
+        });
+      }
       const summary=selector+" > summary";
       await page.click(summary);
       assert.equal(await page.$eval(selector,el=>el.open),false,
@@ -284,6 +298,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       assert.equal(await page.$eval(selector,el=>el.open),true,
         "Each main work region must be individually restorable: "+selector);
     }
+    await page.evaluate(y=>window.scrollTo(0,y),beforeFoldScroll);
     assert.deepEqual({
       file:await page.$eval("#file-meta",el=>el.textContent),
       playable:await page.$eval("#play-wet",el=>!el.disabled),
@@ -457,7 +472,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     // finish, then exercise A/B with real BufferSource offsets and Rust/WASM.
     await (await page.$("#audio-file")).uploadFile(transportWav);
     await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("transport.wav")&&
-      !document.querySelector("#play-wet").disabled,{timeout:20000});
+      document.querySelector("#status").textContent.includes("読み込み完了。再生できます。")&&
+      !document.querySelector("#play-wet").disabled,{timeout:30000});
     const seekTo=seconds=>page.$eval("#wave",(wave,value)=>{
       const bounds=wave.getBoundingClientRect();
       wave.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,

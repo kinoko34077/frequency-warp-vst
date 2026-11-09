@@ -673,7 +673,8 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
    an intentional drag. Interaction stays inside it. */
 .runtime-hud{pointer-events:none;display:flex;flex-direction:column;align-items:stretch;justify-items:unset;touch-action:auto}
 .runtime-hud.is-floating{position:fixed;inset:auto;left:clamp(10px,2vw,24px);top:10px;z-index:85;
-  width:min(370px,calc(100vw - 20px));max-height:min(45dvh,280px);overflow:auto}
+  width:min(370px,calc(100vw - 20px));max-height:min(45dvh,280px);overflow:auto;
+  padding:10px;background:#132329;border:1px solid #2b474d;border-radius:12px;box-shadow:0 7px 26px #0002}
 .runtime-hud-head,.runtime-hud-buttons,#runtime-hud-restore{pointer-events:auto}
 .runtime-hud-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
   font-size:11px;font-weight:650;color:#a6e1d0;cursor:grab;touch-action:none;user-select:none}

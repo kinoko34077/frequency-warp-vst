@@ -142,6 +142,25 @@ test("#345 residual UI: auxiliary tone, status, export, harmonic toggle, and sha
     assert.ok(desktop.aux.top>=desktop.graph.bottom-1&&desktop.aux.left>=desktop.graph.left-2&&
       Math.abs(desktop.aux.right-desktop.graph.right)<=2&&desktop.aux.left>desktop.controls.left,
       "desktop auxiliary tone must occupy the graph's lower-right work area: "+JSON.stringify(desktop));
+    // Reopen at desktop viewport so the intentionally compact mobile badge
+    // does not hide the drag handle while this test checks its floating surface.
+    await page.goto(`http://127.0.0.1:${port}/index.html`,{waitUntil:"domcontentloaded"});
+    await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
+    const hudHead=await page.$eval("#runtime-hud-head",el=>{
+      const r=el.getBoundingClientRect();return {x:r.left+20,y:r.top+r.height/2};
+    });
+    await page.mouse.move(hudHead.x,hudHead.y);
+    await page.mouse.down();
+    await page.mouse.move(hudHead.x+40,hudHead.y+32,{steps:3});
+    await page.mouse.up();
+    const floatingHud=await page.$eval("#runtime-hud",el=>{
+      const style=getComputedStyle(el);
+      return {floating:el.classList.contains("is-floating"),background:style.backgroundColor,
+        borderWidth:style.borderTopWidth,shadow:style.boxShadow};
+    });
+    assert.ok(floatingHud.floating&&floatingHud.background!=="rgba(0, 0, 0, 0)"&&
+      Number.parseFloat(floatingHud.borderWidth)>0&&floatingHud.shadow!=="none",
+      "a deliberately dragged status panel must regain its readable floating surface: "+JSON.stringify(floatingHud));
     assert.deepEqual(errors,[],"responsive page must not log JavaScript errors");
   }finally{
     await browser?.close();
