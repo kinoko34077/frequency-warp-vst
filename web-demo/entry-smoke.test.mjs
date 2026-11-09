@@ -173,13 +173,13 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       });
       assert.equal(afterAdjustment,true,
         "The graph must remain in view after changing a mobile transform rail");
-      const exportTarget=await page.$eval("#export-jump",el=>{
+      const exportTarget=await page.$eval("#export-toggle",el=>{
         el.scrollIntoView({block:"center"});
         const r=el.getBoundingClientRect(),under=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
         return {height:r.height,width:r.width,reachable:under===el||el.contains(under)};
       });
       assert.ok(exportTarget.height>=40&&exportTarget.reachable,
-        "Mobile "+width+"px WAV shortcut must have a reachable 40px hit target: "+JSON.stringify(exportTarget));
+        "Mobile "+width+"px actual WAV export summary must have a reachable 40px hit target: "+JSON.stringify(exportTarget));
     }
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
@@ -250,7 +250,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       timeout:30000
     });
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
-    await page.click("#harmonic-placement-details > summary");
+    assert.equal(await page.$eval("#rational-enabled",el=>el.closest("label")?.parentElement?.id),
+      "virtual-root-workbench","Harmonic audio processing must sit directly in its workbench");
     await page.click("#rational-enabled");
     await page.click("#play-wet");
     await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&

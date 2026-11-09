@@ -783,7 +783,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#axis-shift-value",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    await page.click("#export-jump");
+    await page.click("#export-toggle");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "Source → WAV action must expand the offline tool directly");
     const exportFocus=await page.evaluate(()=>({
@@ -794,8 +794,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       sourceReady:Boolean(document.querySelector("#file-meta").textContent),
       offlineOpen:document.querySelector(".offline-tool").open
     }));
-    assert.equal(exportFocus.activeId,"render",
-      "Navigation must land on the next enabled export action: "+JSON.stringify(exportFocus));
+    assert.equal(exportFocus.summaryFocused,true,
+      "The nearby real export disclosure should retain focus when it opens: "+JSON.stringify(exportFocus));
     await page.click("#render");
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});

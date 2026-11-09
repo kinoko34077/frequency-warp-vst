@@ -159,9 +159,13 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           context+" graph is too narrow to use "+JSON.stringify(layout));
         assert.ok(layout.curve.left>=0&&layout.curve.right<=width+1,
           context+" graph must be fully visible "+JSON.stringify(layout));
-        assert.ok(layout.sine.width<width-100,
-          context+" auxiliary tone must not stretch across the full mobile row "+JSON.stringify(layout));
+        assert.ok(Math.abs(layout.sine.left-layout.graph.left)<=2&&
+          Math.abs(layout.sine.right-layout.graph.right)<=2&&
+          Math.abs(layout.sine.width-layout.graph.width)<=2,
+          context+" auxiliary tone should use the graph width below it "+JSON.stringify(layout));
         if(width<=390){
+          assert.ok(layout.sine.top<layout.controls.top,
+            context+" mobile auxiliary tone should follow the graph before the transform controls "+JSON.stringify(layout));
           for(const field of layout.harmonicFields){
             assert.ok(Math.abs(field.number.top-field.rail.top)<=4,
               context+" "+field.key+" value and slider should share one row "+JSON.stringify(field));
@@ -236,7 +240,7 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         const metrics=await page.evaluate(async({width,height,name,host})=>{
           const box=selector=>document.querySelector(selector).getBoundingClientRect();
           const curve=box("#curve"),graphPanel=box(".workspace-right");
-          const candidates=["#settings-open","#export-jump","#pivot-link-target"];
+          const candidates=["#settings-open","#export-toggle","#pivot-link-target"];
           const hits={};
           for(const selector of candidates){
             const el=document.querySelector(selector);
