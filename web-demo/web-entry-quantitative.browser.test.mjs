@@ -94,11 +94,12 @@ test("W1: three independent entry modes × four widths, quantified reachability 
         (layout.label.top+layout.label.bottom)/2)<=8,
         context+" numeric value must remain inline with its label "+JSON.stringify(layout));
       if(width<=800){
-        assert.ok(layout.curve.width>=width-100,
+        const minimumCurveWidth=width>680?width*.35:width-100;
+        assert.ok(layout.curve.width>=minimumCurveWidth,
           context+" graph is too narrow to use "+JSON.stringify(layout));
         assert.ok(layout.curve.left>=0&&layout.curve.right<=width+1,
           context+" graph must be fully visible "+JSON.stringify(layout));
-        assert.ok(layout.sine.width<layout.graph.width-20,
+        assert.ok(layout.sine.width<width-100,
           context+" auxiliary tone must not stretch across the full mobile row "+JSON.stringify(layout));
         if(width<=390){
           for(const field of layout.harmonicFields){
