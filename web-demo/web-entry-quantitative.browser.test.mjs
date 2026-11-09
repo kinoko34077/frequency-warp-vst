@@ -231,7 +231,44 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         await page.click("#settings-open");
         assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
           mode.name+"/"+width+" settings unavailable");
+        const settingsSurface=await page.evaluate(()=>{
+          const body=document.querySelector(".settings-body");
+          const pair=document.querySelector("#quality").closest(".settings-pair");
+          const low=document.querySelector("#low-frequency-capability-details");
+          const about=document.querySelector("#prototype-info");
+          const developer=document.querySelector("#developer-tools");
+          return{
+            engineOptions:[...document.querySelectorAll("#engine option")].map(option=>({
+              value:option.value,disabled:option.disabled
+            })),
+            resetLabel:document.querySelector("#settings-reset").textContent.trim(),
+            lowDisclosureClosed:Boolean(low)&&!low.open,
+            lowShortNoteVisible:Boolean(document.querySelector("#low-frequency-short-note"))&&
+              document.querySelector("#low-frequency-short-note").getBoundingClientRect().height>0,
+            prototypeDisclosureClosed:Boolean(about)&&!about.open,
+            developerDisclosureClosed:Boolean(developer)&&!developer.open,
+            debugChecked:document.querySelector("#debug-mode").checked,
+            settingPairColumnCount:getComputedStyle(pair).gridTemplateColumns.trim().split(/\s+/).length,
+            bodyOverflowPx:Math.max(0,body.scrollWidth-body.clientWidth)
+          };
+        });
+        if(width<=450){
+          assert.equal(settingsSurface.settingPairColumnCount,2,
+            mode.name+"/"+width+" settings pairs should use both columns");
+          assert.equal(settingsSurface.bodyOverflowPx<=1,true,
+            mode.name+"/"+width+" settings must not overflow horizontally");
+        }
         if(mode.name==="ordinary"&&width===390){
+          assert.deepEqual(settingsSurface,{
+            engineOptions:[{value:"0",disabled:false},{value:"1",disabled:false}],
+            resetLabel:"操作値を初期値に戻す",lowDisclosureClosed:true,lowShortNoteVisible:true,
+            prototypeDisclosureClosed:true,developerDisclosureClosed:true,debugChecked:false,
+            settingPairColumnCount:2,bodyOverflowPx:0
+          },"the normal settings view should show concise, available, correctly named controls");
+          await page.click("#prototype-info > summary");
+          await page.click("#developer-tools > summary");
+          assert.equal(await page.$eval("#debug-mode",el=>el.getBoundingClientRect().height>0),true,
+            "developer controls remain available after opening their disclosure");
           assert.equal(await page.$eval("#low-value",el=>Number(el.dataset.fwCanonical)),0.001,
             "initial canonical L is 0.001Hz");
           assert.equal(await page.$$eval("#a-min, #a-min-value, #a-min-unit",els=>els.length),0,
