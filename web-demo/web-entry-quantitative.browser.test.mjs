@@ -81,6 +81,7 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         const source=box(".player"),harmonics=box("#virtual-root-workbench");
         const controls=box(".quick-panel"),graph=box(".workspace-right");
         const curve=box(".curve-panel"),sine=box(".sine-monitor");
+        const harmonicInputs=document.querySelector("#virtual-root-workbench .vr-inputs");
         const shape=measure(document.querySelector("#axis-shift").closest(".control").getBoundingClientRect());
         const wet=measure(document.querySelector("#wet").closest(".control").getBoundingClientRect());
         const value=box("#wet-value"),label=box('label[for="wet"]');
@@ -89,12 +90,15 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           const number=field.querySelector(".vr-number-row").getBoundingClientRect();
           const rail=(field.querySelector(".vr-linear-rail")||
             field.querySelector(':scope > input[type="range"]')).getBoundingClientRect();
-          return {key,height:field.getBoundingClientRect().height,
+          return {key,field:measure(field.getBoundingClientRect()),
             number:{left:number.left,right:number.right,top:number.top,bottom:number.bottom},
             rail:{left:rail.left,right:rail.right,top:rail.top,bottom:rail.bottom}};
         });
         return {width:innerWidth,pageOverflowPx:Math.max(0,document.documentElement.scrollWidth-innerWidth),
-          source,harmonics,controls,graph,curve,sine,shape,wet,value,label,harmonicFields};
+          source,harmonics,controls,graph,curve,sine,shape,wet,value,label,harmonicFields,
+          harmonicColumns:getComputedStyle(harmonicInputs).gridTemplateColumns.trim().split(" ").filter(Boolean).length,
+          sourceGuidance:[...document.querySelectorAll("#source-region .micro-hint,#drop small")]
+            .map(el=>el.textContent.trim()).join(" ")};
       });
       const context=`default/${width}`;
       assert.equal(layout.pageOverflowPx<=1,true,context+" horizontal overflow "+JSON.stringify(layout));
@@ -105,6 +109,29 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
       assert.ok(Math.abs((layout.value.top+layout.value.bottom)/2-
         (layout.label.top+layout.label.bottom)/2)<=8,
         context+" numeric value must remain inline with its label "+JSON.stringify(layout));
+      if(width===390){
+        const harmonicField=key=>layout.harmonicFields.find(field=>field.key===key);
+        const sourceF=harmonicField("source-f"),targetH=harmonicField("target-h");
+        const stepM=harmonicField("step-m"),firstIndex=harmonicField("first-index");
+        assert.match(layout.sourceGuidance,/メモリ/,
+          context+" source guidance should describe the real memory-dependent playback constraint");
+        assert.equal(/75.?MB|600秒/.test(layout.sourceGuidance),false,
+          context+" source guidance must not promise removed fixed limits");
+        assert.equal(layout.harmonicColumns,2,
+          context+" harmonic inputs should use both phone columns "+JSON.stringify(layout));
+        for(const field of [sourceF,targetH]){
+          assert.ok(field.field.width>=width*.85,
+            context+" F/H input and scale rail need the full phone row "+JSON.stringify(field));
+          assert.ok(field.rail.right-field.rail.left>=width*.42,
+            context+" F/H gesture rail must remain reachable "+JSON.stringify(field));
+        }
+        assert.ok(Math.abs(stepM.field.top-firstIndex.field.top)<=2&&stepM.field.left<firstIndex.field.left,
+          context+" compact integer controls should share one row "+JSON.stringify({stepM,firstIndex}));
+        for(const field of [stepM,firstIndex])assert.ok(field.rail.right-field.rail.left>=80,
+          context+" compact integer rail is too narrow "+JSON.stringify(field));
+      }
+      if(width===320)assert.equal(layout.harmonicColumns,1,
+        context+" narrowest phone layout should keep one usable control column");
       if(width<=800){
         assert.ok(layout.harmonics.bottom<=layout.graph.top+1,
           context+" harmonic setup must precede the graph "+JSON.stringify(layout));

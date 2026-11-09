@@ -830,6 +830,12 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
   .vr-digit-open{display:block}
   .vr-inputs{grid-template-columns:1fr;gap:8px}
 }
+@media(min-width:361px) and (max-width:450px) and (pointer:coarse){
+  .vr-inputs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .vr-inputs>[data-vr-control="source-f"],
+  .vr-inputs>[data-vr-control="target-h"],
+  .vr-inputs>.vr-control:has(#vr-placement){grid-column:1/-1}
+}
 
 /* #291 V6: independently scrolling digits in one accessible, touch-momentum sheet.
  * The HTML number control on desktop retains its intrinsic browser spinner. */
