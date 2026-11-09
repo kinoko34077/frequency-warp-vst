@@ -835,6 +835,10 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
   .vr-inputs>[data-vr-control="source-f"],
   .vr-inputs>[data-vr-control="target-h"],
   .vr-inputs>.vr-control:has(#vr-placement){grid-column:1/-1}
+  .vr-control[data-vr-control="step-m"],
+  .vr-control[data-vr-control="first-index"]{
+    grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)
+  }
 }
 
 /* #291 V6: independently scrolling digits in one accessible, touch-momentum sheet.

@@ -13,7 +13,7 @@ const modes=[
   {name:"v2",suffix:"&visual_editor_v2=1",host:"#visual-editor-v2"}
 ];
 const viewports=[
-  {width:320,height:844},{width:390,height:844},{width:768,height:844},
+  {width:320,height:844},{width:361,height:844},{width:390,height:844},{width:768,height:844},
   {width:1024,height:844},{width:1280,height:900},
   {width:390,height:320},{width:390,height:560},{width:390,height:561}
 ];
@@ -71,7 +71,7 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
       await page.goto("http://127.0.0.1:8799/index.html",{waitUntil:"domcontentloaded"});
       await page.waitForFunction(()=>
         document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
-      const layout=await page.evaluate(()=>{
+      const layout=await page.evaluate(width=>{
         const box=selector=>{
           const {x,y,left,top,right,bottom,width,height}=document.querySelector(selector).getBoundingClientRect();
           return {x,y,left,top,right,bottom,width,height};
@@ -88,10 +88,14 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         const harmonicFields=["source-f","target-h","step-m","first-index"].map(key=>{
           const field=document.querySelector(`[data-vr-control="${key}"]`);
           const number=field.querySelector(".vr-number-row").getBoundingClientRect();
+          const numberInput=field.querySelector(".vr-number-row input[type=number]");
+          if(width===361&&key==="first-index")numberInput.value="-129";
           const rail=field.querySelector(".vr-linear-rail input[type=\"range\"]")||
             field.querySelector(':scope > input[type="range"]');
           return {key,field:measure(field.getBoundingClientRect()),
             number:{left:number.left,right:number.right,top:number.top,bottom:number.bottom},
+            numberInput:{value:numberInput.value,clientWidth:numberInput.clientWidth,
+              scrollWidth:numberInput.scrollWidth},
             rail:measure(rail.getBoundingClientRect())};
         });
         return {width:innerWidth,pageOverflowPx:Math.max(0,document.documentElement.scrollWidth-innerWidth),
@@ -100,7 +104,7 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           placement:measure(document.querySelector("#vr-placement").closest(".vr-control").getBoundingClientRect()),
           sourceGuidance:[...document.querySelectorAll("#source-region .micro-hint,#drop small")]
             .map(el=>el.textContent.trim()).join(" ")};
-      });
+      },width);
       const context=`default/${width}`;
       assert.equal(layout.pageOverflowPx<=1,true,context+" horizontal overflow "+JSON.stringify(layout));
       assert.ok(layout.sine.top>=layout.graph.bottom-1,
@@ -135,6 +139,15 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
       }
       if(width===320)assert.equal(layout.harmonicColumns,1,
         context+" narrowest phone layout should keep one usable control column");
+      if(width===361){
+        const firstIndex=layout.harmonicFields.find(field=>field.key==="first-index");
+        assert.equal(layout.harmonicColumns,2,
+          context+" harmonic inputs should use both phone columns "+JSON.stringify(layout));
+        assert.ok(firstIndex.numberInput.scrollWidth<=firstIndex.numberInput.clientWidth,
+          context+" signed three-digit first index must remain fully visible "+JSON.stringify(firstIndex));
+        assert.ok(firstIndex.rail.width>=70,
+          context+" first-index rail must remain touchable after widening its value "+JSON.stringify(firstIndex));
+      }
       if(width<=800){
         assert.ok(layout.harmonics.bottom<=layout.graph.top+1,
           context+" harmonic setup must precede the graph "+JSON.stringify(layout));
