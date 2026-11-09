@@ -25,7 +25,6 @@ import {axisShiftUnits,axisShiftCanonical,axisShiftView} from "./axis-shift-view
 
 const $=id=>document.querySelector(id);
 let graphMax=2000;
-let graphAlphaBeforeZoom=0;
 const controls={
   dry:$("#play-dry"),wet:$("#play-wet"),stop:$("#stop"),
   render:$("#render"),download:$("#download")
@@ -375,7 +374,7 @@ function captureCurrentConfiguration(){
       position:clamp(playPosition(),0,duration()),duration:duration()},
     view:{virtualRoot:virtualRootWorkbench.captureView(),
       interface:captureComparisonView($(".workspace-grid"),{
-        graphMax,graphAlphaBeforeZoom,sineFrequency:sineUnitControl.value,
+        graphMax,sineFrequency:sineUnitControl.value,
         snaps:captureInterfaceSnaps()})},
     values:{
       low:p.low,high:p.high,curvature:p.curvature,invert:p.invert,
@@ -435,7 +434,7 @@ function applyConfigurationSilently(c){
   refreshInvertView(true);
   linkFeedback("");
   if(c.view?.interface)restoreComparisonView($(".workspace-grid"),c.view.interface,{
-    setGraph:(max,previousAlpha)=>{graphMax=max;graphAlphaBeforeZoom=previousAlpha;drawCurve();},
+    setGraph:max=>{graphMax=max;drawCurve();},
     showTab,
     restoreSnaps:restoreInterfaceSnaps,
     restoreSine:monitor=>{
@@ -1523,13 +1522,6 @@ dualControls.shape=mountDualThumb($("#shape-dual"),
   ]);
 function cycleGraphView(){
   const next=graphMax===2000?20000:graphMax===20000?20:2000;
-  const scale=$("#graph-log");
-  if(next===20){
-    graphAlphaBeforeZoom=Number(scale.value);
-    scale.value="100"; // 0.001Hz to 20Hz requires logarithmic visual resolution.
-  }else if(graphMax===20){
-    scale.value=String(graphAlphaBeforeZoom);
-  }
   graphMax=next;drawCurve();
 }
 $("#curve").addEventListener("click",()=>{cycleGraphView();});

@@ -457,13 +457,25 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#graph-log",el=>{el.value="100";el.dispatchEvent(new Event("input",{bubbles:true}));});
     const afterLog=await page.$eval("#curve",el=>el.toDataURL());
     assert.notEqual(beforeLog,afterLog,"display-axis slider must redraw the graph");
+    await page.$eval("#graph-log",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     await page.click("#curve");
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/20kHz/);
     await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/0.001〜20Hz/);
-    assert.equal(await page.$eval("#graph-log",el=>el.value),"100","subbass zoom uses logarithmic octave spacing");
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"0",
+      "20Hz view must preserve the user's linear axis selection");
     await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
     assert.match(await page.$eval("#graph-title",el=>el.textContent),/2kHz/);
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"0",
+      "leaving the 20Hz view must preserve the user's linear axis selection");
+    await page.$eval("#graph-log",el=>{el.value="75";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.$eval("#curve",el=>el.dispatchEvent(new MouseEvent("click",{bubbles:true})));
+    await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"75",
+      "entering the 20Hz view must preserve a selected logarithmic blend");
+    await page.$eval("#curve",el=>el.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"75",
+      "leaving the 20Hz view must preserve a selected logarithmic blend");
     await page.$eval("#axis-pivot",el=>{
       el.value="500";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
@@ -693,22 +705,41 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
 
     // U4: compare whole canonical configurations, not rounded input strings.
     assert.equal(await page.$eval("#compare-save-a",el=>el.disabled),false);
+    await page.$eval("#graph-log",el=>{el.value="25";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.click("#curve");
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/20kHz/);
     await page.click("#compare-save-a");
     const savedA=await page.evaluate(()=>({
       low:document.querySelector("#low-value").dataset.fwCanonical,
       fundamental:document.querySelector("#fundamental").dataset.fwCanonical,
-      move:document.querySelector("#axis-shift").value
+      move:document.querySelector("#axis-shift").value,
+      graphTitle:document.querySelector("#graph-title").textContent,
+      graphLog:document.querySelector("#graph-log").value
     }));
     await page.$eval("#axis-shift-value",el=>{
       el.value=".123";el.dispatchEvent(new Event("change",{bubbles:true}));
     });
+    await page.$eval("#graph-log",el=>{el.value="75";el.dispatchEvent(new Event("input",{bubbles:true}));});
+    await page.click("#curve");
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/0.001〜20Hz/);
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"75",
+      "the low graph view must keep the selected logarithmic blend before saving B");
+    await page.click("#curve");
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/2kHz/);
     await page.click("#compare-save-b");
     assert.equal(await page.$eval("#compare-load-a",el=>el.disabled),false);
     await page.click("#compare-load-a");
     assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Aを復帰/);
     assert.equal(await page.$eval("#low-value",el=>el.dataset.fwCanonical),savedA.low);
     assert.equal(await page.$eval("#fundamental",el=>el.dataset.fwCanonical),savedA.fundamental);
+    assert.equal(await page.$eval("#graph-title",el=>el.textContent),savedA.graphTitle,
+      "A/B restore must include the saved graph range");
+    assert.equal(await page.$eval("#graph-log",el=>el.value),savedA.graphLog,
+      "A/B restore must include the chosen graph axis");
     await page.click("#compare-load-b");
+    assert.match(await page.$eval("#graph-title",el=>el.textContent),/2kHz/);
+    assert.equal(await page.$eval("#graph-log",el=>el.value),"75",
+      "B restores its independent logarithmic graph-axis selection");
     assert.equal(await page.$eval("#axis-shift-value",el=>Number(el.value)),.1);
     assert.equal(Number(await page.$eval("#axis-shift-value",el=>el.dataset.fwCanonical)),.123);
     await page.click("#compare-load-a");
