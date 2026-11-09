@@ -13,9 +13,11 @@ const modes=[
   {name:"v2",suffix:"&visual_editor_v2=1",host:"#visual-editor-v2"}
 ];
 const viewports=[
+  {width:320,height:320},{width:361,height:320},{width:390,height:320},
+  {width:320,height:560},{width:361,height:560},{width:390,height:560},
+  {width:320,height:561},{width:361,height:561},{width:390,height:561},
   {width:320,height:844},{width:361,height:844},{width:390,height:844},{width:768,height:844},
   {width:1024,height:844},{width:1280,height:900},
-  {width:390,height:320},{width:390,height:560},{width:390,height:561}
 ];
 const base="http://127.0.0.1:8799/index.html?legacy_lab=1";
 function assertRecord(record){
