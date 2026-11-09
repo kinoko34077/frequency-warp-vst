@@ -223,10 +223,21 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .workspace-right .curve-panel canvas{width:min(100%,48vw,420px)}
 }
 @media(max-width:680px){
+  .control-graph-layout{--mobile-graph-size:min(52vw,420px,max(24dvh,calc(152px - 3.2dvh)))}
+  .workspace-right .curve-panel{position:sticky;top:0;z-index:2;background:#132329}
+  .sine-monitor{position:relative;z-index:1}
   .workspace-right{max-height:min(max(40dvh,calc(238px - 2.5dvh)),360px);
     scroll-padding-block-start:min(clamp(230px,52vw,380px),calc(max(24dvh,calc(152px - 3.2dvh)) + 16px))}
-  .workspace-right .curve-panel canvas{width:min(100%,52vw,420px,
-    max(24dvh,calc(152px - 3.2dvh)))}
+  .workspace-right .curve-panel canvas{width:min(100%,var(--mobile-graph-size))}
+}
+@media(max-width:680px) and (max-height:400px){
+  .sine-monitor{padding-block:4px!important}
+  .sine-monitor>.panel-fold>summary{padding-block:2px;font-size:11px}
+  .sine-monitor .eyebrow{display:none}
+  .sine-monitor .section-header{margin:0}
+  .sine-monitor .section-header h2{font-size:14px;line-height:1.1}
+  .sine-meta{margin-top:0;gap:3px;font-size:10px;flex-wrap:nowrap}
+  .sine-volume{margin-top:0}
 }
 
 /* Listening-oriented effects status: small enough for the right panel on mobile. */

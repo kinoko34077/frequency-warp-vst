@@ -86,6 +86,47 @@ test("#345 residual UI: auxiliary tone, status, export, harmonic toggle, and sha
       "mobile auxiliary tone playback must remain reachable beneath the sticky graph");
     await page.tap("#sine-enabled");
     assert.equal(await page.$eval("#sine-enabled",el=>el.checked),false);
+    await page.evaluate(()=>{
+      for(const id of ["zero-reflect","zero-decay"]){
+        const input=document.querySelector("#"+id);input.value="50";
+        input.dispatchEvent(new Event("input",{bubbles:true}));
+      }
+    });
+    await page.$eval("#reflection-dual",el=>el.scrollIntoView({block:"center"}));
+    const halves=await page.$eval("#reflection-dual",el=>{
+      const rail=el.getBoundingClientRect(),inner=el.querySelector("[data-dual-inner]").getBoundingClientRect();
+      const upper=el.querySelector(".shared-dual-thumb.upper").getBoundingClientRect();
+      const lower=el.querySelector(".shared-dual-thumb.lower").getBoundingClientRect();
+      return {upper:{left:upper.left,right:upper.right,top:upper.top,bottom:upper.bottom},
+        lower:{left:lower.left,right:lower.right,top:lower.top,bottom:lower.bottom},
+        upperTap:{x:inner.left+inner.width*.5+4,y:inner.top+6},
+        lowerTap:{x:inner.left+inner.width*.5-4,y:inner.bottom-6},rail:{top:rail.top,bottom:rail.bottom}};
+    });
+    assert.ok(halves.upper.left<halves.lower.right&&halves.upper.right>halves.lower.left&&
+      halves.upper.top<halves.lower.bottom&&halves.upper.bottom>halves.lower.top,
+      "the overlap regression must place both 28px targets at the same value: "+JSON.stringify(halves));
+    const upperHit=await page.evaluate(({x,y})=>{
+      const target=document.elementFromPoint(x,y);
+      return {x,y,target:target?.id||target?.className||target?.tagName,
+        viewport:{width:innerWidth,height:innerHeight},scrollY,track:document.querySelector("#reflection-dual").getBoundingClientRect().toJSON()};
+    },halves.upperTap);
+    await page.touchscreen.tap(halves.upperTap.x,halves.upperTap.y);
+    assert.notEqual(await page.$eval("#zero-reflect",el=>Number(el.value)),50,
+      "touching the visible upper semicircle must move the upper value: "+JSON.stringify({halves,upperHit,
+        values:await page.evaluate(()=>[Number(document.querySelector("#zero-reflect").value),Number(document.querySelector("#zero-decay").value)])}));
+    assert.equal(await page.$eval("#zero-decay",el=>Number(el.value)),50,
+      "an overlapping lower hit target must not steal an upper semicircle touch");
+    await page.evaluate(()=>{
+      for(const id of ["zero-reflect","zero-decay"]){
+        const input=document.querySelector("#"+id);input.value="50";
+        input.dispatchEvent(new Event("input",{bubbles:true}));
+      }
+    });
+    await page.touchscreen.tap(halves.lowerTap.x,halves.lowerTap.y);
+    assert.equal(await page.$eval("#zero-reflect",el=>Number(el.value)),50,
+      "touching the visible lower semicircle must leave the upper value unchanged");
+    assert.notEqual(await page.$eval("#zero-decay",el=>Number(el.value)),50,
+      "the lower value must receive a touch on its own visible semicircle");
     await page.click("#export-toggle");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "the export summary must open its real nearby export controls");

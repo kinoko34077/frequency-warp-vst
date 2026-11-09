@@ -346,15 +346,33 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
               railBox.right<=innerWidth&&railBox.bottom<=innerHeight+1;
             const overlap=graphBox.left<railBox.right&&graphBox.right>railBox.left&&
               graphBox.top<railBox.bottom&&graphBox.bottom>railBox.top;
+            const describe=el=>({id:el?.id||"",className:typeof el?.className==="string"?el.className:"",tag:el?.tagName||""});
             return {railX,railY,initialValue:Number(rail.value),graphImage:graph.toDataURL(),
               graphVisible,railVisible,overlap,
               graphHit:graphReceiver===graph,
-              railHit:railReceiver===rail};
+              railHit:railReceiver===rail,
+              graphBox:{left:graphBox.left,top:graphBox.top,right:graphBox.right,bottom:graphBox.bottom},
+              panelBox:(()=>{const r=document.querySelector(".workspace-right").getBoundingClientRect();
+                return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,scrollTop:document.querySelector(".workspace-right").scrollTop}})(),
+              graphStack:document.elementsFromPoint(graphX,graphY).slice(0,4).map(describe),
+              sineBox:(()=>{const r=document.querySelector(".sine-monitor").getBoundingClientRect();
+                return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})(),scrollY};
           },height<=560);
           await page.touchscreen.tap(before.railX,before.railY);
-          await page.waitForFunction(initialValue=>
-            Number(document.querySelector("#axis-shift").value)!==initialValue,
-          {timeout:2500},before.initialValue);
+          try{
+            await page.waitForFunction(initialValue=>
+              Number(document.querySelector("#axis-shift").value)!==initialValue,
+            {timeout:2500},before.initialValue);
+          }catch(error){
+            const state=await page.evaluate(({x,y})=>{
+              const rail=document.querySelector("#axis-shift"),target=document.elementFromPoint(x,y);
+              const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();
+                return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}};
+              return {value:Number(rail.value),receiver:target?.id||target?.className||target?.tagName,
+                scrollY,rail:rect("#axis-shift"),graph:rect("#curve"),aux:rect(".sine-monitor"),controls:rect(".quick-panel")};
+            },{x:before.railX,y:before.railY});
+            throw Error(mode.name+"/"+width+"×"+height+" rail touch failed: "+JSON.stringify({before,state})+"; "+error.message);
+          }
           const after=await page.evaluate(()=>({
             value:Number(document.querySelector("#axis-shift").value),
             graphImage:document.querySelector("#curve").toDataURL()
@@ -362,6 +380,8 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           metrics.mobileControlGraph={graphVisible:before.graphVisible,
             railVisible:before.railVisible,overlap:before.overlap,
             graphHit:before.graphHit,railHit:before.railHit,
+            graphBox:before.graphBox,panelBox:before.panelBox,graphStack:before.graphStack,
+            sineBox:before.sineBox,scrollY:before.scrollY,
             valueChanged:after.value!==before.initialValue,
             graphChanged:after.graphImage!==before.graphImage};
         }
