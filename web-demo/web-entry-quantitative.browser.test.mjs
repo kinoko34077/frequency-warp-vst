@@ -12,18 +12,31 @@ const modes=[
   {name:"legacy",suffix:"&layout_editor=1",host:"#fw-layout-inspector"},
   {name:"v2",suffix:"&visual_editor_v2=1",host:"#visual-editor-v2"}
 ];
-const widths=[320,390,768,1280];
+const viewports=[
+  {width:320,height:844},{width:390,height:844},{width:768,height:844},{width:1280,height:844},
+  {width:390,height:320},{width:390,height:560},{width:390,height:561}
+];
 const base="http://127.0.0.1:8799/index.html?legacy_lab=1";
 function assertRecord(record){
-  const who=record.mode+"/"+record.width;
+  const who=record.mode+"/"+record.width+"×"+record.height;
   assert.ok(record.bootMs>=0&&record.bootMs<20000,who+" bootstrap timing "+JSON.stringify(record));
   assert.equal(record.extraIds,0,who+" duplicated IDs");
   assert.equal(record.pageOverflowPx<=1,true,who+" horizontal overflow "+JSON.stringify(record));
   if(record.width<=390){
-    assert.ok(record.controlsTop<=record.rightTop+1,who+" controls must precede the graph");
+    const live=record.mobileControlGraph;
+    assert.ok(live?.graphVisible&&live?.railVisible,
+      who+" graph and operated rail must stay visible together "+JSON.stringify(live));
+    assert.equal(live?.overlap,false,
+      who+" graph must not cover the operated rail "+JSON.stringify(live));
+    assert.ok(live?.graphHit&&live?.railHit,
+      who+" graph and rail must both receive touch "+JSON.stringify(live));
+    assert.ok(live?.valueChanged&&live?.graphChanged,
+      who+" touching the rail must update its value and visible graph "+JSON.stringify(live));
     assert.ok(record.curveLeft>=0&&record.curveRight<=record.width+1,
       who+" graph escapes the viewport "+JSON.stringify(record));
-    assert.ok(record.curveWidth>=record.width-100,
+    const minimumGraphWidth=Math.min(record.width*.5,
+      record.height<=400?record.height*.44:record.height*.24);
+    assert.ok(record.curveWidth+1>=minimumGraphWidth,
       who+" graph is too narrow to use "+JSON.stringify(record));
     assert.ok(record.squareErrorPx<=2,who+" right graph not square");
   }
@@ -34,7 +47,7 @@ function assertRecord(record){
   assert.equal(record.restoredFocus,"settings-open",who+" Settings return focus");
   assert.equal(record.editorVisible,record.mode!=="ordinary",who+" incorrect editor opt-in state");
 }
-test("W1: three independent entry modes × four widths, quantified reachability and state isolation",{
+test("W1: three entry modes × seven viewport sizes, quantified reachability and state isolation",{
   timeout:180000
 },async()=>{
   const server=spawn(process.env.PYTHON_BIN||(process.platform==="win32"?"python":"python3"),
@@ -49,10 +62,10 @@ test("W1: three independent entry modes × four widths, quantified reachability 
     // The published default entry is a separate UX contract from the legacy
     // harmonic lab below. Test the real source -> F/H -> controls -> graph
     // reading order and the auxiliary panel's relationship to that graph.
-    for(const width of widths){
+    for(const {width,height} of viewports){
       const page=await browser.newPage(),errors=[];
       page.on("pageerror",e=>errors.push(e.message));
-      await page.setViewport({width,height:844,deviceScaleFactor:1,
+      await page.setViewport({width,height,deviceScaleFactor:1,
         isMobile:width<=390,hasTouch:width<=390});
       await page.goto("http://127.0.0.1:8799/index.html",{waitUntil:"domcontentloaded"});
       await page.waitForFunction(()=>
@@ -94,11 +107,12 @@ test("W1: three independent entry modes × four widths, quantified reachability 
         (layout.label.top+layout.label.bottom)/2)<=8,
         context+" numeric value must remain inline with its label "+JSON.stringify(layout));
       if(width<=800){
-        assert.ok(layout.curve.width>=width-100,
+        const minimumCurveWidth=width>680?width*.35:width-100;
+        assert.ok(layout.curve.width>=minimumCurveWidth,
           context+" graph is too narrow to use "+JSON.stringify(layout));
         assert.ok(layout.curve.left>=0&&layout.curve.right<=width+1,
           context+" graph must be fully visible "+JSON.stringify(layout));
-        assert.ok(layout.sine.width<layout.graph.width-20,
+        assert.ok(layout.sine.width<width-100,
           context+" auxiliary tone must not stretch across the full mobile row "+JSON.stringify(layout));
         if(width<=390){
           for(const field of layout.harmonicFields){
@@ -118,10 +132,10 @@ test("W1: three independent entry modes × four widths, quantified reachability 
       await page.close();
     }
     for(const mode of modes){
-      for(const width of widths){
+      for(const {width,height} of viewports){
         const page=await browser.newPage(),errors=[];
         page.on("pageerror",e=>errors.push(e.message));
-        await page.setViewport({width,height:844,deviceScaleFactor:1,
+        await page.setViewport({width,height,deviceScaleFactor:1,
           isMobile:width<=390,hasTouch:width<=390});
         const start=Date.now();
         await page.goto(base+mode.suffix,{waitUntil:"domcontentloaded"});
@@ -136,10 +150,9 @@ test("W1: three independent entry modes × four widths, quantified reachability 
             host.shadowRoot.querySelector(selector).click();
           },mode.name);
         }
-        const metrics=await page.evaluate(async({width,name,host})=>{
+        const metrics=await page.evaluate(async({width,height,name,host})=>{
           const box=selector=>document.querySelector(selector).getBoundingClientRect();
-          const left=box(".workspace-left"),right=box(".workspace-right"),curve=box("#curve");
-          const controls=box(".quick-panel");
+          const curve=box("#curve"),graphPanel=box(".workspace-right");
           const candidates=["#settings-open","#export-jump","#pivot-link-target"];
           const hits={};
           for(const selector of candidates){
@@ -147,17 +160,20 @@ test("W1: three independent entry modes × four widths, quantified reachability 
             el.scrollIntoView({block:"center"});
             const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
             const receiver=document.elementFromPoint(x,y);
+            const r=receiver?.getBoundingClientRect();
             hits[selector]={reachable:receiver===el||el.contains(receiver),height:b.height,
-              width:b.width,centerX:x,centerY:y};
+              width:b.width,centerX:x,centerY:y,rect:{top:b.top,bottom:b.bottom,left:b.left,right:b.right},
+              receiver:receiver?.id||receiver?.className||receiver?.tagName||null,
+              receiverRect:r?{top:r.top,bottom:r.bottom,left:r.left,right:r.right}:null};
           }
           const ids=[...document.querySelectorAll("[id]")].map(x=>x.id);
           const extraIds=ids.length-new Set(ids).size;
           const pageOverflowPx=Math.max(0,document.documentElement.scrollWidth-innerWidth);
           const editorVisible=Boolean(host&&document.querySelector(host)?.shadowRoot);
-          return {mode:name,width,pageOverflowPx,leftRight:left.right,rightLeft:right.left,
-            controlsTop:controls.top,rightTop:right.top,curveLeft:curve.left,curveRight:curve.right,
+        return {mode:name,width,height,pageOverflowPx,graphPanelHeight:graphPanel.height,
+          curveLeft:curve.left,curveRight:curve.right,
             curveWidth:curve.width,squareErrorPx:Math.abs(curve.width-curve.height),extraIds,hits,editorVisible};
-        },{name:mode.name,width,host:mode.host});
+        },{name:mode.name,width,height,host:mode.host});
         metrics.bootMs=Date.now()-start;
         if(mode.name==="legacy"){
           const state=await page.evaluate(()=>{
@@ -189,6 +205,42 @@ test("W1: three independent entry modes × four widths, quantified reachability 
         }
         await page.click("#settings-done");
         metrics.restoredFocus=await page.evaluate(()=>document.activeElement?.id);
+        if(width<=390){
+          const before=await page.evaluate(async(shortViewport)=>{
+            const rail=document.querySelector("#axis-shift");
+            rail.scrollIntoView({block:shortViewport?"end":"center",inline:"nearest"});
+            await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+            const railBox=rail.getBoundingClientRect();
+            const graph=document.querySelector("#curve"),graphBox=graph.getBoundingClientRect();
+            const railX=railBox.left+railBox.width*.75,railY=(railBox.top+railBox.bottom)/2;
+            const graphX=(graphBox.left+graphBox.right)/2,graphY=(graphBox.top+graphBox.bottom)/2;
+            const railReceiver=document.elementFromPoint(railX,railY);
+            const graphReceiver=document.elementFromPoint(graphX,graphY);
+            const graphVisible=graphBox.left>=0&&graphBox.top>=0&&
+              graphBox.right<=innerWidth&&graphBox.bottom<=innerHeight;
+            const railVisible=railBox.left>=0&&railBox.top>=0&&
+              railBox.right<=innerWidth&&railBox.bottom<=innerHeight+1;
+            const overlap=graphBox.left<railBox.right&&graphBox.right>railBox.left&&
+              graphBox.top<railBox.bottom&&graphBox.bottom>railBox.top;
+            return {railX,railY,initialValue:Number(rail.value),graphImage:graph.toDataURL(),
+              graphVisible,railVisible,overlap,
+              graphHit:graphReceiver===graph,
+              railHit:railReceiver===rail};
+          },height<=560);
+          await page.touchscreen.tap(before.railX,before.railY);
+          await page.waitForFunction(initialValue=>
+            Number(document.querySelector("#axis-shift").value)!==initialValue,
+          {timeout:2500},before.initialValue);
+          const after=await page.evaluate(()=>({
+            value:Number(document.querySelector("#axis-shift").value),
+            graphImage:document.querySelector("#curve").toDataURL()
+          }));
+          metrics.mobileControlGraph={graphVisible:before.graphVisible,
+            railVisible:before.railVisible,overlap:before.overlap,
+            graphHit:before.graphHit,railHit:before.railHit,
+            valueChanged:after.value!==before.initialValue,
+            graphChanged:after.graphImage!==before.graphImage};
+        }
         metrics.errors=errors;
         rows.push(metrics);
         assertRecord(metrics);
@@ -196,6 +248,12 @@ test("W1: three independent entry modes × four widths, quantified reachability 
         await page.close();
       }
     }
+    const at560=rows.find(x=>x.mode==="ordinary"&&x.width===390&&x.height===560);
+    const at561=rows.find(x=>x.mode==="ordinary"&&x.width===390&&x.height===561);
+    assert.ok(Math.abs(at560.curveWidth-at561.curveWidth)<=2,
+      "Graph width should not jump at 560/561px viewport height: "+JSON.stringify({at560,at561}));
+    assert.ok(Math.abs(at560.graphPanelHeight-at561.graphPanelHeight)<=2,
+      "Graph panel height should not jump at 560/561px viewport height: "+JSON.stringify({at560,at561}));
     // This is a browser approximation, not an OS/browser 200% zoom or
     // physical soft-keyboard check. Print diagnostic measurements separately.
     const zoom=await browser.newPage();
@@ -212,13 +270,13 @@ test("W1: three independent entry modes × four widths, quantified reachability 
     });
     await zoom.close();
     console.log("W1_MACHINE_AUDIT "+JSON.stringify({
-      matrixCount:rows.length,modes:modes.map(m=>m.name),widths,
+      matrixCount:rows.length,modes:modes.map(m=>m.name),viewports,
       maxOverflowPx:Math.max(...rows.map(x=>x.pageOverflowPx)),
       maxGraphSquareErrorPx:Math.max(...rows.map(x=>x.squareErrorPx)),
       maxBootMs:Math.max(...rows.map(x=>x.bootMs)),
       minTargetHeightPx:Math.min(...rows.flatMap(x=>Object.values(x.hits).map(y=>y.height))),
-      measurements:rows.map(({mode,width,bootMs,pageOverflowPx,squareErrorPx})=>
-        ({mode,width,bootMs,pageOverflowPx,squareErrorPx})),
+      measurements:rows.map(({mode,width,height,graphPanelHeight,curveWidth,bootMs,pageOverflowPx,squareErrorPx})=>
+        ({mode,width,height,graphPanelHeight,curveWidth,bootMs,pageOverflowPx,squareErrorPx})),
       zoomDiagnostic:zoomMetrics
     }));
   }finally{

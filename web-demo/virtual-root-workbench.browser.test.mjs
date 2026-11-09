@@ -294,7 +294,8 @@ test("V5 virtual harmonic UI: linear integer sliders, live audio config, signed 
       // Live DSP acceptance: a slider edit must obtain a new Worklet ACK
       // while Wet is audible, with no separate Apply click.
       await page.click("#play-wet");
-      await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:25000});
+      await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+        document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
       const priorRevision=await page.$eval("#rt-indicator",el=>Number(el.dataset.appliedRevision||0));
       await page.$eval("#vr-first-index-rail",el=>{
         el.value="-4";el.dispatchEvent(new Event("input",{bubbles:true}));

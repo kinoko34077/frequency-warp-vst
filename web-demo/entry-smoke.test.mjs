@@ -86,9 +86,34 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       "Harmonic placement must be discoverable in the virtual-root workbench, not buried under effects");
     assert.equal(await page.$eval(".harmonic-mini",el=>el.getClientRects().length),0,
       "Original harmonic theory controls stay legacy-only in the normal Web UI");
+    await page.setViewport({width:1280,height:900,deviceScaleFactor:1,isMobile:false,hasTouch:false});
+    const desktopHud=await page.evaluate(()=>{
+      const hud=document.querySelector("#runtime-hud").getBoundingClientRect();
+      const graph=document.querySelector("#curve").getBoundingClientRect();
+      const overlaps=!(hud.right<=graph.left||graph.right<=hud.left||
+        hud.bottom<=graph.top||graph.bottom<=hud.top);
+      return {position:getComputedStyle(document.querySelector("#runtime-hud")).position,
+        overlaps,scrollWidth:document.documentElement.scrollWidth};
+    });
+    assert.equal(desktopHud.position,"static",
+      "Audio status belongs in the source layout unless the user drags it");
+    assert.equal(desktopHud.overlaps,false,
+      "Desktop status must not cover the graph");
+    await page.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
     // Mobile diagnostics must not begin as a wide fixed overlay over the graph
     // or pivot linker; the user can explicitly restore full detail.
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),true);
+    const mobileHud=await page.evaluate(()=>{
+      const hud=document.querySelector("#runtime-hud").getBoundingClientRect();
+      const rail=document.querySelector("#vr-step-m-rail").getBoundingClientRect();
+      return {position:getComputedStyle(document.querySelector("#runtime-hud")).position,
+        overlaps:!(hud.right<=rail.left||rail.right<=hud.left||
+          hud.bottom<=rail.top||rail.bottom<=hud.top)};
+    });
+    assert.equal(mobileHud.position,"static",
+      "The compact mobile status control must stay in document flow");
+    assert.equal(mobileHud.overlaps,false,
+      "Mobile status must not cover the virtual-root adjustment rail");
     const badgeWidth=await page.$eval("#runtime-hud-restore",el=>el.getBoundingClientRect().width);
     await page.evaluate(()=>{
       const s=document.querySelector("#status");
@@ -110,24 +135,44 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     await page.click("#runtime-hud-hide");
     for(const width of [320,390]){
       await page.setViewport({width,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
-      const hit=await page.$eval("#vr-target-h",el=>{
+      const inputTarget=await page.$eval("#vr-target-h",el=>{
         el.scrollIntoView({block:"center"});
-        const b=el.getBoundingClientRect(),x=b.left+b.width/2,y=b.top+b.height/2;
-        const under=document.elementFromPoint(x,y);
-        const left=document.querySelector(".quick-panel").getBoundingClientRect();
-        const right=document.querySelector(".workspace-right").getBoundingClientRect();
-        const graph=document.querySelector("#curve").getBoundingClientRect();
-        return {target:under===el||el.contains(under),
-          controlsBottom:left.bottom,graphPanelTop:right.top,
-          graphLeft:graph.left,graphRight:graph.right,viewport:innerWidth,
-          graphW:graph.width,graphH:graph.height,
+        const r=el.getBoundingClientRect(),under=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);
+        return under===el||el.contains(under);
+      });
+      assert.equal(inputTarget,true,
+        "Mobile status must not intercept virtual fundamental input at "+width+"px");
+      const coView=await page.evaluate(()=>{
+        const rail=document.querySelector("#axis-slope");
+        rail.scrollIntoView({block:"center",inline:"nearest"});
+        const r=rail.getBoundingClientRect(),g=document.querySelector("#curve").getBoundingClientRect();
+        const p=document.querySelector(".workspace-right").getBoundingClientRect();
+        return {railVisible:r.top>=0&&r.bottom<=innerHeight,
+          graphVisible:g.top>=0&&g.bottom<=innerHeight,
+          railGraphOverlap:!(r.right<=g.left||g.right<=r.left||r.bottom<=g.top||g.bottom<=r.top),
+          railPanelOverlap:!(r.right<=p.left||p.right<=r.left||r.bottom<=p.top||p.bottom<=r.top),
+          graphWidth:g.width,graphHeight:g.height,
           overflow:document.documentElement.scrollWidth>innerWidth};
       });
-      assert.ok(hit.target,"Mobile status must not intercept virtual fundamental input at "+width+": "+JSON.stringify(hit));
-      assert.ok(hit.controlsBottom<=hit.graphPanelTop+1&&
-        hit.graphW>=width-100&&hit.graphLeft>=0&&hit.graphRight<=width+1&&
-        Math.abs(hit.graphW-hit.graphH)<2&&!hit.overflow,
-        "Mobile controls must precede a visible full-width square graph at "+width+": "+JSON.stringify(hit));
+      assert.ok(coView.railVisible&&coView.graphVisible&&!coView.railGraphOverlap&&!coView.railPanelOverlap&&
+        coView.graphWidth>=145&&Math.abs(coView.graphWidth-coView.graphHeight)<2&&!coView.overflow,
+        "Mobile transform rail and its graph must stay visible together at "+width+"px: "+JSON.stringify(coView));
+      const beforeSlope=await page.$eval("#axis-slope",el=>el.value);
+      const railBox=await page.$eval("#axis-slope",el=>{
+        const r=el.getBoundingClientRect();return {x:r.left,y:r.top,width:r.width,height:r.height};
+      });
+      const clickFraction=Number(beforeSlope)>0?0.1:0.9;
+      await page.mouse.click(railBox.x+railBox.width*clickFraction,railBox.y+railBox.height/2);
+      const afterSlope=await page.$eval("#axis-slope",el=>el.value);
+      assert.notEqual(afterSlope,beforeSlope,
+        "Mobile transform rail must remain operable while the graph is visible");
+      const afterAdjustment=await page.evaluate(()=>{
+        const r=document.querySelector("#axis-slope").getBoundingClientRect();
+        const g=document.querySelector("#curve").getBoundingClientRect();
+        return r.top>=0&&r.bottom<=innerHeight&&g.top>=0&&g.bottom<=innerHeight;
+      });
+      assert.equal(afterAdjustment,true,
+        "The graph must remain in view after changing a mobile transform rail");
       const exportTarget=await page.$eval("#export-jump",el=>{
         el.scrollIntoView({block:"center"});
         const r=el.getBoundingClientRect(),under=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
@@ -205,6 +250,48 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       timeout:30000
     });
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
+    await page.click("#harmonic-placement-details > summary");
+    await page.click("#rational-enabled");
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("稼働中"),{timeout:25000});
+    await page.click("#source-region > summary");
+    assert.equal(await page.$eval("#source-region",el=>el.open),true,
+      "Folding the source region during playback must keep Stop reachable");
+    assert.equal(await page.$eval("#stop",el=>!el.disabled&&el.getClientRects().length>0),true);
+    assert.match(await page.$eval("#status",el=>el.textContent),/再生中.*停止/,
+      "Explain why the source region stays open during playback");
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+    const beforeFolds={
+      file:await page.$eval("#file-meta",el=>el.textContent),
+      playable:await page.$eval("#play-wet",el=>!el.disabled),
+      sourceF:await page.$eval("#vr-source-f",el=>el.value),
+      slope:await page.$eval("#axis-slope",el=>el.value),
+      graphLog:await page.$eval("#graph-log",el=>el.value),
+      sine:await page.$eval("#sine-hz",el=>el.value),
+      harmonicPlacement:await page.$eval("#rational-enabled",el=>el.checked)
+    };
+    for(const selector of ["#source-region","#virtual-root-workbench",
+      ".quick-panel > .panel-fold",".workspace-right > .panel-fold",
+      ".sine-monitor > .panel-fold"]){
+      const summary=selector+" > summary";
+      await page.click(summary);
+      assert.equal(await page.$eval(selector,el=>el.open),false,
+        "Each main work region must be individually collapsible: "+selector);
+      await page.click(summary);
+      assert.equal(await page.$eval(selector,el=>el.open),true,
+        "Each main work region must be individually restorable: "+selector);
+    }
+    assert.deepEqual({
+      file:await page.$eval("#file-meta",el=>el.textContent),
+      playable:await page.$eval("#play-wet",el=>!el.disabled),
+      sourceF:await page.$eval("#vr-source-f",el=>el.value),
+      slope:await page.$eval("#axis-slope",el=>el.value),
+      graphLog:await page.$eval("#graph-log",el=>el.value),
+      sine:await page.$eval("#sine-hz",el=>el.value),
+      harmonicPlacement:await page.$eval("#rational-enabled",el=>el.checked)
+    },beforeFolds,"Collapsing and restoring regions must preserve loaded audio and control values");
     // #79 M3 exact single-source Wet: typed %, coarse range, A/B and reset.
     const setWet=percent=>page.$eval("#wet-value",(el,value)=>{
       el.value=value;el.dispatchEvent(new Event("input",{bubbles:true}));
@@ -376,7 +463,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
         clientX:bounds.left+bounds.width*value/8,clientY:bounds.top+bounds.height/2}));
     },seconds);
     await page.click("#play-dry");
-    await page.waitForFunction(()=>!document.querySelector("#stop").disabled,{timeout:10000});
+    await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
+      document.querySelector("#rt-indicator").textContent.includes("原音再生中"),{timeout:12000});
     await seekTo(2.4);
     await page.click("#compare-save-a");
     const aOffset=await page.evaluate(()=>window.__comparisonSourceStarts.at(-1));
@@ -418,6 +506,17 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.ok(Math.abs(await page.evaluate(()=>window.__comparisonSourceStarts.at(-1))-bOffset)<.15,
       "rapid A→B selection leaves the latest slot's mode and playhead active");
     await page.click("#stop");
+    await page.click("#runtime-hud-restore");
+    const hudHead=await page.$eval("#runtime-hud-head",el=>{
+      const r=el.getBoundingClientRect();return {x:r.left+20,y:r.top+r.height/2};
+    });
+    await page.mouse.move(hudHead.x,hudHead.y);
+    await page.mouse.down();
+    await page.mouse.move(hudHead.x+48,hudHead.y+42,{steps:3});
+    await page.mouse.up();
+    assert.equal(await page.$eval("#runtime-hud",el=>
+      el.classList.contains("is-floating")&&getComputedStyle(el).position==="fixed"),true,
+      "Dragging the inline status panel must preserve its floating-window behavior");
     assert.deepEqual(errors,[],"No missing module/asset or JavaScript runtime errors");
     if(!liveUrl){
       // Deliberately fail a large module import. Independent entry-controls.js
@@ -451,8 +550,153 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
 });
 
 
+test("Pages entry: Stop keeps source reachable during AudioWorklet startup",async()=>{
+  const root=await mkdtemp(join(tmpdir(),"warp-startup-race-"));
+  const server=liveUrl?null:spawn("python3",["-m","http.server","8767","--bind","127.0.0.1"],{
+    cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"
+  });
+  let browser;
+  try{
+    const wav=join(root,"startup.wav");await writeFile(wav,shortWav());
+    browser=await puppeteer.launch({
+      executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",
+      headless:true,
+      args:["--no-sandbox","--disable-dev-shm-usage","--autoplay-policy=no-user-gesture-required"]
+    });
+    const page=await browser.newPage();
+    await page.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+    const errors=[];page.on("pageerror",error=>errors.push(String(error.message)));
+    const url=liveUrl||"http://127.0.0.1:8767/index.html";
+    await page.goto(url,{waitUntil:"domcontentloaded",timeout:20000});
+    await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",
+      {timeout:15000});
+    const audioFile=join(root,"startup.wav");
+    await (await page.$("#audio-file")).uploadFile(audioFile);
+    await page.waitForFunction(()=>!document.querySelector("#play-wet").disabled,
+      {timeout:20000});
+    await page.evaluate(()=>{
+      const NativeContext=window.AudioContext;
+      window.__raceNativeAudioContext=NativeContext;
+      window.AudioContext=class extends NativeContext{
+        createBufferSource(...args){
+          const source=super.createBufferSource(...args);
+          const start=source.start.bind(source);
+          source.start=(...values)=>{
+            window.__raceSourceStarted=true;
+            return start(...values);
+          };
+          return source;
+        }
+      };
+      const NativeWorklet=window.AudioWorkletNode;
+      window.__raceNativeWorkletNode=NativeWorklet;
+      window.AudioWorkletNode=class extends NativeWorklet{
+        constructor(...args){
+          super(...args);
+          this.port.addEventListener("message",event=>{
+            if(event.data?.type==="ready")window.__raceLateReady=true;
+          });
+          const send=this.port.postMessage.bind(this.port);
+          this.port.postMessage=(message,...rest)=>{
+            if(message?.type==="init"){
+              window.__raceReleaseWorkletInit=()=>send(message,...rest);
+              return;
+            }
+            return send(message,...rest);
+          };
+        }
+      };
+    });
+    await page.click("#play-wet");
+    await page.waitForFunction(()=>typeof window.__raceReleaseWorkletInit==="function",
+      {timeout:20000});
+    assert.equal(await page.evaluate(()=>window.__raceSourceStarted),true,
+      "The regression window must occur after the source is scheduled but before Worklet readiness");
+    assert.equal(await page.$eval("#stop",element=>element.disabled),false,
+      "Stop must become available as soon as playback startup begins");
+    await page.click("#source-region > summary");
+    assert.equal(await page.$eval("#source-region",element=>element.open),true,
+      "The source region must remain open while its AudioWorklet is initializing");
+    assert.match(await page.$eval("#status",element=>element.textContent),/再生中.*停止/,
+      "Explain why the source region stays open during Worklet startup");
+    await page.click("#stop");
+    await page.waitForFunction(()=>document.querySelector("#stop").disabled);
+    assert.equal(await page.$eval("#play-wet",element=>element.disabled),false,
+      "Stopping a pending Worklet launch must restore the playback controls");
+    await page.evaluate(()=>{
+      window.__raceReleaseWorkletInit?.();
+      window.AudioWorkletNode=window.__raceNativeWorkletNode;
+      window.AudioContext=window.__raceNativeAudioContext;
+    });
+    await page.waitForFunction(()=>window.__raceLateReady===true,{timeout:15000});
+    assert.equal(await page.$eval("#stop",element=>element.disabled),true,
+      "A canceled Worklet launch must not restart playback when init finishes");
+    assert.equal(await page.$eval("#play-wet",element=>element.disabled),false,
+      "A late ready acknowledgement must not leave playback controls disabled");
+    assert.match(await page.$eval("#rt-indicator",element=>element.textContent),/停止中/,
+      "A late Worklet ready acknowledgement must leave transport stopped");
+    assert.deepEqual(errors,[],"The startup cancellation must not cause a browser error");
+  }finally{
+    if(browser)await browser.close();
+    if(server){server.kill();await new Promise(resolve=>server.once("exit",resolve));}
+    await rm(root,{recursive:true,force:true});
+  }
+});
+
+test("Pages entry: 768px touch layout keeps transform controls beside the graph",async()=>{
+  const server=liveUrl?null:spawn("python3",["-m","http.server","8768","--bind","127.0.0.1"],{
+    cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"
+  });
+  let browser;
+  try{
+    browser=await puppeteer.launch({
+      executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",
+      headless:true,args:["--no-sandbox","--disable-dev-shm-usage"]
+    });
+    const page=await browser.newPage();
+    await page.setViewport({width:768,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+    const url=liveUrl||"http://127.0.0.1:8768/index.html";
+    let loaded=false,lastError="";
+    for(let attempt=0;attempt<8&&!loaded;attempt++){
+      try{
+        await page.goto(url,{waitUntil:"domcontentloaded",timeout:15000});
+        await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready"&&
+          document.querySelector("#vr-summary")?.textContent.includes("仮想基音"),{timeout:12000});
+        loaded=true;
+      }catch(error){
+        lastError=error.message;
+        await new Promise(resolve=>setTimeout(resolve,800));
+      }
+    }
+    assert.ok(loaded,"768px touch entry must boot: "+lastError);
+    const coView=await page.evaluate(()=>{
+      const rail=document.querySelector("#axis-slope");
+      rail.scrollIntoView({block:"center",inline:"nearest"});
+      const rect=selector=>document.querySelector(selector).getBoundingClientRect();
+      const r=rect("#axis-slope"),g=rect("#curve"),graph=rect(".workspace-right"),controls=rect(".quick-panel");
+      const overlap=(a,b)=>!(a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top);
+      return {railVisible:r.top>=0&&r.bottom<=innerHeight,graphVisible:g.top>=0&&g.bottom<=innerHeight,
+        railGraphOverlap:overlap(r,g),railPanelOverlap:overlap(r,graph),
+        columns:controls.right<=graph.left||graph.right<=controls.left,
+        graphWidth:g.width,graphHeight:g.height,overflow:document.documentElement.scrollWidth>innerWidth};
+    });
+    assert.ok(coView.railVisible&&coView.graphVisible&&!coView.railGraphOverlap&&!coView.railPanelOverlap&&
+      coView.columns&&coView.graphWidth>=145&&Math.abs(coView.graphWidth-coView.graphHeight)<2&&!coView.overflow,
+      "768px touch transform rail and graph must be reachable side-by-side: "+JSON.stringify(coView));
+    const before=await page.$eval("#axis-slope",el=>el.value);
+    const bounds=await page.$eval("#axis-slope",el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};});
+    await page.mouse.click(bounds.x+bounds.w*.1,bounds.y+bounds.h/2);
+    assert.notEqual(await page.$eval("#axis-slope",el=>el.value),before,
+      "The 768px transform rail must remain operable with the graph visible");
+  }finally{
+    await browser?.close();
+    server?.kill("SIGTERM");
+  }
+});
+
+
 test("Public entry shows a source-local error when audio module never boots",{
-  timeout:25000
+  timeout:45000
 },async()=>{
   const server=liveUrl?null:spawn("python3",["-m","http.server","8767","--bind","127.0.0.1"],{
     cwd:resolve(process.env.WARP_WEB_ROOT||"_site"),stdio:"ignore"

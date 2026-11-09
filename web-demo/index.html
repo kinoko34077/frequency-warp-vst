@@ -20,8 +20,8 @@
 
   <div class="workspace-grid">
     <div class="workspace-left">
-      <section class="panel player" aria-labelledby="player-title">
-        <div class="section-header"><div><p class="eyebrow">AUDIO SOURCE</p><h2 id="player-title">音を聴きながら調整</h2></div><span class="micro-hint">先頭600秒まで</span></div>
+      <details id="source-region" class="panel player" aria-labelledby="player-title" open>
+        <summary class="section-header"><div><p class="eyebrow">AUDIO SOURCE</p><h2 id="player-title">音を聴きながら調整</h2></div><span class="micro-hint">先頭600秒まで</span></summary>
         <label id="drop" class="drop" for="audio-file" role="button" tabindex="0" aria-label="音声ファイルを選ぶ">
           <span aria-hidden="true">♫</span><strong>ここを押して音声を選ぶ</strong>
           <small>WAV / MP3 / M4A など · 75MBまで · ドロップ可</small>
@@ -47,12 +47,25 @@
         </div>
         <button id="export-jump" type="button" class="text-button export-shortcut">WAV書き出し ↗</button>
         <audio id="background-output" playsinline preload="none" aria-hidden="true" hidden></audio>
-      </section>
+      </details>
+      <!-- Keep telemetry in the source work area so it never sits over the
+           graph or controls. It becomes a floating tool only after a drag. -->
+      <aside id="runtime-hud" class="runtime-hud" aria-label="再生・DSP状態">
+        <div class="runtime-hud-head" id="runtime-hud-head"><span>音声・処理状態</span><div class="runtime-hud-buttons"><button type="button" id="runtime-hud-collapse" aria-expanded="true" aria-controls="runtime-hud-body" aria-label="処理状態の詳細を畳む">−</button><button type="button" id="runtime-hud-hide" aria-label="処理状態を小さく表示">×</button></div></div>
+        <div id="runtime-hud-body" class="runtime-hud-body">
+        <div id="rt-indicator" class="rt-indicator" role="status">停止中 · Rust/WASM</div>
+        <div id="rt-telemetry" class="rt-indicator" aria-live="off"></div>
+        <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを選択してください。</div>
+        </div>
+        <button type="button" id="runtime-hud-restore" hidden aria-label="音声処理状態を再表示">状態 <span id="runtime-hud-brief">停止中</span></button>
+      </aside>
     </div>
 
-    <section id="virtual-root-workbench" class="panel virtual-root-panel" aria-label="仮想基音と倍音配置">
+    <details id="virtual-root-workbench" class="panel virtual-root-panel" aria-label="仮想基音と倍音配置" open>
+      <summary class="section-header vr-header"><h2>倍音を配置する</h2></summary>
       <details id="harmonic-placement-details" class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
-    </section>
+    </details>
+    <div class="control-graph-layout">
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <details class="panel-fold" open><summary>変換パラメータ・追加加工</summary>
@@ -209,6 +222,7 @@
       <details class="advanced-stats"><summary>処理情報</summary><div class="performance-summary"><div id="engine-description"></div><div id="engine-stats"></div></div></details>
       </details>
     </aside>
+    </div>
     <section class="panel sine-monitor" aria-labelledby="sine-heading">
       <details class="panel-fold" open><summary>補助音</summary>
       <div class="section-header"><div><p class="eyebrow">AUXILIARY TONE</p><h2 id="sine-heading">補助音</h2></div>
@@ -229,18 +243,6 @@
     <footer><span>音声は端末内で処理 · 研究試作</span><a href="https://github.com/kinoko34077/frequency-warp-vst">GitHub / Source</a></footer>
   </div>
 </main>
-<!-- Audio status is an overlay, not a child of the player layout. Updating
-     text at audio-block cadence must never resize/shift any controls. -->
-<aside id="runtime-hud" class="runtime-hud" aria-label="再生・DSP状態">
-  <div class="runtime-hud-head" id="runtime-hud-head"><span>音声・処理状態</span><div class="runtime-hud-buttons"><button type="button" id="runtime-hud-collapse" aria-expanded="true" aria-controls="runtime-hud-body" aria-label="処理状態の詳細を畳む">−</button><button type="button" id="runtime-hud-hide" aria-label="処理状態を小さく表示">×</button></div></div>
-  <div id="runtime-hud-body" class="runtime-hud-body">
-  <div id="rt-indicator" class="rt-indicator" role="status">停止中 · Rust/WASM</div>
-  <div id="rt-telemetry" class="rt-indicator" aria-live="off"></div>
-  <div id="status" class="status" data-kind="info" aria-live="polite">音声ファイルを選択してください。</div>
-  </div>
-  <button type="button" id="runtime-hud-restore" hidden aria-label="音声処理状態を再表示">状態 <span id="runtime-hud-brief">停止中</span></button>
-</aside>
-
 <dialog id="settings-dialog" aria-labelledby="settings-title">
   <div class="settings-head"><div><p class="eyebrow">PREFERENCES</p><h2 id="settings-title">設定</h2><p>変更内容は再生中にも反映されます。</p></div><button id="settings-close" type="button" aria-label="設定を閉じる">×</button></div>
   <div class="settings-body">
