@@ -736,9 +736,9 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
           buttons};
       });
       assert.ok(geometry.sourceBottom<=geometry.graphPanelTop+1&&
-        geometry.graphW>=width-100&&geometry.graphLeft>=0&&geometry.graphRight<=width+1&&
+        geometry.graphW>=width*.5&&geometry.graphLeft>=0&&geometry.graphRight<=width+1&&
         Math.abs(geometry.graphW-geometry.graphH)<2&&!geometry.overflow,
-        "A/B compare must follow mobile reading order with a full-width square graph at "+width+": "+JSON.stringify(geometry));
+        "A/B compare must retain the source-first layout and a responsive square graph at "+width+": "+JSON.stringify(geometry));
       assert.ok(geometry.buttons.every(v=>v.height>=40&&v.reachable),
         "A/B actual touch hit targets at "+width+": "+JSON.stringify(geometry));
     }
@@ -1320,22 +1320,30 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // Check mobile layout without overriding current application state.
     await page.setViewport({width:390,height:844,deviceScaleFactor:1,isMobile:true,hasTouch:true});
     await page.waitForFunction(()=>document.querySelector("#curve").width===document.querySelector("#curve").height);
+    await page.evaluate(async()=>{
+      document.querySelector("#axis-shift").scrollIntoView({block:"center",inline:"nearest"});
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    });
     const layout=await page.evaluate(()=>({
       overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
       settingsRect:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#settings-open").getBoundingClientRect()),
       curve:((r)=>({x:r.x,width:r.width,right:r.right}))(document.querySelector("#curve").getBoundingClientRect()),
-      leftPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top,bottom:r.bottom}))(document.querySelector(".quick-panel").getBoundingClientRect()),
-      rightPanel:((r)=>({x:r.x,width:r.width,right:r.right,top:r.top}))(document.querySelector(".workspace-right").getBoundingClientRect()),
+      axis:((r)=>({x:r.x,width:r.width,left:r.left,right:r.right,top:r.top,bottom:r.bottom}))(document.querySelector("#axis-shift").getBoundingClientRect()),
+      graphVisible:(()=>{const r=document.querySelector("#curve").getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})(),
+      axisVisible:(()=>{const r=document.querySelector("#axis-shift").getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})(),
+      overlap:(()=>{const a=document.querySelector("#axis-shift").getBoundingClientRect(),g=document.querySelector("#curve").getBoundingClientRect();return a.top<g.bottom&&a.bottom>g.top&&a.left<g.right&&a.right>g.left})(),
+      graphHit:(()=>{const g=document.querySelector("#curve"),r=g.getBoundingClientRect();return document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)===g})(),
+      axisHit:(()=>{const a=document.querySelector("#axis-shift"),r=a.getBoundingClientRect();return document.elementFromPoint(r.left+r.width*.75,r.top+r.height/2)===a})(),
 
       viewHidden:document.querySelector("#view-map").hidden,
       tabState:document.querySelector("#tab-map").getAttribute("aria-selected"),
       canvasSize:[document.querySelector("#curve").width,document.querySelector("#curve").height]
     }));
     assert.ok(layout.overflow<=2,"Mobile horizontal overflow "+layout.overflow);
-    assert.ok(layout.curve.width>=390-100&&layout.curve.x>=0&&layout.curve.right<=391,
-      "Mobile graph must use the available row width "+JSON.stringify(layout));
-    assert.ok(layout.leftPanel.top<layout.rightPanel.top&&layout.leftPanel.bottom<=layout.rightPanel.top+1,
-      "Controls must precede the graph in mobile reading order "+JSON.stringify(layout));
+    assert.ok(layout.curve.width>=195&&layout.curve.x>=0&&layout.curve.right<=391,
+      "Mobile graph must remain large enough to inspect "+JSON.stringify(layout));
+    assert.ok(layout.graphVisible&&layout.axisVisible&&!layout.overlap&&layout.graphHit&&layout.axisHit,
+      "Mobile graph and active rail must remain simultaneously visible and reachable "+JSON.stringify(layout));
     assert.ok(layout.settingsRect.right<=390);
     // Contextual help must remain on-screen when opened in the narrow graph column.
     await page.click(".graph-scale .info-tip summary");
@@ -1346,7 +1354,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     assert.ok(popoverBounds.left>=-1 && popoverBounds.right<=popoverBounds.screen+1,
       "mobile help panel escaped viewport "+JSON.stringify(popoverBounds));
     await page.click(".graph-scale .info-tip summary");
-    assert.ok(layout.curve.width>=390-100,"Mobile help layout must preserve the full-width graph "+JSON.stringify(layout));
+    assert.ok(layout.curve.width>=195,"Mobile help layout must preserve the responsive graph "+JSON.stringify(layout));
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     assert.match(await page.$eval("#mini-harmonics",el=>el.textContent),/3：/);
     await page.click("#settings-open");
