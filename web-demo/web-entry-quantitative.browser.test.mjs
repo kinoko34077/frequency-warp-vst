@@ -13,9 +13,11 @@ const modes=[
   {name:"v2",suffix:"&visual_editor_v2=1",host:"#visual-editor-v2"}
 ];
 const viewports=[
+  {width:320,height:320},{width:361,height:320},{width:390,height:320},
+  {width:320,height:560},{width:361,height:560},{width:390,height:560},
+  {width:320,height:561},{width:361,height:561},{width:390,height:561},
   {width:320,height:844},{width:361,height:844},{width:390,height:844},{width:768,height:844},
   {width:1024,height:844},{width:1280,height:900},
-  {width:390,height:320},{width:390,height:560},{width:390,height:561}
 ];
 const base="http://127.0.0.1:8799/index.html?legacy_lab=1";
 function assertRecord(record){
@@ -159,9 +161,13 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           context+" graph is too narrow to use "+JSON.stringify(layout));
         assert.ok(layout.curve.left>=0&&layout.curve.right<=width+1,
           context+" graph must be fully visible "+JSON.stringify(layout));
-        assert.ok(layout.sine.width<width-100,
-          context+" auxiliary tone must not stretch across the full mobile row "+JSON.stringify(layout));
+        assert.ok(Math.abs(layout.sine.left-layout.graph.left)<=2&&
+          Math.abs(layout.sine.right-layout.graph.right)<=2&&
+          Math.abs(layout.sine.width-layout.graph.width)<=2,
+          context+" auxiliary tone should use the graph width below it "+JSON.stringify(layout));
         if(width<=390){
+          assert.ok(layout.sine.top<layout.controls.top,
+            context+" mobile auxiliary tone should follow the graph before the transform controls "+JSON.stringify(layout));
           for(const field of layout.harmonicFields){
             assert.ok(Math.abs(field.number.top-field.rail.top)<=4,
               context+" "+field.key+" value and slider should share one row "+JSON.stringify(field));
@@ -236,7 +242,7 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         const metrics=await page.evaluate(async({width,height,name,host})=>{
           const box=selector=>document.querySelector(selector).getBoundingClientRect();
           const curve=box("#curve"),graphPanel=box(".workspace-right");
-          const candidates=["#settings-open","#export-jump","#pivot-link-target"];
+          const candidates=["#settings-open","#export-toggle","#pivot-link-target"];
           const hits={};
           for(const selector of candidates){
             const el=document.querySelector(selector);
@@ -342,15 +348,33 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
               railBox.right<=innerWidth&&railBox.bottom<=innerHeight+1;
             const overlap=graphBox.left<railBox.right&&graphBox.right>railBox.left&&
               graphBox.top<railBox.bottom&&graphBox.bottom>railBox.top;
+            const describe=el=>({id:el?.id||"",className:typeof el?.className==="string"?el.className:"",tag:el?.tagName||""});
             return {railX,railY,initialValue:Number(rail.value),graphImage:graph.toDataURL(),
               graphVisible,railVisible,overlap,
               graphHit:graphReceiver===graph,
-              railHit:railReceiver===rail};
+              railHit:railReceiver===rail,
+              graphBox:{left:graphBox.left,top:graphBox.top,right:graphBox.right,bottom:graphBox.bottom},
+              panelBox:(()=>{const r=document.querySelector(".workspace-right").getBoundingClientRect();
+                return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,scrollTop:document.querySelector(".workspace-right").scrollTop}})(),
+              graphStack:document.elementsFromPoint(graphX,graphY).slice(0,4).map(describe),
+              sineBox:(()=>{const r=document.querySelector(".sine-monitor").getBoundingClientRect();
+                return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}})(),scrollY};
           },height<=560);
           await page.touchscreen.tap(before.railX,before.railY);
-          await page.waitForFunction(initialValue=>
-            Number(document.querySelector("#axis-shift").value)!==initialValue,
-          {timeout:2500},before.initialValue);
+          try{
+            await page.waitForFunction(initialValue=>
+              Number(document.querySelector("#axis-shift").value)!==initialValue,
+            {timeout:2500},before.initialValue);
+          }catch(error){
+            const state=await page.evaluate(({x,y})=>{
+              const rail=document.querySelector("#axis-shift"),target=document.elementFromPoint(x,y);
+              const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();
+                return {left:r.left,top:r.top,right:r.right,bottom:r.bottom}};
+              return {value:Number(rail.value),receiver:target?.id||target?.className||target?.tagName,
+                scrollY,rail:rect("#axis-shift"),graph:rect("#curve"),aux:rect(".sine-monitor"),controls:rect(".quick-panel")};
+            },{x:before.railX,y:before.railY});
+            throw Error(mode.name+"/"+width+"×"+height+" rail touch failed: "+JSON.stringify({before,state})+"; "+error.message);
+          }
           const after=await page.evaluate(()=>({
             value:Number(document.querySelector("#axis-shift").value),
             graphImage:document.querySelector("#curve").toDataURL()
@@ -358,6 +382,8 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           metrics.mobileControlGraph={graphVisible:before.graphVisible,
             railVisible:before.railVisible,overlap:before.overlap,
             graphHit:before.graphHit,railHit:before.railHit,
+            graphBox:before.graphBox,panelBox:before.panelBox,graphStack:before.graphStack,
+            sineBox:before.sineBox,scrollY:before.scrollY,
             valueChanged:after.value!==before.initialValue,
             graphChanged:after.graphImage!==before.graphImage};
         }

@@ -291,7 +291,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       }));
       assert.equal(shape.sources,2,root+" must preserve both native Rust parameters");
       assert.equal(shape.thumbs,2,root+" must have TWO accessible thumbs");
-      assert.ok(shape.track>=40&&shape.inner>=40,root+" must have one useable track");
+      assert.ok(shape.track>=30&&shape.track<=32&&shape.inner>=30&&shape.inner<=32,
+        root+" must keep a compact 30px track while preserving both 28px touch targets");
     }
     const dragDual=async(root,which,from,to)=>{
       await page.$eval("#"+root,el=>el.scrollIntoView({block:"center"}));
@@ -592,8 +593,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       const b=el.getBoundingClientRect(),parent=el.closest(".quick-panel").getBoundingClientRect();
       return {x:b.x,right:b.right,parentRight:parent.right,height:b.height};
     });
-    assert.ok(mobileRail.right<=mobileRail.parentRight+2 && mobileRail.height>=42,
-      "iOS-sized dual-thumb must fit in controls "+JSON.stringify(mobileRail));
+    assert.ok(mobileRail.right<=mobileRail.parentRight+2&&mobileRail.height>=30&&mobileRail.height<=32,
+      "iOS-sized dual-thumb must fit in controls with a compact 30px track "+JSON.stringify(mobileRail));
     await page.$eval("#zero-decay",el=>{el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));});
     assert.equal(await page.$eval("#view-map",el=>el.hidden),false);
     await page.click("#settings-open");
@@ -783,7 +784,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     await page.$eval("#axis-shift-value",el=>{
       el.value="0";el.dispatchEvent(new Event("input",{bubbles:true}));
     });
-    await page.click("#export-jump");
+    await page.click("#export-toggle");
     assert.equal(await page.$eval(".offline-tool",el=>el.open),true,
       "Source → WAV action must expand the offline tool directly");
     const exportFocus=await page.evaluate(()=>({
@@ -794,8 +795,8 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       sourceReady:Boolean(document.querySelector("#file-meta").textContent),
       offlineOpen:document.querySelector(".offline-tool").open
     }));
-    assert.equal(exportFocus.activeId,"render",
-      "Navigation must land on the next enabled export action: "+JSON.stringify(exportFocus));
+    assert.equal(exportFocus.summaryFocused,true,
+      "The nearby real export disclosure should retain focus when it opens: "+JSON.stringify(exportFocus));
     await page.click("#render");
     await page.waitForFunction(()=>!document.querySelector("#download").disabled,
       {timeout:45000});
@@ -1287,7 +1288,10 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
       document.querySelector("#rt-indicator").textContent.includes("操作反映済み"),
       {timeout:15000});
     // Switch actual Rust DSP engines via the discoverable SETTINGS dialog.
-    await page.click(".fx-more summary");
+    assert.equal(await page.$eval("#rational-enabled",el=>el.closest("label")?.parentElement?.id),
+      "virtual-root-workbench");
+    assert.equal(await page.$eval("#virtual-root-workbench",el=>
+      Boolean(el.querySelector("#harmonic-placement-details"))),false);
     await page.click("#rational-enabled");
     await page.click("#settings-open");
     // Ring and rational layout are *effects*, not synthesis engines.

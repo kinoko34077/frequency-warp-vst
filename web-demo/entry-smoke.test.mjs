@@ -130,6 +130,23 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       s.dataset.kind="info";
       s.textContent="音声ファイルを選択してください。";
     });
+    await page.click("#source-region > summary");
+    assert.equal(await page.$eval("#source-region",el=>el.open),false,
+      "the idle source panel should remain collapsible");
+    await page.evaluate(()=>{
+      const s=document.querySelector("#status");
+      s.dataset.kind="error";
+      s.textContent="折り畳み中に発生した音声エラー";
+    });
+    await page.waitForFunction(()=>document.querySelector("#source-region").open,{timeout:2500});
+    assert.equal(await page.$eval("#runtime-hud-brief",el=>el.textContent),
+      "折り畳み中に発生した音声エラー",
+      "a playback error must reopen its source-local status so the user can see it");
+    await page.evaluate(()=>{
+      const s=document.querySelector("#status");
+      s.dataset.kind="info";
+      s.textContent="音声ファイルを選択してください。";
+    });
     await page.click("#runtime-hud-restore");
     assert.equal(await page.$eval("#runtime-hud",el=>el.classList.contains("is-hidden")),false);
     await page.click("#runtime-hud-hide");
@@ -173,13 +190,13 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       });
       assert.equal(afterAdjustment,true,
         "The graph must remain in view after changing a mobile transform rail");
-      const exportTarget=await page.$eval("#export-jump",el=>{
+      const exportTarget=await page.$eval("#export-toggle",el=>{
         el.scrollIntoView({block:"center"});
         const r=el.getBoundingClientRect(),under=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
         return {height:r.height,width:r.width,reachable:under===el||el.contains(under)};
       });
       assert.ok(exportTarget.height>=40&&exportTarget.reachable,
-        "Mobile "+width+"px WAV shortcut must have a reachable 40px hit target: "+JSON.stringify(exportTarget));
+        "Mobile "+width+"px actual WAV export summary must have a reachable 40px hit target: "+JSON.stringify(exportTarget));
     }
     await page.click("#settings-open");
     assert.equal(await page.$eval("#settings-dialog",el=>el.open),true,
@@ -250,7 +267,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       timeout:30000
     });
     assert.equal(await page.$eval("#play-wet",el=>el.disabled),false);
-    await page.click("#harmonic-placement-details > summary");
+    assert.equal(await page.$eval("#rational-enabled",el=>el.closest("label")?.parentElement?.id),
+      "virtual-root-workbench","Harmonic audio processing must sit directly in its workbench");
     await page.click("#rational-enabled");
     await page.click("#play-wet");
     await page.waitForFunction(()=>!document.querySelector("#stop").disabled&&
@@ -272,9 +290,23 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       sine:await page.$eval("#sine-hz",el=>el.value),
       harmonicPlacement:await page.$eval("#rational-enabled",el=>el.checked)
     };
+    const beforeFoldScroll=await page.evaluate(()=>window.scrollY);
     for(const selector of ["#source-region","#virtual-root-workbench",
       ".quick-panel > .panel-fold",".workspace-right > .panel-fold",
       ".sine-monitor > .panel-fold"]){
+      if(selector===".sine-monitor > .panel-fold"){
+        // The graph is intentionally sticky while transform controls scroll.
+        // Bring the auxiliary card to its natural position directly below the
+        // graph before exercising its disclosure, rather than clicking through
+        // the pinned canvas at a later scroll offset.
+        await page.evaluate(()=>{
+          const graph=document.querySelector(".workspace-right");
+          const summary=document.querySelector(".sine-monitor > .panel-fold > summary");
+          const aux=summary.getBoundingClientRect();
+          const graphBottom=graph.getBoundingClientRect().bottom;
+          window.scrollTo(0,Math.max(0,aux.top+window.scrollY-graphBottom-18));
+        });
+      }
       const summary=selector+" > summary";
       await page.click(summary);
       assert.equal(await page.$eval(selector,el=>el.open),false,
@@ -283,6 +315,7 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
       assert.equal(await page.$eval(selector,el=>el.open),true,
         "Each main work region must be individually restorable: "+selector);
     }
+    await page.evaluate(y=>window.scrollTo(0,y),beforeFoldScroll);
     assert.deepEqual({
       file:await page.$eval("#file-meta",el=>el.textContent),
       playable:await page.$eval("#play-wet",el=>!el.disabled),
@@ -456,7 +489,8 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     // finish, then exercise A/B with real BufferSource offsets and Rust/WASM.
     await (await page.$("#audio-file")).uploadFile(transportWav);
     await page.waitForFunction(()=>document.querySelector("#file-meta").textContent.includes("transport.wav")&&
-      !document.querySelector("#play-wet").disabled,{timeout:20000});
+      document.querySelector("#status").textContent.includes("読み込み完了。再生できます。")&&
+      !document.querySelector("#play-wet").disabled,{timeout:30000});
     const seekTo=seconds=>page.$eval("#wave",(wave,value)=>{
       const bounds=wave.getBoundingClientRect();
       wave.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,

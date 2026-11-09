@@ -7,13 +7,14 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
 .brand{display:flex;gap:12px;align-items:center}.logo{width:49px;height:49px;display:grid;place-items:center;color:#55e3bf;font-size:31px;border-radius:13px;background:#17373b;border:1px solid #376d69}.brand h1{font-size:clamp(21px,2.2vw,30px);letter-spacing:-.035em;font-weight:680}.brand p{font-size:10px;color:#8dacb3;letter-spacing:.14em;margin-top:4px}
 .gear{display:flex;align-items:center;gap:8px;border-color:#4d8076;background:#15352f;min-width:94px;justify-content:center}.gear span:first-child{font-size:24px;line-height:1}
-.workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"source graph" "harmonics graph" "controls graph" "sine sine";gap:18px;align-items:start}
+.workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"source graph" "harmonics graph" "controls graph";gap:18px;align-items:start}
 .workspace-left{grid-area:source;min-width:0;display:grid;gap:9px;align-content:start}
 .virtual-root-panel{grid-area:harmonics;min-width:0}
 .quick-panel{grid-area:controls;min-width:0}
-.workspace-right{grid-area:graph}
+.workspace-right-column{grid-area:graph;display:flex;flex-direction:column;align-self:start;gap:12px;min-width:0}
+.workspace-right{grid-area:auto}
 .control-graph-layout{display:contents}
-.sine-monitor{grid-area:sine;justify-self:end;width:min(100%,420px);min-width:0}
+.sine-monitor{grid-area:auto;justify-self:stretch;width:100%;min-width:0}
 .panel{background:#132329;border:1px solid #2b474d;border-radius:16px;padding:20px;min-width:0;box-shadow:0 7px 26px #0002}
 .section-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:15px}.section-header h2{font-size:19px;letter-spacing:-.015em}
 .eyebrow{font-size:10px;color:#65d4b4;font-weight:750;letter-spacing:.17em;margin-bottom:5px}.micro-hint{font-size:11px;color:#9ebac0;white-space:nowrap}
@@ -28,28 +29,25 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .rt-indicator{display:inline-flex;border:1px solid #315b55;border-radius:30px;margin-top:15px;background:#11362f;padding:7px 11px;color:#8ae2c7;font-size:11px}
 .status{min-height:20px;color:#a4bbbf;font-size:12px;margin-top:9px;line-height:1.5}.status[data-kind=error]{color:#f6a5a2}
 .status[data-kind=warning]{color:#ffd39a}
-/* Status sits beside the source panel, outside its audio controls. Its text
-   may update or wrap without moving transport buttons or sliders. */
+/* Status stays in the source panel and never gets an independent workspace row. */
 .runtime-hud{
   position:static;
-  width:min(370px,100%);
+  width:100%;
   max-width:100%;
-  margin-inline:auto;
+  margin:6px 0 0;
   pointer-events:none;
   box-sizing:border-box;
-  width:min(370px,calc(100vw - 20px));
   max-height:none;
   display:grid;
   justify-items:start;
   gap:5px;
   overflow:visible;
-  padding:9px 11px;
-  border:1px solid #37605bc9;
-  border-radius:12px;
-  background:#0a2129e8;
-  box-shadow:0 5px 20px #0008;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
   color:#d9edec;
-  backdrop-filter:blur(7px);
 }
 .runtime-hud .rt-indicator{
   display:block;
@@ -72,7 +70,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 }
 .runtime-hud .status:empty{display:none}
 @media(max-width:600px){
-  .runtime-hud{width:min(270px,calc(100vw - 20px));padding:7px 9px;gap:3px}
+  .runtime-hud{width:100%;max-width:100%;padding:0;gap:3px}
 }
 .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:21px 18px}.control-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:9px}.control-heading label{font-size:13px;font-weight:650}
 .control-heading output{font:600 12px ui-monospace,monospace;color:#81e9ca;white-space:nowrap}
@@ -82,7 +80,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .control-cue span{font-size:10px;color:#9cb9bb}.control-cue strong{font-size:12px}.text-button{background:transparent;border:0;color:#7ddfc7;font-size:11px;padding:1px 0;text-decoration:underline;text-underline-offset:3px}
 .bounds{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:20px;border-top:1px solid #2b464b;padding-top:19px}
 .workspace-right{position:static;min-height:0}
-@media(min-width:801px){.workspace-right{position:sticky;top:8px;align-self:start;z-index:5}}
+@media(min-width:801px){.workspace-right-column{position:sticky;top:8px;align-self:start;z-index:5}}
 .panel-tabs{display:grid;grid-template-columns:1fr 1fr;background:#0a1b1f;border:1px solid #2f5155;border-radius:10px;padding:4px;gap:4px;margin-bottom:16px}
 .panel-tabs button{padding:10px 5px;background:transparent;border:0;color:#8aadb2;font-size:13px}
 .panel-tabs button[aria-selected=true]{background:#264a45;color:#a7f0d8;box-shadow:0 2px 8px #0004}
@@ -102,7 +100,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 .math-results{white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.9 ui-monospace,monospace;color:#bfdcd5;background:#09191d;border:1px solid #2c484e;border-radius:9px;padding:12px}
 .harmonic-table{font-size:11px;color:#afc2c3;margin-top:13px}.harmonic-table summary{cursor:pointer;padding:8px}.table-scroll{overflow:auto;max-width:100%}.harmonic-table table{border-collapse:collapse;width:100%;font:11px ui-monospace,monospace}.harmonic-table td,.harmonic-table th{border-bottom:1px solid #29494e;padding:7px 8px;text-align:right;white-space:nowrap}
 .below-workspace{margin-top:16px}.offline-tool{border:1px solid #2b484d;border-radius:12px;background:#102026;padding:15px 19px;color:#a3bfc0;font-size:12px}
-.offline-tool summary{cursor:pointer;font-weight:600;color:#c1d6d5}.offline-tool p{margin-top:11px;line-height:1.6}
+.offline-tool summary{display:flex;align-items:center;min-height:40px;cursor:pointer;font-weight:600;color:#c1d6d5}.offline-tool p{margin-top:11px;line-height:1.6}
 .offline-tool button{margin:12px 10px 7px 0}.offline-tool progress{display:block;width:100%;height:4px;accent-color:#60dfbe}
 footer{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #2c4245;padding:20px 4px;margin-top:20px;color:#85a4a7;font-size:11px}
 dialog{border:1px solid #466b67;border-radius:17px;background:#13252b;color:#e8f3ee;padding:0;width:min(92vw,560px);max-height:min(92dvh,850px);box-shadow:0 24px 80px #000a;overflow:hidden}
@@ -163,18 +161,20 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 @media(max-width:800px){
   .workspace-grid{
     grid-template-columns:minmax(0,1fr);
-    grid-template-areas:"source" "harmonics" "control-graph" "sine";
+    grid-template-areas:"source" "harmonics" "control-graph";
     column-gap:0;row-gap:10px;
     align-items:start;
   }
   .control-graph-layout{grid-area:control-graph;display:flex;flex-direction:column;gap:10px;min-width:0}
-  .quick-panel{order:2}
+  .workspace-right-column{display:contents}
+  .quick-panel{order:3}
   .workspace-right{order:1;position:sticky;top:8px;z-index:5;align-self:flex-start;
     width:100%;min-width:0;max-width:none;min-height:0;max-height:min(54dvh,470px);
     overflow:auto;overscroll-behavior:contain;scroll-padding-block-start:clamp(230px,52vw,380px)}
-  .workspace-right .curve-panel{position:sticky;top:0;z-index:2;background:#132329}
+  .workspace-right .curve-panel{background:#132329}
   .workspace-right .curve-panel canvas{width:min(100%,52vw,420px);margin-inline:auto}
-  .sine-monitor{grid-area:sine;width:min(68vw,320px);max-width:100%;justify-self:end}
+  .sine-monitor{grid-area:auto;order:2;align-self:stretch;width:100%;max-width:none;justify-self:stretch;
+    position:relative;z-index:6}
   .quick-panel .control-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
   .quick-panel .control.shape-control,.quick-panel .control.reflect-control{grid-column:1/-1}
   .quick-panel .bounds{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;padding-top:12px}
@@ -216,15 +216,28 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 @media(min-width:681px) and (max-width:800px){
   .control-graph-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);
     gap:8px;align-items:start}
+  .workspace-right-column{display:flex;position:static;grid-area:auto;order:0;width:100%;max-width:none;z-index:auto}
   .quick-panel,.workspace-right{grid-area:auto;order:0;align-self:start;min-width:0;width:100%}
-  .workspace-right{max-width:none;max-height:min(82dvh,690px)}
+  .sine-monitor{grid-area:auto;order:0;align-self:stretch;width:100%;max-width:none;position:static;z-index:auto}
+  .workspace-right{position:static;z-index:auto;max-width:none;max-height:min(82dvh,690px);overflow:auto}
   .workspace-right .curve-panel canvas{width:min(100%,48vw,420px)}
 }
 @media(max-width:680px){
+  .control-graph-layout{--mobile-graph-size:min(52vw,420px,max(24dvh,calc(152px - 3.2dvh)))}
+  .workspace-right .curve-panel{position:sticky;top:0;z-index:2;background:#132329}
+  .sine-monitor{position:relative;z-index:1}
   .workspace-right{max-height:min(max(40dvh,calc(238px - 2.5dvh)),360px);
     scroll-padding-block-start:min(clamp(230px,52vw,380px),calc(max(24dvh,calc(152px - 3.2dvh)) + 16px))}
-  .workspace-right .curve-panel canvas{width:min(100%,52vw,420px,
-    max(24dvh,calc(152px - 3.2dvh)))}
+  .workspace-right .curve-panel canvas{width:min(100%,var(--mobile-graph-size))}
+}
+@media(max-width:680px) and (max-height:400px){
+  .sine-monitor{padding-block:4px!important}
+  .sine-monitor>.panel-fold>summary{padding-block:2px;font-size:11px}
+  .sine-monitor .eyebrow{display:none}
+  .sine-monitor .section-header{margin:0}
+  .sine-monitor .section-header h2{font-size:14px;line-height:1.1}
+  .sine-meta{margin-top:0;gap:3px;font-size:10px;flex-wrap:nowrap}
+  .sine-volume{margin-top:0}
 }
 
 /* Listening-oriented effects status: small enough for the right panel on mobile. */
@@ -495,9 +508,9 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   padding:4px 3px;text-align:right}
 .dual-dot{display:inline-block;flex:none;width:6px;height:6px;border-radius:50%}
 .dual-dot.first{background:#6af0c3}.dual-dot.second{background:#ffbc7b}
-.quick-panel .shared-dual-track,
-.quick-panel .dual-range.shared-dual-track{display:block;position:relative;isolation:isolate;
-  width:100%;height:46px;min-height:46px;margin:1px 0 0;background:none;
+ .quick-panel .shared-dual-track,
+ .quick-panel .dual-range.shared-dual-track{display:block;position:relative;isolation:isolate;
+   width:100%;height:30px;min-height:30px;margin:1px 0 0;background:none;
   border:0;border-radius:5px;touch-action:none;user-select:none;-webkit-user-select:none;
   cursor:crosshair;overflow:visible}
 .shared-dual-track .shared-dual-inner{position:absolute;inset:0 12px;touch-action:none}
@@ -520,7 +533,7 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   .quick-panel .dual-headings label{font-size:10px}
   .quick-panel .dual-headings .inline-value{width:65px!important}
   .quick-panel .shared-dual-track,.quick-panel .dual-range.shared-dual-track{
-    height:49px;min-height:49px}
+     height:30px;min-height:30px}
   .quick-panel .reflect-control,.quick-panel .shape-control{padding:6px 5px}
 }
 
@@ -660,7 +673,8 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
    an intentional drag. Interaction stays inside it. */
 .runtime-hud{pointer-events:none;display:flex;flex-direction:column;align-items:stretch;justify-items:unset;touch-action:auto}
 .runtime-hud.is-floating{position:fixed;inset:auto;left:clamp(10px,2vw,24px);top:10px;z-index:85;
-  width:min(370px,calc(100vw - 20px));max-height:min(45dvh,280px);overflow:auto}
+  width:min(370px,calc(100vw - 20px));max-height:min(45dvh,280px);overflow:auto;
+  padding:10px;background:#132329;border:1px solid #2b474d;border-radius:12px;box-shadow:0 7px 26px #0002}
 .runtime-hud-head,.runtime-hud-buttons,#runtime-hud-restore{pointer-events:auto}
 .runtime-hud-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
   font-size:11px;font-weight:650;color:#a6e1d0;cursor:grab;touch-action:none;user-select:none}
@@ -698,15 +712,23 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   border-radius:0!important;background:none!important;white-space:normal}
 .mini-harmonics div+div::before{content:"／ ";opacity:.7}
 .shared-dual-track .shared-dual-thumb{
-  width:23px!important;height:30px!important;min-width:23px!important;min-height:30px!important;
-  border:0!important;border-radius:2px!important;background:transparent!important;
-  box-shadow:none!important;display:grid!important;place-items:center!important}
+  width:28px!important;height:28px!important;min-width:28px!important;min-height:28px!important;
+  box-sizing:border-box!important;border:0!important;border-radius:0!important;
+  background:transparent!important;box-shadow:none!important;display:block!important}
+.shared-dual-track .shared-dual-thumb::before{
+  content:"";position:absolute;inset:0 0 auto;height:14px;box-sizing:border-box;
+  border:2px solid #d3fff0;border-bottom:0;border-radius:14px 14px 0 0;
+  background:#20745e;box-shadow:0 1px 5px #0008}
 .shared-dual-track .shared-dual-thumb::after{
-  content:"";display:block;width:10px;height:24px;border:1px solid #d6fce9;border-radius:2px;
-  background:repeating-linear-gradient(to bottom,#53bda0 0 4px,#1f554c 4px 7px);
-  box-shadow:0 1px 4px #0009}
+  content:"";position:absolute;left:50%;top:7px;transform:translateX(-50%);
+  width:12px;height:6px;box-sizing:border-box;border:1px solid #d6fce9;border-bottom:0;
+  border-radius:6px 6px 0 0;background:#53bda0}
+.shared-dual-track .shared-dual-thumb.lower::before{
+  inset:auto 0 0;border-color:#ffe2bb;border-top:0;border-bottom:2px solid;
+  border-radius:0 0 14px 14px;background:#a36736}
 .shared-dual-track .shared-dual-thumb.lower::after{
-  border-color:#ffe1ba;background:repeating-linear-gradient(to bottom,#e3a960 0 4px,#71452a 4px 7px)}
+  top:auto;bottom:7px;border-color:#ffe1ba;border-top:0;border-bottom:1px solid;
+  border-radius:0 0 6px 6px;background:#e3a960}
 .panel-fold>summary,.effects-panel>summary{cursor:pointer;list-style:none;color:#b7e9d9;
   padding:5px 0;font-size:12px;font-weight:650;user-select:none}
 .panel-fold>summary::before,.effects-panel>summary::before{content:"▾";margin-right:6px}
@@ -715,7 +737,7 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .panel-fold>summary:focus-visible,.effects-panel>summary:focus-visible{outline:2px solid #9eefd1}
 .effects-panel{display:block}
 .effects-panel-body{display:grid;gap:6px}
-@media(max-width:450px){.mini-harmonics{font-size:9px}.shared-dual-track .shared-dual-thumb::after{width:9px}}
+@media(max-width:450px){.mini-harmonics{font-size:9px}}
 
 /* A22 physically meaningful move view and explicit DSP application feedback. */
 #axis-shift-unit{width:auto;min-width:42px;max-width:75px;font-size:10px;line-height:1.2;
@@ -755,10 +777,6 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:#b6d3ce}
 #comparison-status[data-phase="error"]{color:#f6af9a}
 #comparison-status[data-phase="pending"]{color:#f2d29c}
-
-/* Task exit point remains in the source card, with a real touch hit box. */
-.export-shortcut{min-height:40px;padding:7px 10px;max-width:100%;
-  text-align:left;align-self:start}
 
 /* #276 purpose-first virtual-root workbench. The legacy numerical Lab stays
  * in the source under its existing panel while this UI earns parity. */

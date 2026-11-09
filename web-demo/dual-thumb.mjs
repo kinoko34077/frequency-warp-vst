@@ -49,9 +49,24 @@ export function mountDualThumb(root,sourceIds,formatters=[]){
     return Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)));
   };
   const pick=(event)=>{
+    const rect=inner.getBoundingClientRect();
     const direct=event.target.closest?.("[data-dual-thumb]");
-    if(direct&&root.contains(direct))return thumbs.indexOf(direct);
-    const rect=inner.getBoundingClientRect(),fraction=fromPointer(event);
+    if(direct&&root.contains(direct)){
+      const directIndex=thumbs.indexOf(direct);
+      const bothTargetsContain=thumbs.every(thumb=>{
+        const bounds=thumb.getBoundingClientRect();
+        return event.clientX>=bounds.left&&event.clientX<=bounds.right&&
+          event.clientY>=bounds.top&&event.clientY<=bounds.bottom;
+      });
+      // The 28px touch targets overlap vertically on the compact 30px rail.
+      // In their shared hit area, the visible top/bottom semicircle identifies
+      // the value the user touched, even if stacking sends the event to its peer.
+      if(directIndex>=0&&bothTargetsContain){
+        return event.clientY<rect.top+rect.height/2?0:1;
+      }
+      if(directIndex>=0)return directIndex;
+    }
+    const fraction=fromPointer(event);
     const y=event.clientY-rect.top;
     // The two handles sit vertically separated above/below ONE track.
     // Distance to the actual thumb wins, including overlapping x values.
