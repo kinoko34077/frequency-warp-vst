@@ -89,6 +89,7 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
           const field=document.querySelector(`[data-vr-control="${key}"]`);
           const number=field.querySelector(".vr-number-row").getBoundingClientRect();
           const numberInput=field.querySelector(".vr-number-row input[type=number]");
+          if(width===361&&key==="step-m")numberInput.value="129";
           if(width===361&&key==="first-index")numberInput.value="-129";
           const rail=field.querySelector(".vr-linear-rail input[type=\"range\"]")||
             field.querySelector(':scope > input[type="range"]');
@@ -143,10 +144,12 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         const firstIndex=layout.harmonicFields.find(field=>field.key==="first-index");
         assert.equal(layout.harmonicColumns,2,
           context+" harmonic inputs should use both phone columns "+JSON.stringify(layout));
-        assert.ok(firstIndex.numberInput.scrollWidth<=firstIndex.numberInput.clientWidth,
-          context+" signed three-digit first index must remain fully visible "+JSON.stringify(firstIndex));
-        assert.ok(firstIndex.rail.width>=70,
-          context+" first-index rail must remain touchable after widening its value "+JSON.stringify(firstIndex));
+        for(const field of [firstIndex,...layout.harmonicFields.filter(field=>field.key==="step-m")]){
+          assert.ok(field.numberInput.scrollWidth<=field.numberInput.clientWidth,
+            context+" three-digit integer value must remain fully visible "+JSON.stringify(field));
+          assert.ok(field.rail.width>=68,
+            context+" integer rail must remain touchable after widening its value "+JSON.stringify(field));
+        }
       }
       if(width<=800){
         assert.ok(layout.harmonics.bottom<=layout.graph.top+1,
