@@ -50,7 +50,9 @@
       </section>
     </div>
 
-    <section id="virtual-root-workbench" class="panel virtual-root-panel" aria-label="仮想基音と倍音配置"></section>
+    <section id="virtual-root-workbench" class="panel virtual-root-panel" aria-label="仮想基音と倍音配置">
+      <details id="harmonic-placement-details" class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
+    </section>
       <section class="panel quick-panel" aria-labelledby="control-title">
         <div class="section-header"><div><p class="eyebrow">PERFORMANCE</p><h2 id="control-title">変換する</h2></div><span class="micro-hint">動かすと音に反映</span></div>
         <details class="panel-fold" open><summary>変換パラメータ・追加加工</summary>
@@ -138,7 +140,6 @@
           </div>
           
           <figure class="crusher-wave-view" id="fx-wave-preview" hidden><figcaption id="fx-wave-caption">加工波形例（単音の理論モデル。実測ではありません）</figcaption><canvas id="crusher-preview" role="img" aria-label="リング変調とビットクラッシャーの波形モデル"></canvas></figure>
-          <details class="fx-more"><summary>倍音配置</summary><label class="fx-toggle"><input id="rational-enabled" type="checkbox"> 有理数倍音配置</label></details>
         </div></details>
         </details>
       </section>

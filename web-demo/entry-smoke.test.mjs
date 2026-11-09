@@ -81,6 +81,9 @@ test("Pages entry: mobile settings opens and tapping the visible source opens na
     assert.ok(boot,"Public app modules did not load: "+lastError+"; "+errors.join("; "));
     assert.equal(await page.$eval("#virtual-root-workbench",el=>el.getClientRects().length>0),true,
       "User-goal virtual root control must be visible on published default entry");
+    assert.equal(await page.$eval("#rational-enabled",el=>
+      el.closest("#virtual-root-workbench")!==null),true,
+      "Harmonic placement must be discoverable in the virtual-root workbench, not buried under effects");
     assert.equal(await page.$eval(".harmonic-mini",el=>el.getClientRects().length),0,
       "Original harmonic theory controls stay legacy-only in the normal Web UI");
     // Mobile diagnostics must not begin as a wide fixed overlay over the graph
