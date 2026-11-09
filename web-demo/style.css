@@ -170,7 +170,8 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .quick-panel{order:2}
   .workspace-right{order:1;position:sticky;top:8px;z-index:5;align-self:flex-start;
     width:100%;min-width:0;max-width:none;min-height:0;max-height:min(54dvh,470px);
-    overflow:auto;overscroll-behavior:contain}
+    overflow:auto;overscroll-behavior:contain;scroll-padding-block-start:clamp(230px,52vw,380px)}
+  .workspace-right .curve-panel{position:sticky;top:0;z-index:2;background:#132329}
   .workspace-right .curve-panel canvas{width:min(100%,52vw,420px);margin-inline:auto}
   .sine-monitor{grid-area:sine;width:min(68vw,320px);max-width:100%;justify-self:end}
   .quick-panel .control-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -219,8 +220,10 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .workspace-right .curve-panel canvas{width:min(100%,48vw,420px)}
 }
 @media(max-width:680px){
-  .workspace-right{max-height:min(40dvh,360px)}
-  .workspace-right .curve-panel canvas{width:min(100%,52vw,420px,24dvh)}
+  .workspace-right{max-height:min(max(40dvh,calc(238px - 2.5dvh)),360px);
+    scroll-padding-block-start:min(clamp(230px,52vw,380px),calc(max(24dvh,calc(152px - 3.2dvh)) + 16px))}
+  .workspace-right .curve-panel canvas{width:min(100%,52vw,420px,
+    max(24dvh,calc(152px - 3.2dvh)))}
 }
 
 /* Listening-oriented effects status: small enough for the right panel on mobile. */
