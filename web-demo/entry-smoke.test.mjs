@@ -591,6 +591,9 @@ test("Pages entry: Stop keeps source reachable during AudioWorklet startup",asyn
       window.AudioWorkletNode=class extends NativeWorklet{
         constructor(...args){
           super(...args);
+          this.port.addEventListener("message",event=>{
+            if(event.data?.type==="ready")window.__raceLateReady=true;
+          });
           const send=this.port.postMessage.bind(this.port);
           this.port.postMessage=(message,...rest)=>{
             if(message?.type==="init"){
@@ -623,10 +626,13 @@ test("Pages entry: Stop keeps source reachable during AudioWorklet startup",asyn
       window.AudioWorkletNode=window.__raceNativeWorkletNode;
       window.AudioContext=window.__raceNativeAudioContext;
     });
-    await page.waitForFunction(()=>document.querySelector("#rt-indicator").textContent.includes("停止中"),
-      {timeout:3000});
+    await page.waitForFunction(()=>window.__raceLateReady===true,{timeout:15000});
     assert.equal(await page.$eval("#stop",element=>element.disabled),true,
       "A canceled Worklet launch must not restart playback when init finishes");
+    assert.equal(await page.$eval("#play-wet",element=>element.disabled),false,
+      "A late ready acknowledgement must not leave playback controls disabled");
+    assert.match(await page.$eval("#rt-indicator",element=>element.textContent),/停止中/,
+      "A late Worklet ready acknowledgement must leave transport stopped");
     assert.deepEqual(errors,[],"The startup cancellation must not cause a browser error");
   }finally{
     if(browser)await browser.close();
