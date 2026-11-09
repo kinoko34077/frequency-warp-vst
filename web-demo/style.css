@@ -169,7 +169,7 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
   .control-graph-layout{grid-area:control-graph;display:flex;flex-direction:column;gap:10px;min-width:0}
   .quick-panel{order:2}
   .workspace-right{order:1;position:sticky;top:8px;z-index:5;align-self:flex-start;
-    min-width:0;max-width:none;min-height:0;max-height:min(54dvh,470px);
+    width:100%;min-width:0;max-width:none;min-height:0;max-height:min(54dvh,470px);
     overflow:auto;overscroll-behavior:contain}
   .workspace-right .curve-panel canvas{width:min(100%,52vw,420px);margin-inline:auto}
   .sine-monitor{grid-area:sine;width:min(68vw,320px);max-width:100%;justify-self:end}
