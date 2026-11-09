@@ -342,7 +342,7 @@ test("Chrome real-time Rust AudioWorklet streams, changes controls, seeks at wav
     // A21: FX visualization is not a permanent placeholder. The HUD has
     // keyboard-accessible fold and restore controls independent of DSP.
     assert.equal(await page.$eval("#fx-wave-preview",el=>el.hidden),true);
-    assert.equal(await page.$eval("#runtime-hud",el=>getComputedStyle(el).position),"fixed");
+    assert.equal(await page.$eval("#runtime-hud",el=>getComputedStyle(el).position),"static");
     await page.click("#runtime-hud-collapse");
     assert.equal(await page.$eval("#runtime-hud-body",el=>getComputedStyle(el).display),"none");
     await page.click("#runtime-hud-collapse");

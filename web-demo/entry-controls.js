@@ -121,6 +121,16 @@
   restore.addEventListener("click",()=>{
     hud.classList.remove("is-hidden");restore.hidden=true;
   });
+  // The Stop control lives in the source region. Keep that region open while
+  // audio is active so folding it cannot hide the only playback recovery.
+  const sourceRegion=$("#source-region"),sourceSummary=sourceRegion?.querySelector(":scope > summary"),stop=$("#stop");
+  sourceSummary?.addEventListener("click",event=>{
+    if(!sourceRegion.open||stop.disabled)return;
+    event.preventDefault();
+    status.dataset.kind="warning";
+    status.textContent="再生中は停止してから音源欄を閉じてください。";
+    updateBrief();
+  });
   let drag=null;
   hudHead.addEventListener("pointerdown",event=>{
     if(event.button!==0||event.target.closest("button"))return;
@@ -131,6 +141,7 @@
   });
   hudHead.addEventListener("pointermove",event=>{
     if(!drag||drag.id!==event.pointerId)return;
+    hud.classList.add("is-floating");
     hud.style.right="auto";hud.style.bottom="auto";
     const width=hud.offsetWidth,height=hud.offsetHeight;
     hud.style.left=Math.max(0,Math.min(window.innerWidth-width,event.clientX-drag.dx))+"px";
