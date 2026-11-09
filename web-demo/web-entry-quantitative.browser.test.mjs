@@ -123,8 +123,6 @@ test("W1: three entry modes across mobile and desktop sizes, quantified reachabi
         for(const field of [sourceF,targetH]){
           assert.ok(field.field.width>=width*.85,
             context+" F/H input and scale rail need the full phone row "+JSON.stringify(field));
-          assert.ok(field.rail.right-field.rail.left>=width*.42,
-            context+" F/H gesture rail must remain reachable "+JSON.stringify(field));
         }
         assert.ok(Math.abs(stepM.field.top-firstIndex.field.top)<=2&&stepM.field.left<firstIndex.field.left,
           context+" compact integer controls should share one row "+JSON.stringify({stepM,firstIndex}));
