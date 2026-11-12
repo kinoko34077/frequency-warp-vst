@@ -6,7 +6,7 @@ import {hzFromVirtualRootRail,virtualRootRailFromHz} from "./virtual-root-rail.m
 import {parseView,hzToMidi,midiToHz} from "./parameter-units.mjs";
 import {defineParameter,createParameterBinding} from "./parameter-binding.mjs";
 import {createDigitWheelPicker} from "./digit-wheel-picker.mjs";
-import {createParameterUnitSwitch,attachParameterSnapControls} from "./frequency-unit-field.mjs";
+import {createParameterUnitSwitch,attachParameterSnapControls,mountCanonicalTypedField} from "./frequency-unit-field.mjs";
 const $=selector=>document.querySelector(selector);
 const finite=v=>typeof v==="number"&&Number.isFinite(v);
 const fmt=(v,digits=3)=>finite(v)?Number(v.toFixed(digits)).toString():"—";
@@ -238,16 +238,30 @@ export function mountVirtualRootWorkbench({onApply,onCurrent}){
     state[key]=n;
     render();applyRealtime();
   }
+  // F/H already use the #79 canonical binding. Reuse its typed-field
+  // lifecycle rather than maintaining another focus/input/change/blur controller.
+  // The virtual root still owns its specialized signed integer and rail gestures.
+  const typedEditors={};
+  for(const key of ["F","H"]){
+    typedEditors[key]=mountCanonicalTypedField({
+      field:controls[key],binding:frequencyBindings[key],
+      parseCanonical:raw=>fromText(key,raw),
+      displayValue:()=>displayValue(key),
+      focusValue:()=>getUnit(key)==="note"?null:
+        getUnit(key)==="hz"?String(state[key]):String(frequencyBindings[key].display(12)),
+      onValueChange:()=>{render();applyRealtime();}
+    });
+  }
   for(const key of Object.keys(controls)){
     const el=controls[key];
-    el.addEventListener("focus",()=>{
-      if((key==="F"||key==="H")&&getUnit(key)!=="note"){
-        el.value=getUnit(key)==="hz"?String(state[key]):String(frequencyBindings[key].display(12));el.select();
-      }
-    });
-    el.addEventListener("input",()=>changed(key));
-    el.addEventListener("change",()=>{changed(key);if(document.activeElement!==el)el.value=displayValue(key);});
-    el.addEventListener("blur",()=>{el.value=displayValue(key);el.setAttribute("aria-invalid","false");});
+    if(key==="m"||key==="h1"){
+      el.addEventListener("input",()=>changed(key));
+      el.addEventListener("change",()=>{
+        changed(key);
+        if(document.activeElement!==el)el.value=displayValue(key);
+      });
+      el.addEventListener("blur",()=>{el.value=displayValue(key);el.setAttribute("aria-invalid","false");});
+    }
     if(rails[key])rails[key].addEventListener("input",event=>{
       const raw=Number(rails[key].value);
       if(key==="m"||key==="h1")state[key]=Math.round(raw);
