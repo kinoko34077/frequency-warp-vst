@@ -68,6 +68,15 @@ jobs:
           WARP_WEB_ROOT=_site node --test web-demo/wasm-browser-smoke.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/entry-smoke.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/parameter-unit-browser.test.mjs
+          WARP_WEB_ROOT=_site node --test web-demo/ui-common-baseline.browser.test.mjs
+      - name: Upload #355 G0b observed UI baseline (not acceptance)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fw-355-g0b-ui-baseline
+          path: g0b-reports/ui-baseline.json
+          retention-days: 14
+          if-no-files-found: warn
       - name: Check browser resource wiring
         run: |
           test -s web-demo/index.html
