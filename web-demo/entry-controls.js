@@ -14,12 +14,15 @@
   // A settings entry inside the workbench must return to that actual trigger,
   // not jump to the header and lose the user's adjustment context.
   let returnFocus=opener;
+  // The Settings modal must not leave a contextual tooltip above an unrelated task.
+  let dismissInfoTips=()=>{};
   const restoreFocus=()=>{
     const target=returnFocus?.isConnected?returnFocus:opener;
     target.focus({preventScroll:true});
   };
   const show=event=>{
     if(dialog.open)return;
+    dismissInfoTips();
     returnFocus=event?.currentTarget instanceof HTMLElement?event.currentTarget:opener;
     try{if(typeof dialog.showModal!=="function")throw Error("no dialog API");dialog.showModal();}
     catch{dialog.setAttribute("open","");dialog.setAttribute("role","dialog");}
@@ -72,17 +75,129 @@
       console.warn("Frequency Warp debug editor could not load",error);
     }
   });
-  for(const tip of document.querySelectorAll("details.info-tip,details.help-inline")){
+  // #355: one contextual-help lifecycle. Keep the original text nodes in their
+  // existing details (and all their IDs/data listeners). A native manual Popover
+  // puts the body in the top layer without copying text or being clipped by
+  // .workspace-right overflow. On older browsers, move that same node to body
+  // temporarily; neither mode creates a second explanation or a parallel store.
+  const tips=[...document.querySelectorAll("details.info-tip")];
+  const helpStates=new Map();
+  const activeTips=new Set();
+  const viewportBounds=()=>{
+    const v=window.visualViewport;
+    const left=v?.offsetLeft??0,top=v?.offsetTop??0;
+    return {left,top,right:left+(v?.width??document.documentElement.clientWidth),
+      bottom:top+(v?.height??window.innerHeight)};
+  };
+  const positionInfo=(tip)=>{
+    const state=helpStates.get(tip),body=state?.body;
+    if(!body||!tip.open||!body.isConnected)return;
+    const b=viewportBounds(),margin=8,anchor=state.summary.getBoundingClientRect();
+    body.style.maxWidth=Math.max(90,b.right-b.left-margin*2)+"px";
+    body.style.maxHeight=Math.max(70,Math.min(330,b.bottom-b.top-margin*2))+"px";
+    const width=body.offsetWidth,height=body.offsetHeight;
+    const left=Math.min(Math.max(anchor.left,b.left+margin),b.right-width-margin);
+    const below=anchor.bottom+5,above=anchor.top-height-5;
+    const top=below+height<=b.bottom-margin?below:
+      above>=b.top+margin?above:
+      Math.max(b.top+margin,Math.min(below,b.bottom-height-margin));
+    body.style.left=left+"px";body.style.top=top+"px";
+  };
+  const restoreBody=state=>{
+    if(!state.portaled)return;
+    state.marker.replaceWith(state.body);
+    state.portaled=false;
+    state.body.classList.remove("fw-help-portaled");
+  };
+  const closeInfo=tip=>{
+    const state=helpStates.get(tip);
+    if(!state)return;
+    if(tip.open)tip.open=false;
+    if(state.body.matches(":popover-open"))state.body.hidePopover();
+    restoreBody(state);
+    state.summary.removeAttribute("aria-describedby");
+    activeTips.delete(tip);
+  };
+  const openInfo=tip=>{
+    const state=helpStates.get(tip);if(!state||!tip.open)return;
+    for(const other of [...activeTips])if(other!==tip)closeInfo(other);
+    const body=state.body;
+    if(!state.portaled&&!body.matches(":popover-open")){
+      if(typeof body.showPopover==="function"){
+        try{body.showPopover();}
+        catch{
+          // A legacy/embedded host might advertise the API but reject top layer.
+          state.marker=document.createComment("fw-help-original-position");
+          body.before(state.marker);document.body.append(body);
+          state.portaled=true;body.classList.add("fw-help-portaled");
+        }
+      }else{
+        state.marker=document.createComment("fw-help-original-position");
+        body.before(state.marker);document.body.append(body);
+        state.portaled=true;body.classList.add("fw-help-portaled");
+      }
+    }
+    activeTips.add(tip);
+    state.summary.setAttribute("aria-describedby",body.id);
+    positionInfo(tip);
+  };
+  for(const [i,tip] of tips.entries()){
+    const summary=tip.querySelector(":scope > summary"),body=tip.querySelector(":scope > .info-body");
+    if(!summary||!body)continue;
+    if(!body.id)body.id="fw-info-content-"+(i+1);
+    body.setAttribute("role","tooltip");
+    // Manual: Escape/outside click are owned by this single controller.
+    // 'auto' would fight the existing Settings, snap and digit controls.
+    if(typeof body.showPopover==="function")body.setAttribute("popover","manual");
+    helpStates.set(tip,{summary,body,marker:null,portaled:false});
+    tip.addEventListener("toggle",()=>tip.open?openInfo(tip):closeInfo(tip));
+    tip.addEventListener("pointerenter",e=>{if(e.pointerType==="mouse")tip.open=true;});
+    tip.addEventListener("pointerleave",e=>{
+      if(e.pointerType==="mouse"&&!body.contains(e.relatedTarget))closeInfo(tip);
+    });
+    tip.addEventListener("focusout",e=>{
+      if(!tip.contains(e.relatedTarget)&&!body.contains(e.relatedTarget))closeInfo(tip);
+    });
+    body.addEventListener("pointerleave",e=>{
+      if(e.pointerType==="mouse"&&!tip.contains(e.relatedTarget))closeInfo(tip);
+    });
+  }
+  dismissInfoTips=()=>{for(const tip of [...activeTips])closeInfo(tip);};
+  // Keep long explanations in Settings and the math lab as inline disclosures;
+  // their semantics and scrolling requirements differ from short floating ⓘ.
+  for(const tip of document.querySelectorAll("details.help-inline")){
     const close=()=>tip.open=false;
     tip.addEventListener("pointerenter",e=>{if(e.pointerType==="mouse")tip.open=true;});
     tip.addEventListener("pointerleave",e=>{if(e.pointerType==="mouse")close();});
     tip.addEventListener("focusout",e=>{if(!tip.contains(e.relatedTarget))close();});
-    tip.addEventListener("keydown",e=>{if(e.key==="Escape"){close();e.stopPropagation();}});
   }
   document.addEventListener("pointerdown",e=>{
-    for(const tip of document.querySelectorAll("details.info-tip[open],details.help-inline[open]"))
+    for(const tip of [...activeTips]){
+      const body=helpStates.get(tip)?.body;
+      if(!tip.contains(e.target)&&!body?.contains(e.target))closeInfo(tip);
+    }
+    for(const tip of document.querySelectorAll("details.help-inline[open]"))
       if(!tip.contains(e.target))tip.open=false;
   },true);
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape")return;
+    if(activeTips.size){dismissInfoTips();e.stopPropagation();e.preventDefault();}
+    else for(const tip of document.querySelectorAll("details.help-inline[open]"))tip.open=false;
+  },true);
+  let helpLayoutFrame=0;
+  const scheduleHelpPosition=()=>{
+    if(!activeTips.size||helpLayoutFrame)return;
+    helpLayoutFrame=requestAnimationFrame(()=>{
+      helpLayoutFrame=0;
+      for(const tip of [...activeTips]){
+        if(tip.isConnected&&tip.open)positionInfo(tip);else closeInfo(tip);
+      }
+    });
+  };
+  window.addEventListener("resize",scheduleHelpPosition,{passive:true});
+  document.addEventListener("scroll",scheduleHelpPosition,true);
+  window.visualViewport?.addEventListener("resize",scheduleHelpPosition,{passive:true});
+  window.visualViewport?.addEventListener("scroll",scheduleHelpPosition,{passive:true});
   opener.addEventListener("click",show);
   $("#settings-inline").addEventListener("click",show);
   // Escape/native dialog.close() can bypass the explicit buttons.
