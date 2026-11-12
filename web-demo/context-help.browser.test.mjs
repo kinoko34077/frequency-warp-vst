@@ -99,6 +99,37 @@ test("#355 G2 context-help: every ⓘ escapes clipping and restores keyboard/scr
         await page.touchscreen.tap(Math.min(size.width-12,300),size.height-18);
         await page.waitForFunction(()=>!document.querySelector("details.info-tip").open);
       }
+      // A non-Popover host must still see the original content through the
+      // temporary same-node portal, and restore it without duplicate IDs.
+      if(size.width===390){
+        await page.evaluate(()=>{
+          const body=document.querySelector("details.info-tip > .info-body");
+          body.showPopover=undefined;
+          body.hidePopover=undefined;
+          document.querySelector("details.info-tip > summary").focus();
+        });
+        await page.keyboard.press("Enter");
+        await page.waitForFunction(()=>Boolean(document.querySelector(".info-body.fw-help-portaled")),{timeout:5000});
+        const fallback=await page.evaluate(()=>{
+          const tip=document.querySelector("details.info-tip"),body=document.getElementById("fw-info-content-1");
+          const r=body.getBoundingClientRect();
+          const middle=document.elementFromPoint(r.left+r.width/2,r.top+Math.min(r.height/2,35));
+          return {moved:body.parentElement===document.body,open:tip.open,
+            visible:getComputedStyle(body).display!=="none"&&r.height>0,
+            hit:Boolean(middle&&(middle===body||body.contains(middle))),
+            inside:r.left>=-1&&r.right<=document.documentElement.clientWidth+1,
+            dup:document.querySelectorAll("#fw-info-content-1").length};
+        });
+        assert.deepEqual(fallback,{moved:true,open:true,visible:true,hit:true,inside:true,dup:1},
+          "fallback portal must keep the one actual help body visible");
+        await page.keyboard.press("Escape");
+        const restored=await page.evaluate(()=>{
+          const tip=document.querySelector("details.info-tip");
+          const body=document.getElementById("fw-info-content-1");
+          return !tip.open&&tip.contains(body)&&!body.classList.contains("fw-help-portaled");
+        });
+        assert.equal(restored,true,"fallback must restore original DOM ownership");
+      }
       assert.deepEqual(errors,[],"opening and closing help must not throw page errors");
       await page.close();
     }
