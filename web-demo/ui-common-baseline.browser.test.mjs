@@ -37,7 +37,7 @@ async function waitForServer(){
 }
 
 async function measure(page,expectedIds,modal){
-  return await page.evaluate(({ids,modal})=>{
+  return await page.evaluate(({ids,modal,baselineWidth,baselineHeight})=>{
     const rbox=el=>{
       if(!el)return null;
       const r=el.getBoundingClientRect();
@@ -102,7 +102,7 @@ async function measure(page,expectedIds,modal){
         const content=help.querySelector(":scope > .info-body")||
           help.querySelector(":scope > p")||help.querySelector(":scope > div");
         const summaryRect=rbox(summary),contentRect=rbox(content);
-        const available={left:0,top:0,right:innerWidth,bottom:innerHeight};
+        const available={left:0,top:0,right:baselineWidth,bottom:baselineHeight};
         const clipped=[];
         for(let parent=help.parentElement;parent;parent=parent.parentElement){
           const s=getComputedStyle(parent);
@@ -122,12 +122,12 @@ async function measure(page,expectedIds,modal){
         }:null;
         const center=contentRect?{x:(contentRect.left+contentRect.right)/2,
           y:(contentRect.top+Math.min(contentRect.bottom,innerHeight))/2}:null;
-        const hit=center&&center.x>=0&&center.x<=innerWidth&&center.y>=0&&center.y<=innerHeight
+        const hit=center&&center.x>=0&&center.x<=baselineWidth&&center.y>=0&&center.y<=baselineHeight
           ?document.elementFromPoint(center.x,center.y):null;
         Object.assign(record,{status:contentRect?.height>0?"measured":"empty",
           summary:summaryRect,content:contentRect,overflow:outside,
           clippedAncestors:clipped,centerHitOwnContent:Boolean(hit&&content?.contains(hit)),
-          zIndex:styleOf(help)?.zIndex});
+          zIndex:styleOf(help)?.zIndex,transientViewport:{innerWidth,clientWidth:document.documentElement.clientWidth,scrollWidth:document.documentElement.scrollWidth}});
         help.open=wasOpen;
       }
       for(const el of opened.reverse())el.open=false;
@@ -136,7 +136,7 @@ async function measure(page,expectedIds,modal){
     const group=(selector)=>[...document.querySelectorAll(selector)].map(el=>({
       id:el.id||el.getAttribute("aria-label")||null,
       rect:rbox(el),css:styleOf(el),region:region(el)}));
-    return {modal,viewport:{width:innerWidth,height:innerHeight},
+    return {modal,viewport:{width:baselineWidth,height:baselineHeight},
       staticControls:controls,staticFound:controls.filter(c=>c.found).length,
       dynamicControls:dynamic,help:rows,
       inlineValues:group("input.inline-value"),
@@ -145,7 +145,7 @@ async function measure(page,expectedIds,modal){
       dualRails:group(".shared-dual-track"),
       unitSwitches:group(".unit-switch"),
       pageOverflow:Math.max(0,document.documentElement.scrollWidth-innerWidth)};
-  },{ids:expectedIds,modal});
+  },{ids:expectedIds,modal,baselineWidth:page.viewport().width,baselineHeight:page.viewport().height});
 }
 
 function summary(record){
