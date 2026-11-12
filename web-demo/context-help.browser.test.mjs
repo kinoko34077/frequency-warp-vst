@@ -62,7 +62,6 @@ test("#355 G2 context-help: every ⓘ escapes clipping and restores keyboard/scr
       const count=await page.$$eval("details.info-tip",items=>items.length);
       assert.equal(count,9,"G0b static information-tip set must remain intact");
       for(let i=0;i<count;i++){
-        const summary="details.info-tip:nth-of-type(1)"; // query by document-order index below
         await page.evaluate(i=>{
           const tip=document.querySelectorAll("details.info-tip")[i];
           tip.querySelector("summary").scrollIntoView({block:"center",inline:"nearest"});
@@ -94,11 +93,11 @@ test("#355 G2 context-help: every ⓘ escapes clipping and restores keyboard/scr
           const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};
         });
         await page.touchscreen.tap(rect.x,rect.y);
-        await page.waitForFunction(()=>document.querySelector(tip)?.querySelector(".info-body").matches(":popover-open"));
+        await page.waitForFunction(()=>document.querySelector("details.info-tip")?.querySelector(".info-body").matches(":popover-open"));
         const touchRecord=await shown(page,0);
         assert.ok(touchRecord.withinViewport&&touchRecord.hitContent,"touch-open contextual help remains readable");
         await page.touchscreen.tap(Math.min(size.width-12,300),size.height-18);
-        await page.waitForFunction(()=>!document.querySelector(tip).open);
+        await page.waitForFunction(()=>!document.querySelector("details.info-tip").open);
       }
       assert.deepEqual(errors,[],"opening and closing help must not throw page errors");
       await page.close();
