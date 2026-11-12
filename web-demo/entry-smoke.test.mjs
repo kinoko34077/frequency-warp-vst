@@ -752,8 +752,13 @@ test("Pages entry: 768px touch layout keeps transform controls beside the graph"
           return {x:r.x+r.width/2,y:r.y+r.height/2};
         });
         await page.touchscreen.tap(point.x,point.y);
-        const opened=await page.$eval(summarySelector,summary=>summary.parentElement.open);
-        assert.ok(opened,`${label} must open from a mobile touch`);
+        // Native details.toggle is queued; the shared top-layer tooltip
+        // deliberately opens after the disclosure state changes. Validate the
+        // actual visible content, not a synchronous style snapshot mid-toggle.
+        await page.waitForFunction(selector=>{
+          const summary=document.querySelector(selector),body=summary?.parentElement.querySelector(".info-body");
+          return summary?.parentElement.open&&body?.matches(":popover-open");
+        },{timeout:5000},summarySelector);
         const popup=await page.$eval(summarySelector,summary=>{
           const body=summary.parentElement.querySelector(".info-body");
           const r=body.getBoundingClientRect();
@@ -764,8 +769,10 @@ test("Pages entry: 768px touch layout keeps transform controls beside the graph"
         assert.ok(popup.visible&&popup.text&&popup.left>=-1&&popup.right<=width+1,
           `${label} must open fully inside the ${width}px viewport: ${JSON.stringify(popup)}`);
         await page.touchscreen.tap(point.x,point.y);
-        const closed=await page.$eval(summarySelector,summary=>!summary.parentElement.open);
-        assert.ok(closed,`${label} must close again from a mobile touch`);
+        await page.waitForFunction(selector=>{
+          const summary=document.querySelector(selector),body=summary?.parentElement.querySelector(".info-body");
+          return !summary?.parentElement.open&&!body?.matches(":popover-open");
+        },{timeout:5000},summarySelector);
       }
     }
     await assertInlineEffectHelp(1280);
