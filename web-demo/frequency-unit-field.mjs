@@ -200,6 +200,55 @@ export function mountPercentParameterField({field,binding,refresh,onChanged=()=>
   });
 }
 
+/** #355 G3 / #79 owner: typed field lifecycle for an EXISTING canonical binding.
+ * The consumer retains its dimension-specific parse constraints, display text,
+ * specialized gesture rail and audio callback. This adapter exclusively owns
+ * focus/input/change/blur/Enter/cleanup; it never creates parallel Hz state.
+ */
+export function mountCanonicalTypedField({field,binding,parseCanonical,displayValue,
+  focusValue=()=>null,onValueChange=()=>{}}){
+  if(!field||!binding||typeof binding.setCanonical!=="function"||
+      typeof parseCanonical!=="function"||typeof displayValue!=="function"||
+      typeof focusValue!=="function"||typeof onValueChange!=="function")
+    throw new TypeError("typed canonical field requires field, binding, parser and view");
+  const commit=()=>{
+    let next;
+    try{next=parseCanonical(field.value);}
+    catch{next=null;}
+    if(typeof next!=="number"||!Number.isFinite(next)){
+      field.setAttribute("aria-invalid","true");return false;
+    }
+    const previous=binding.value;
+    try{binding.setCanonical(next,{origin:"typed",notify:false,overflow:"reject"});}
+    catch{field.setAttribute("aria-invalid","true");return false;}
+    field.setAttribute("aria-invalid","false");
+    if(!Object.is(previous,binding.value))onValueChange(binding.value,previous);
+    return true;
+  };
+  const onFocus=()=>{
+    const expanded=focusValue();
+    if(expanded!==null&&expanded!==undefined){
+      field.value=String(expanded);
+      field.select?.();
+    }
+  };
+  const onChange=()=>{
+    commit();
+    if(field.ownerDocument?.activeElement!==field)field.value=String(displayValue());
+  };
+  const onBlur=()=>{
+    field.value=String(displayValue());
+    field.setAttribute("aria-invalid","false");
+  };
+  const onKey=event=>{if(event.key==="Enter")field.blur?.();};
+  const listeners=[["focus",onFocus],["input",commit],
+    ["change",onChange],["blur",onBlur],["keydown",onKey]];
+  for(const [event,fn]of listeners)field.addEventListener(event,fn);
+  return Object.freeze({
+    commit,dispose:()=>{for(const [event,fn]of listeners)field.removeEventListener(event,fn);}
+  });
+}
+
 export function mountParameterUnitField({descriptor,field,select,slider,railRoot,
   initialValue=descriptor.defaultValue,getDigits=()=>descriptor.digits,
   onValueChange=()=>{},snapEnabledDefault=true}) {
