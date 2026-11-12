@@ -1,4 +1,14 @@
 :root{font-family:Inter,"Noto Sans JP",system-ui,sans-serif;color:#e9f3f1;background:#09151a;font-synthesis:none;color-scheme:dark}
+:root{
+  /* #355 G1: one semantic owner for common numeric/rail presentation.
+     Distinct dual-thumb and virtual-root gesture geometry remains specialized. */
+  --fw-ui-field-bg:#102b2e;
+  --fw-ui-field-border:#35635d;
+  --fw-ui-field-text:#b3eed4;
+  --fw-ui-field-focus:#71d2b0;
+  --fw-ui-inline-border:#4a7770;
+  --fw-ui-range-accent:#55d7b6;
+}
 *{box-sizing:border-box}html{scrollbar-gutter:stable}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 72% -12%,#1c3a40 0,transparent 48%),#09151a}
 button,input,select{font:inherit}button{cursor:pointer;border:1px solid #365760;background:#1b343c;color:#eaf5f2;border-radius:10px;padding:11px 14px;transition:border-color .15s,background .15s}
 button:hover:not(:disabled){border-color:#5bd8b6;background:#22444a}button:disabled{opacity:.4;cursor:not-allowed}
@@ -74,7 +84,7 @@ a{color:#6dd8c5}h1,h2,p{margin:0}.studio{max-width:1350px;margin:auto;padding:20
 }
 .control-grid{display:grid;grid-template-columns:1fr 1fr;gap:21px 18px}.control-heading{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:9px}.control-heading label{font-size:13px;font-weight:650}
 .control-heading output{font:600 12px ui-monospace,monospace;color:#81e9ca;white-space:nowrap}
-.control input[type=range],.math-input input[type=range]{width:100%;accent-color:#55d7b6;cursor:pointer;touch-action:pan-y}
+.control input[type=range],.math-input input[type=range]{width:100%;accent-color:var(--fw-ui-range-accent);cursor:pointer;touch-action:pan-y}
 .ends{display:flex;justify-content:space-between;color:#83a3ac;font-size:10px;margin-top:5px}
 .control-cue{min-height:74px;background:#0e2429;border:1px solid #2a4c51;border-radius:10px;display:flex;align-items:flex-start;flex-direction:column;padding:11px;gap:4px}
 .control-cue span{font-size:10px;color:#9cb9bb}.control-cue strong{font-size:12px}.text-button{background:transparent;border:0;color:#7ddfc7;font-size:11px;padding:1px 0;text-decoration:underline;text-underline-offset:3px}
@@ -130,7 +140,7 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .harmonic-mini .text-button{width:max-content;padding:6px 0}
 .setting-checkbox{display:flex!important;gap:10px;align-items:center}
 .setting-checkbox input{width:18px;height:18px;accent-color:#66e7c8}
-.settings-body input[type=range]{width:100%;accent-color:#65dbba}
+.settings-body input[type=range]{width:100%;accent-color:var(--fw-ui-range-accent)}
 @media(max-width:800px){
   .curve-panel{max-width:340px}
   .workspace-right{max-width:100%}
@@ -148,7 +158,8 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .sine-monitor .section-header{margin-bottom:8px}
 .sine-toggle{display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:#bfe9d9;cursor:pointer}
 .sine-toggle input{accent-color:#65dcbb;width:18px;height:18px}
-.sine-monitor>input[type=range]{display:block;width:100%;accent-color:#6be3c5}
+.sine-monitor>input[type=range]{display:block;width:100%}
+.sine-monitor input[type=range]{accent-color:var(--fw-ui-range-accent)}
 .sine-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:7px;font:12px ui-monospace,monospace;color:#addbcf}
 .sine-meta strong{color:#71dfbc}
 @media(max-width:450px){.sine-monitor{padding:12px}.sine-meta{font-size:11px}.axis-explainer{font-size:9px}}
@@ -266,11 +277,11 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 /* User-first presentation: inline numbers belong directly beside controls */
 .inline-value,.math-field>input[type=number]{
  box-sizing:border-box;min-width:0;width:73px;max-width:52%;padding:4px 5px;
- background:#102b2e;border:1px solid #35635d;border-radius:6px;
- color:#b3eed4;text-align:right;font:inherit;font-size:11px;font-variant-numeric:tabular-nums;
+ background:var(--fw-ui-field-bg);border:1px solid var(--fw-ui-field-border);border-radius:6px;
+ color:var(--fw-ui-field-text);text-align:right;font:inherit;font-size:11px;font-variant-numeric:tabular-nums;
  appearance:textfield;-moz-appearance:textfield
 }
-.inline-value:focus,.math-field>input[type=number]:focus{outline:2px solid #71d2b0;outline-offset:1px}
+.inline-value:focus,.math-field>input[type=number]:focus{outline:2px solid var(--fw-ui-field-focus);outline-offset:1px}
 .inline-value::-webkit-inner-spin-button,.math-field>input[type=number]::-webkit-inner-spin-button{appearance:none}
 .math-field{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px}
 .math-field>.math-input{grid-column:1/-1;display:block}
@@ -358,7 +369,7 @@ dialog::backdrop{background:#000b;backdrop-filter:blur(4px)}
 .fx-toggle{display:flex;align-items:center;gap:7px;font-size:11px;cursor:pointer}
 .fx-toggle input{accent-color:#6ddcbd}
 .fx-body{padding:6px 0 0}
-.fx-body input[type=range],.fx-pair input[type=range]{width:100%;height:20px;accent-color:#62d6b6}
+.fx-body input[type=range],.fx-pair input[type=range]{width:100%;height:20px;accent-color:var(--fw-ui-range-accent)}
 .fx-body .link-carrier{display:flex;align-items:center;gap:5px;margin:0;padding:3px;border:0;background:none;font-size:10px}
 .fx-help{font-size:9px;color:#a0c1b5}
 .fx-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:5px}
@@ -448,7 +459,7 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 .move-inline .axis-explainer{margin:0;text-align:center;font-size:10px;color:#b6eee0;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .graph-scale{display:flex;align-items:center;gap:6px;color:#9ebfba;font-size:10px;margin:3px 0 2px}
 .graph-scale label{font-weight:650;color:#b7dcd3}
-.graph-scale input[type=range]{flex:1;min-width:25px;height:18px;accent-color:#71dab9}
+.graph-scale input[type=range]{flex:1;min-width:25px;height:18px;accent-color:var(--fw-ui-range-accent)}
 @media(max-width:450px){
   dialog[open]{height:95dvh;max-height:95dvh}
   .settings-body .settings-pair{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -714,9 +725,9 @@ dialog[open]{display:flex;flex-direction:column;height:min(92dvh,850px);max-heig
 
 /* A21 compact semantically grouped parameters, segmented handles and inline values. */
 .quick-panel .inline-value,.workspace-right .math-field>input[type=number],.quick-panel .math-field>input[type=number]{
-  background:transparent;border:0;border-bottom:1px solid #4a7770;border-radius:0;
+  background:transparent;border:0;border-bottom:1px solid var(--fw-ui-inline-border);border-radius:0;
   padding:1px 2px;width:clamp(36px,8ch,86px);max-width:100%;box-shadow:none}
-.quick-panel .inline-value:focus-visible,.workspace-right .math-field>input[type=number]:focus-visible{outline:2px solid #8beacf;outline-offset:2px}
+.quick-panel .inline-value:focus-visible,.workspace-right .math-field>input[type=number]:focus-visible{outline:2px solid var(--fw-ui-field-focus);outline-offset:2px}
 .workspace-right .math-field{grid-template-columns:minmax(0,1fr) auto;gap:3px 6px}
 .workspace-right .math-field>.math-input{grid-column:1/-1}
 .mini-harmonics{display:flex;flex-wrap:wrap;gap:2px 10px;line-height:1.5}
@@ -842,7 +853,7 @@ html:not([data-legacy-harmonics="1"]) .workspace-right .panel-tabs{display:none!
 .vr-number-row input[aria-invalid="true"]{outline:2px solid #e6b38e}
 .vr-unit-switch{align-self:start;padding:1px}
 .vr-unit-switch button{min-height:28px;min-width:28px}
-.vr-control input[type="range"]{width:100%;min-height:32px;touch-action:pan-y;padding:0;margin:0}
+.vr-control input[type="range"]{width:100%;min-height:32px;touch-action:pan-y;padding:0;margin:0;accent-color:var(--fw-ui-range-accent)}
 .vr-sequence{font-size:12px;line-height:1.35;margin:0;overflow-wrap:anywhere;
   color:#c8efe0;font-variant-numeric:tabular-nums}
 .vr-formula{font-size:11px;line-height:1.4;overflow-wrap:anywhere}
