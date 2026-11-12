@@ -113,7 +113,8 @@
     const state=helpStates.get(tip);
     if(!state)return;
     if(tip.open)tip.open=false;
-    if(state.body.matches(":popover-open"))state.body.hidePopover();
+    if(typeof state.body.hidePopover==="function"&&state.body.matches(":popover-open"))
+      state.body.hidePopover();
     restoreBody(state);
     state.summary.removeAttribute("aria-describedby");
     activeTips.delete(tip);
@@ -122,7 +123,8 @@
     const state=helpStates.get(tip);if(!state||!tip.open)return;
     for(const other of [...activeTips])if(other!==tip)closeInfo(other);
     const body=state.body;
-    if(!state.portaled&&!body.matches(":popover-open")){
+    const showing=typeof body.showPopover==="function"&&body.matches(":popover-open");
+    if(!state.portaled&&!showing){
       if(typeof body.showPopover==="function"){
         try{body.showPopover();}
         catch{
