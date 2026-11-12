@@ -108,6 +108,8 @@
     state.marker.replaceWith(state.body);
     state.portaled=false;
     state.body.classList.remove("fw-help-portaled");
+    // Reset for a possible later native retry; old browsers keep the portal path.
+    if(typeof state.body.showPopover==="function")state.body.setAttribute("popover","manual");
   };
   const closeInfo=tip=>{
     const state=helpStates.get(tip);
@@ -130,12 +132,14 @@
         catch{
           // A legacy/embedded host might advertise the API but reject top layer.
           state.marker=document.createComment("fw-help-original-position");
-          body.before(state.marker);document.body.append(body);
+          body.before(state.marker);body.removeAttribute("popover");
+          document.body.append(body);
           state.portaled=true;body.classList.add("fw-help-portaled");
         }
       }else{
         state.marker=document.createComment("fw-help-original-position");
-        body.before(state.marker);document.body.append(body);
+        body.before(state.marker);body.removeAttribute("popover");
+        document.body.append(body);
         state.portaled=true;body.classList.add("fw-help-portaled");
       }
     }
