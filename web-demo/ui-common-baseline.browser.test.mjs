@@ -203,9 +203,32 @@ test("#355 G0b baseline: static/dynamic controls and all help surfaces",{
       console.log("G0B_SUMMARY "+JSON.stringify({mode:"settings",...summary(modal)}));
       const dialogOpen=await page.$eval("#settings-dialog",el=>el.open);
       assert.equal(dialogOpen,true,"settings dialog must open as a real dialog");
+      // The A-only help is deliberately absent from the default B engine.
+      // Use the real Settings select instead of making the hidden node visible by force.
+      await page.select("#engine","0");
+      const engineA=await measure(page,ids,true);
+      records.push({mode:"settings-engine-A",...engineA});
+      const aHelp=engineA.help.find(h=>h.index===12);
+      console.log("G0B_BRANCH "+JSON.stringify({viewport:viewport.width,
+        branch:"engine-A",help:aHelp?.status,overflow:aHelp?.overflow,
+        clipped:aHelp?.clippedAncestors?.length}));
+      assert.equal(aHelp?.status,"measured","engine A help must be measurable in its real active branch");
       await page.click("#settings-close");
       const back=await page.evaluate(()=>document.activeElement?.id);
       assert.equal(back,"settings-open","settings must restore trigger focus");
+      // The detailed math tab belongs to the legacy opt-in UI.
+      if(viewport.width===390){
+        await page.goto(site+"?legacy_lab=1",{waitUntil:"domcontentloaded"});
+        await page.waitForFunction(()=>document.documentElement.dataset.fwBoot==="ready",{timeout:20000});
+        await page.click("#tab-math");
+        const math=await measure(page,ids,false);
+        const mathHelp=math.help.find(h=>h.index===10);
+        records.push({mode:"legacy-math",...math});
+        console.log("G0B_BRANCH "+JSON.stringify({viewport:viewport.width,
+          branch:"legacy-math",help:mathHelp?.status,overflow:mathHelp?.overflow,
+          clipped:mathHelp?.clippedAncestors?.length}));
+        assert.equal(mathHelp?.status,"measured","math help must be reachable through real legacy tab control");
+      }
       await page.close();
     }
     const allHelp=records.filter(x=>x.mode==="normal"&&x.viewport.width===390)
