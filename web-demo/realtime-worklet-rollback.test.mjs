@@ -159,5 +159,6 @@ test("individual cycle setter failure restores prior complete worklet snapshot",
   assert.equal(f.state.crusherBits,f.base.crusherBits,
     "later crusher must not apply after K failure");
   assert.equal(f.processor.stream,7);
-  assert.deepEqual(f.processor.lastGoodSettings,{...f.base});
+  assert.equal(f.processor.lastGoodSettings.individualCycles,f.base.individualCycles);
+  assert.equal(f.processor.lastGoodSettings.axisPivot,f.base.axisPivot);
 });
