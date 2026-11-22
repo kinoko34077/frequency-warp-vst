@@ -9,7 +9,7 @@ async function fixture(){
   const source=await readFile(new URL("./realtime.worklet.js",import.meta.url),"utf8");
   let Processor;
   const messages=[],state={};
-  let rejectBits=null,failEveryCrusher=false,freed=0;
+  let rejectBits=null,failEveryCrusher=false,freed=0,rejectCycles=null;
   class AudioWorkletProcessor{
     constructor(){this.port={onmessage:null,postMessage:m=>messages.push(m)};}
   }
@@ -26,7 +26,7 @@ async function fixture(){
     carrierHz:350,zeroMode:0,axisShift:0,axisReference:350,
     ringEnabled:false,rationalEnabled:false,axisPivot:350,axisSlope:1,
     aMinHz:20,aReverb:0,aBandBins:1,aQuality:0,
-    zeroReflectGain:1,zeroReflectDecay:0,crusherBits:0,crusherHold:1
+    zeroReflectGain:1,zeroReflectDecay:0,individualCycles:0,crusherBits:0,crusherHold:1
   };
   processor.stream=7;processor.channels=1;
   processor.src=0;processor.dst=0;
@@ -53,6 +53,10 @@ async function fixture(){
     warp_stream_set_zero_reflect_decay:(_,zeroReflectDecay)=>{
       state.zeroReflectDecay=zeroReflectDecay;return 0;
     },
+    warp_stream_set_individual_cycles:(_,individualCycles)=>{
+      if(individualCycles===rejectCycles)return -3;
+      state.individualCycles=individualCycles;return 0;
+    },
     warp_stream_set_crusher:(_,crusherBits,crusherHold)=>{
       if(failEveryCrusher||crusherBits===rejectBits)return -2;
       Object.assign(state,{crusherBits,crusherHold});return 0;
@@ -63,7 +67,8 @@ async function fixture(){
   assert.equal(processor.applySettings(base),0);
   processor.lastGoodSettings={...base};
   return {processor,messages,state,base,
-    failOnBits:n=>{rejectBits=n;},failAll:()=>{failEveryCrusher=true;},
+    failOnBits:n=>{rejectBits=n;},failOnCycles:n=>{rejectCycles=n;},
+    failAll:()=>{failEveryCrusher=true;},
     freed:()=>freed};
 }
 test("successful complete application acknowledges and advances last-good snapshot",async()=>{
@@ -134,4 +139,25 @@ test("repeated 128-frame Rust process failure emits ONE fatal and quarantines th
   assert.equal(f.freed(),1,"release occurs on control callback, not audio quantum");
   assert.equal(f.processor.stream,0);
   assert.equal(f.processor.streamFailed,false);
+});
+
+test("individual cycle setter failure restores prior complete worklet snapshot",async()=>{
+  const f=await fixture();
+  f.failOnCycles(8);
+  f.processor.command({type:"params",settings:{
+    ...f.base,axisPivot:840,aReverb:.6,individualCycles:8,crusherBits:4
+  },activeQualityIndex:0,revision:4});
+  assert.equal(f.messages.length,1);
+  assert.equal(f.messages[0].type,"error");
+  assert.equal(f.messages[0].recovered,true);
+  assert.notEqual(f.messages[0].fatal,true);
+  assert.equal(f.messages[0].revision,4);
+  assert.equal(f.state.axisPivot,f.base.axisPivot,
+    "setters preceding the rejected K must be restored");
+  assert.equal(f.state.aReverb,f.base.aReverb);
+  assert.equal(f.state.individualCycles,f.base.individualCycles);
+  assert.equal(f.state.crusherBits,f.base.crusherBits,
+    "later crusher must not apply after K failure");
+  assert.equal(f.processor.stream,7);
+  assert.deepEqual(f.processor.lastGoodSettings,{...f.base});
 });
