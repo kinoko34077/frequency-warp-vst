@@ -1,0 +1,18 @@
+# Shared specification and implementation: https://github.com/kinoko34077/devflow/issues/1088
+# Bootstrap default: LF for portable text; native CRLF for Windows batch scripts.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Keep original audio media and compiled plugin artifacts byte-exact.
+*.wav -text
+*.aif -text
+*.aiff -text
+*.flac -text
+*.ogg -text
+*.mp3 -text
+*.m4a -text
+*.wasm -text
+*.vst3 -text
+*.dll -text
+*.so -text
