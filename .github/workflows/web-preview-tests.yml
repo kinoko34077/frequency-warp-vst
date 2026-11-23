@@ -70,6 +70,7 @@ jobs:
           WARP_WEB_ROOT=_site node --test web-demo/parameter-unit-browser.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/context-help.browser.test.mjs
           WARP_WEB_ROOT=_site node --test web-demo/ui-shared-style.browser.test.mjs
+          WARP_WEB_ROOT=_site node --test web-demo/snap-lifecycle.browser.test.mjs
       - name: Check browser resource wiring
         run: |
           test -s web-demo/index.html

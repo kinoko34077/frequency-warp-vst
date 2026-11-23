@@ -49,70 +49,102 @@ function placeMenu(menu,x,y){
 export function attachParameterSnapControls({doc,targets,defaultEnabled=true}){
   if(!doc||!Array.isArray(targets)||!targets.length)
     throw new TypeError("snap controls require a document and targets");
-  let snapEnabled=Boolean(defaultEnabled);
-  const menu=getSnapMenu(doc);
+  let snapEnabled=Boolean(defaultEnabled),disposed=false,pending=null;
+  const menu=getSnapMenu(doc),owner=Symbol("snap-control-owner"),unsubscribers=[];
+  const originals=targets.map(node=>({
+    node,title:node.title,ariaDescription:node.getAttribute("aria-description"),
+    dataSnap:node.dataset.fwSnap,hadControl:node.hasAttribute("data-fw-snap-control")
+  }));
+  const on=(node,type,listener,options)=>{
+    node.addEventListener(type,listener,options);
+    unsubscribers.push(()=>node.removeEventListener(type,listener,options));
+  };
+  const cancel=()=>{
+    if(pending?.timer!==null&&pending?.timer!==undefined)clearTimeout(pending.timer);
+    pending=null;
+  };
   const updateHints=()=>{
+    if(disposed)return;
     for(const node of targets){
       node.dataset.fwSnap=snapEnabled?"on":"off";
       node.setAttribute("data-fw-snap-control","");
       const hint="吸着: "+(snapEnabled?"ON":"OFF")+
         "。長押し／右クリックで切替。AltまたはCtrlを押しながら操作すると一時OFF";
-      // Unit icon buttons already carry their meaningful unit/interval
-      // tooltip. Do not overwrite it with the snap gesture instructions.
       if(!node.matches("button[data-unit]"))node.title=hint;
       node.setAttribute("aria-description",hint);
     }
   };
-  const setSnapEnabled=enabled=>{snapEnabled=Boolean(enabled);updateHints();};
+  const setSnapEnabled=enabled=>{
+    if(disposed)return;
+    snapEnabled=Boolean(enabled);updateHints();
+  };
   const showMenu=(x,y)=>{
-    // Modal dialog is in the top layer; attach this transient menu there.
+    if(disposed)return;
+    // The menu is a singleton, but each consumer owns its own preference.
+    // Never leave a stale controller as the target of a future menu click.
     const container=targets[0].closest("dialog[open]")||doc.body;
     if(menu.parentNode!==container)container.append(menu);
-    menu._toggle=()=>setSnapEnabled(!snapEnabled);
+    menu._owner=owner;
+    menu._toggle=()=>{if(!disposed)setSnapEnabled(!snapEnabled);};
     menu._button.textContent=snapEnabled?"吸着をオフにする":"吸着をオンにする";
     menu._button.setAttribute("aria-checked",String(snapEnabled));
     placeMenu(menu,x,y);
   };
   for(const node of targets){
-    node.addEventListener("contextmenu",event=>{
+    on(node,"contextmenu",event=>{
       event.preventDefault();event.stopPropagation();
       showMenu(event.clientX,event.clientY);
     });
-    node.addEventListener("keydown",event=>{
+    on(node,"keydown",event=>{
       if(event.key!=="ContextMenu"&&!(event.shiftKey&&event.key==="F10"))return;
       event.preventDefault();
       const r=node.getBoundingClientRect();showMenu(r.left+12,r.bottom+4);
       menu._button.focus();
     });
-    let timer=null,point=null;
-    const cancel=()=>{if(timer!==null)clearTimeout(timer);timer=null;point=null;};
-    node.addEventListener("pointerdown",event=>{
+    on(node,"pointerdown",event=>{
       if(event.pointerType!=="touch"&&event.pointerType!=="pen")return;
       if(event.button!==0)return;
-      cancel();point={id:event.pointerId,x:event.clientX,y:event.clientY};
-      timer=setTimeout(()=>{
-        timer=null;
-        if(!point)return;
-        const {x,y}=point;point=null;showMenu(x,y);
+      cancel();
+      const point={id:event.pointerId,x:event.clientX,y:event.clientY,timer:null};
+      pending=point;
+      point.timer=setTimeout(()=>{
+        if(disposed||pending!==point)return;
+        pending=null;showMenu(point.x,point.y);
       },550);
     });
-    doc.addEventListener("pointermove",event=>{
-      if(point&&point.id===event.pointerId&&
-        Math.hypot(event.clientX-point.x,event.clientY-point.y)>10)cancel();
-    },true);
-    doc.addEventListener("pointerup",event=>{
-      if(point?.id===event.pointerId)cancel();
-    },true);
-    doc.addEventListener("pointercancel",event=>{
-      if(point?.id===event.pointerId)cancel();
-    },true);
-    doc.addEventListener("scroll",cancel,true);
   }
+  // Four document listeners per controller, not four listeners *per target*.
+  // The current active touch gesture is the only one requiring observation.
+  on(doc,"pointermove",event=>{
+    if(pending&&pending.id===event.pointerId&&
+      Math.hypot(event.clientX-pending.x,event.clientY-pending.y)>10)cancel();
+  },true);
+  on(doc,"pointerup",event=>{if(pending?.id===event.pointerId)cancel();},true);
+  on(doc,"pointercancel",event=>{if(pending?.id===event.pointerId)cancel();},true);
+  on(doc,"scroll",cancel,true);
   updateHints();
+  const dispose=()=>{
+    if(disposed)return;
+    disposed=true;cancel();
+    for(const unsubscribe of unsubscribers)unsubscribe();
+    for(const {node,title,ariaDescription,dataSnap,hadControl} of originals){
+      node.title=title;
+      if(ariaDescription===null)node.removeAttribute("aria-description");
+      else node.setAttribute("aria-description",ariaDescription);
+      if(dataSnap===undefined)delete node.dataset.fwSnap;
+      else node.dataset.fwSnap=dataSnap;
+      if(!hadControl)node.removeAttribute("data-fw-snap-control");
+    }
+    if(menu._owner===owner){
+      menu.hidden=true;menu._owner=null;menu._toggle=null;
+    }
+  };
   return Object.freeze({
     get enabled(){return snapEnabled;},
     setEnabled:setSnapEnabled,
-    gestureEnabled:event=>snapEnabled&&!(held.alt||held.ctrl||event?.altKey||event?.ctrlKey)
+    gestureEnabled:event=>!disposed&&snapEnabled&&
+      !(held.alt||held.ctrl||event?.altKey||event?.ctrlKey),
+    dispose
   });
 }
 
