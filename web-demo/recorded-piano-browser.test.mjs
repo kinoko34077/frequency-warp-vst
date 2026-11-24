@@ -112,7 +112,6 @@ test("#309 recorded CC0 piano: upload, native Wet playback, seek, A/B ACK and ac
       el.value=v;el.dispatchEvent(new Event("input",{bubbles:true}));
     },String(value));
     await shift(.55);
-    await page.click("#compare-save-a");
 
     const wave=await page.$("#wave");
     await wave.scrollIntoView();
@@ -131,15 +130,34 @@ test("#309 recorded CC0 piano: upload, native Wet playback, seek, A/B ACK and ac
     await page.waitForFunction(t=>window.__recordedContexts.some(c=>c.state==="running"&&c.currentTime>t+.15),
       {timeout:10000},clock);
 
+    // A/B restores the saved transport as well as parameters. Both slots
+    // must be recorded during actual Wet playback to require DSP ACK.
+    await page.click("#compare-save-a");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Aを記録/);
     await shift(.65);
     await page.click("#compare-save-b");
+    assert.match(await page.$eval("#comparison-status",el=>el.textContent),/設定Bを記録/);
+    const waitApplied=async slot=>{
+      try{
+        await page.waitForFunction(slot=>{
+          const node=document.querySelector("#comparison-status");
+          return node.dataset.phase==="applied"&&node.textContent.includes("設定"+slot);
+        },{timeout:15000},slot);
+      }catch(error){
+        const details=await page.evaluate(()=>({phase:document.querySelector("#comparison-status").dataset.phase,
+          comparison:document.querySelector("#comparison-status").textContent,
+          status:document.querySelector("#status").textContent,
+          indicator:document.querySelector("#rt-indicator").textContent,
+          stopDisabled:document.querySelector("#stop").disabled}));
+        throw Error("Recorded comparison "+slot+": "+JSON.stringify(details)+"; "+error.message);
+      }
+      assert.equal(await page.$eval("#stop",el=>el.disabled),false,"Wet playback must remain active");
+    };
     await page.click("#compare-load-a");
-    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
-      {timeout:15000});
+    await waitApplied("A");
     assert.ok(Math.abs(Number(await page.$eval("#axis-shift",el=>el.value))-.55)<.051);
     await page.click("#compare-load-b");
-    await page.waitForFunction(()=>document.querySelector("#comparison-status").dataset.phase==="applied",
-      {timeout:15000});
+    await waitApplied("B");
     assert.ok(Math.abs(Number(await page.$eval("#axis-shift",el=>el.value))-.65)<.051);
     const starts=await page.evaluate(()=>window.__recordedStarts.length);
     await wave.scrollIntoView();
