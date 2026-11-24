@@ -16,7 +16,7 @@ function modulesUnder(path){
   for(const item of readdirSync(path,{withFileTypes:true})){
     const entry=join(path,item.name);
     if(item.isDirectory())files.push(...modulesUnder(entry));
-    else if(item.isFile()&&item.name.endsWith(".mjs")&&!item.name.endsWith(".test.mjs"))
+    else if(item.isFile()&&/\.(?:mjs|js)$/.test(item.name)&&!/\.test\.(?:mjs|js)$/.test(item.name))
       files.push(entry);
   }
   return files;
@@ -33,6 +33,14 @@ export function auditUnitConsumer(file,source){
   const usesSharedSwitch=/\bcreateParameterUnitSwitch\s*\(/.test(source);
   if(hasUnitSwitch&&hasEditor&&hasBinding&&!usesFieldAdapter&&!usesSharedSwitch)
     errors.push(file+": numeric-unit icon UI must reuse createParameterUnitSwitch, not generate independent icon buttons");
+  // A consumer must not build a second generic icon switch behind a unit
+  // binding. The canonical adapter itself is allowlisted above.
+  const createsUnitIcons=
+    /\bclassName\s*=\s*["'\x60][^"'\x60]*\bunit-switch\b/.test(source)||
+    /\bclassList\.add\(\s*["'\x60]unit-switch["'\x60]/.test(source)||
+    /<[\w:-]+[^>]*\bclass\s*=\s*["'][^"']*\bunit-switch\b/i.test(source);
+  if(createsUnitIcons&&!usesFieldAdapter&&!usesSharedSwitch)
+    errors.push(file+": generic unit switch must reuse the shared UI adapter");
   if(file==="app.mjs"){
     if(!/\bmountPercentParameterField\s*\(/.test(source))
       errors.push(file+": canonical percent editors must reuse mountPercentParameterField");
@@ -54,11 +62,52 @@ export function auditUnitConsumer(file,source){
   }
   return errors;
 }
+/** G5: finite checks of static HTML, not a semantic DOM equivalence proof. */
+export function auditStaticMarkup(file,source){
+  const errors=[],seen=new Set();
+  // Check actual start tags, not text-only ID references in scripts.
+  for(const tag of source.matchAll(/<[a-z][^>]*>/gi)){
+    const id=/\bid\s*=\s*(["'])([^"']+)\1/i.exec(tag[0]);
+    if(!id)continue;
+    if(seen.has(id[2]))errors.push(file+": duplicate static id "+id[2]);
+    seen.add(id[2]);
+  }
+  // All generic unit buttons are created by createParameterUnitSwitch.
+  // Specialized number/gesture inputs may use their own semantic markup.
+  if(/<[a-z][^>]*\bclass\s*=\s*(["'])[^"']*\bunit-switch\b[^"']*\1[^>]*>/i.test(source)||
+     /<[a-z][^>]*\bdata-unit\s*=/i.test(source))
+    errors.push(file+": static unit switch bypasses the shared UI owner");
+  return errors;
+}
+
+/** G5: only known standard ranges share this accent token. Specialized
+ * reflect/checkbox/progress variants are deliberately NOT classified as
+ * equivalent controls by a selector-only check. */
+export function auditSharedControlStyles(file,source){
+  const errors=[];
+  for(const rule of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)){
+    if(!/\.(?:settings-body|vr-control)\b[^{}]*\binput\s*\[\s*type\s*=\s*["']?range["']?\s*\]/i.test(rule[1]))
+      continue;
+    const color=/(?:^|;)\s*accent-color\s*:\s*([^;]+)\s*(?:;|$)/i.exec(rule[2]);
+    if(color&&!/^var\(\s*--fw-ui-range-accent\s*\)$/.test(color[1].trim()))
+      errors.push(file+": shared standard range must use --fw-ui-range-accent");
+  }
+  return errors;
+}
+
 export function auditWebModuleTree(root=localDir){
   const errors=[];
   for(const path of modulesUnder(root)){
     const file=relative(root,path).replaceAll("\\","/");
     errors.push(...auditUnitConsumer(file,readFileSync(path,"utf8")));
+  }
+  for(const item of readdirSync(root,{withFileTypes:true})){
+    if(!item.isFile())continue;
+    const file=item.name,sourcePath=join(root,file);
+    if(file.endsWith(".html"))
+      errors.push(...auditStaticMarkup(file,readFileSync(sourcePath,"utf8")));
+    if(file==="style.css")
+      errors.push(...auditSharedControlStyles(file,readFileSync(sourcePath,"utf8")));
   }
   return errors;
 }
