@@ -1,0 +1,34 @@
+.vr-wheel-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:flex-end;justify-content:center}
+.vr-wheel-overlay[hidden]{display:none!important}
+.vr-wheel-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.58)}
+.vr-wheel-sheet{position:relative;box-sizing:border-box;width:min(100%,440px);
+  max-height:min(420px,92dvh);padding:0 8px max(12px,env(safe-area-inset-bottom));
+  border:1px solid #578276;border-radius:16px 16px 0 0;
+  background:#173831;color:#e8fff7;box-shadow:0 -8px 32px #0007}
+.vr-wheel-header{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;padding:10px 3px;font-size:14px}
+.vr-wheel-header button{min-width:68px;min-height:40px;padding:5px 9px;
+  color:#d8fff0;background:#275147;border:1px solid #658f83;border-radius:7px}
+.vr-wheel-scroller{position:relative;overflow:hidden}
+.vr-wheel-columns{display:flex;align-items:center;justify-content:center;
+  gap:3px;padding:0 4px;max-width:100%;overflow-x:auto;scrollbar-width:thin}
+.vr-wheel-track{flex:0 0 32px;width:32px;height:210px;overflow-y:auto;
+  position:relative;scroll-snap-type:y mandatory;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-y;
+  border-radius:5px;outline-offset:-2px}
+.vr-wheel-track::-webkit-scrollbar{display:none}
+.vr-wheel-pad{height:84px;min-height:84px;scroll-snap-align:none}
+.vr-wheel-item{height:42px;display:flex;align-items:center;justify-content:center;
+  font-size:19px;font-variant-numeric:tabular-nums;scroll-snap-align:center;
+  color:#8eaca4;user-select:none}
+.vr-wheel-item.is-selected{color:#fff;font-weight:700}
+.vr-wheel-dot{align-self:center;flex:0 0 7px;text-align:center;font-size:19px}
+.vr-wheel-selection{position:absolute;left:0;right:0;top:84px;height:42px;
+  border-block:1px solid #8bdbc5;background:rgba(126,213,184,.1);
+  border-radius:6px;pointer-events:none}
+.vr-wheel-value{display:block;text-align:center;min-height:22px;
+  margin:6px 0 2px;color:#c8eade;font-size:14px;font-variant-numeric:tabular-nums}
+.vr-wheel-value[data-valid="false"]{color:#ffd3aa}
+@media(max-width:360px){.vr-wheel-track{flex-basis:28px;width:28px}
+  .vr-wheel-item{font-size:17px}.vr-wheel-columns{gap:2px}}
+@media(prefers-reduced-motion:reduce){.vr-wheel-track{scroll-behavior:auto}}
