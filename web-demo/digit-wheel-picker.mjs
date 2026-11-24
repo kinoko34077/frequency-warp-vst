@@ -2,19 +2,31 @@
  * Touch inertia is provided by browser scrolling; each column is one digit.
  */
 export const WHEEL_ROW_PX=42;
+// Preserve the historical hundredths minimum while allowing callers to
+// request finer decimal positions without changing the canonical value.
+function wheelPrecision(places){
+  if(!Array.isArray(places)||!places.every(p=>Number.isInteger(p)&&p>=-12&&p<=12)||
+     new Set(places).size!==places.length)throw RangeError("digit places");
+  return Math.max(2,...places.map(p=>-p));
+}
 export function splitWheelNumber(value,{signed=false,places=[]}={}){
   if(!Number.isFinite(value))throw RangeError("finite");
-  const magnitude=Math.round(Math.abs(value)*100);
+  const precision=wheelPrecision(places);
+  const magnitude=Math.round(Math.abs(value)*10**precision);
+  if(!Number.isSafeInteger(magnitude))throw RangeError("wheel precision exceeds safe integer");
   return [...(signed?[value<0?1:0]:[]),...places.map(p=>
-    Math.floor(magnitude/10**(p+2))%10)];
+    Math.floor(magnitude/10**(p+precision))%10)];
 }
 export function composeWheelNumber(digits,{signed=false,places=[]}={}){
+  const precision=wheelPrecision(places);
   if(digits.length!==places.length+Number(signed))throw RangeError("digit count");
   const sign=signed&&digits[0]===1?-1:1;
   if(digits.some((d,i)=>!Number.isInteger(d)||d<0||d>(signed&&i===0?1:9)))
     throw RangeError("digits");
   const offset=Number(signed);
-  return Number((sign*places.reduce((sum,p,i)=>sum+digits[i+offset]*10**p,0)).toFixed(2));
+  const magnitude=places.reduce((sum,p,i)=>sum+digits[i+offset]*10**(p+precision),0);
+  if(!Number.isSafeInteger(magnitude))throw RangeError("wheel precision exceeds safe integer");
+  return Number((sign*magnitude/10**precision).toFixed(precision));
 }
 export function createDigitWheelPicker({document:doc=document,onValue,root=doc.body}){
   const overlay=doc.createElement("div");overlay.id="vr-wheel-overlay";
@@ -110,10 +122,11 @@ export function createDigitWheelPicker({document:doc=document,onValue,root=doc.b
     return track;
   }
   function open({key,label:heading,value,places,signed=false,trigger}){
+    const digits=splitWheelNumber(value,{places,signed});
     if(active)close();
     const session=++epoch;
     original=value;source=trigger;source.setAttribute("aria-expanded","true");
-    active={key,places,signed,digits:splitWheelNumber(value,{places,signed})};
+    active={key,places,signed,digits};
     label.textContent=heading;live.textContent=String(value);live.dataset.valid="true";
     columns.replaceChildren();
     let index=0;
