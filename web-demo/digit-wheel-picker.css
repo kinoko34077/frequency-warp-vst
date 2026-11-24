@@ -10,11 +10,11 @@
 .vr-wheel-header button{min-width:68px;min-height:40px;padding:5px 9px;
   color:#d8fff0;background:#275147;border:1px solid #658f83;border-radius:7px}
 .vr-wheel-scroller{position:relative;overflow:hidden}
-.vr-wheel-columns{display:flex;align-items:center;justify-content:center;
+.vr-wheel-columns{display:flex;align-items:center;justify-content:safe center;
   gap:3px;padding:0 4px;max-width:100%;overflow-x:auto;scrollbar-width:thin}
 .vr-wheel-track{flex:0 0 32px;width:32px;height:210px;overflow-y:auto;
   position:relative;scroll-snap-type:y mandatory;overscroll-behavior:contain;
-  -webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-y;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;touch-action:pan-x pan-y;
   border-radius:5px;outline-offset:-2px}
 .vr-wheel-track::-webkit-scrollbar{display:none}
 .vr-wheel-pad{height:84px;min-height:84px;scroll-snap-align:none}
