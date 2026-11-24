@@ -29,3 +29,21 @@ test("invalid wheel column values are rejected, not silently repaired",()=>{
   assert.throws(()=>composeWheelNumber([-1,0],{places}),RangeError);
   assert.throws(()=>splitWheelNumber(NaN,{places}),RangeError);
 });
+
+test("shared wheel supports signed four to twelve decimal places",()=>{
+  for(const precision of [3,4,6,12]){
+    const places=[1,0,...Array.from({length:precision},(_,i)=>-i-1)];
+    const options={signed:true,places};
+    const original=-Number("7."+"123456789012".slice(0,precision));
+    const digits=splitWheelNumber(original,options);
+    assert.equal(composeWheelNumber(digits,options),original);
+    digits[0]=0;
+    assert.equal(composeWheelNumber(digits,options),-original);
+  }
+  const options={signed:true,places:[1,0,-1,-2,-3,-4]};
+  assert.deepEqual(splitWheelNumber(-7.1234,options),[1,0,7,1,2,3,4]);
+  assert.equal(composeWheelNumber([1,0,7,1,2,3,5],options),-7.1235);
+  assert.throws(()=>splitWheelNumber(1e15,{places:[0,-12]}),RangeError);
+  assert.throws(()=>composeWheelNumber([1,1],{places:[0,0]}),RangeError);
+  assert.throws(()=>splitWheelNumber(1,{places:[0,-13]}),RangeError);
+});
