@@ -10,4 +10,4 @@
 - Fixture: 3.000 seconds, mono, 48 kHz, PCM16
 - Fixture SHA-256: `69bbdab7ee718e174a23850f5525ff87761ca904a4445e6ae9138ca42b7dd261`
 
-This asset is used only by the Rust-core recorded-PCM regression and is not part of runtime assets or the Pages dependency graph.
+This asset is used by the Rust-core recorded-PCM regression and the #309 recorded-piano browser test (`web-demo/recorded-piano-browser.test.mjs`). The latter uploads the checked-out fixture through the actual staged Web entry and inspects downloaded WAV bytes. It is not part of runtime assets or the Pages dependency graph. This mono piano fixture does not establish recorded voice, percussion, stereo music, perceptual quality or physical device acceptance.
