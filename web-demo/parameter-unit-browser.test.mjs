@@ -213,7 +213,34 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),0);
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),2);
     await page.keyboard.press("Escape");
-    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),true);
+    // The menu may be retargeted at release on a narrow touch viewport.
+    // Recreate that click at a menu button without a new pointerdown.
+    await page.evaluate(()=>{
+      const {target}=window.__sharedMenuProbe;
+      target.style.cssText="position:fixed;right:8px;bottom:8px;z-index:2999";
+      const r=target.getBoundingClientRect();
+      const point={bubbles:true,pointerId:852,pointerType:"touch",button:0,
+        clientX:r.x+r.width/2,clientY:r.y+r.height/2};
+      window.__menuHoldPoint=point;
+      target.dispatchEvent(new PointerEvent("pointerdown",point));
+    });
+    await sleep(610);
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    assert.ok(await page.evaluate(()=>{
+      const r=document.querySelector("#fw-unit-snap-menu").getBoundingClientRect();
+      return r.bottom<window.__menuHoldPoint.clientY;
+    }),"near-bottom touch menu opens above the finger");
+    await page.evaluate(()=>{
+      const {target}=window.__sharedMenuProbe;
+      target.dispatchEvent(new PointerEvent("pointerup",window.__menuHoldPoint));
+      document.querySelector("#fw-unit-snap-menu button:last-child").dispatchEvent(
+        new MouseEvent("click",{bubbles:true,cancelable:true,detail:1}));
+    });
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),2);
+    await page.click("#fw-unit-snap-menu button:last-child");
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),8,
+      "a deliberate fresh click still selects a menu item");
     await page.click("#shared-menu-probe");
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),1);
     await page.click("#shared-menu-probe",{button:"right"});
