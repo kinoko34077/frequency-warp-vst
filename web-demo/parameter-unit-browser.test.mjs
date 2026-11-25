@@ -184,9 +184,8 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
       window.__sharedMenuProbe=probe;
     });
     await page.click("#shared-menu-probe",{button:"right"});
-    assert.equal(await page.$eval("#fw-unit-snap-menu",els=>els.length),1);
-    assert.deepEqual(await page.$eval("#fw-unit-snap-menu button",els=>
-      els.map(e=>[e.textContent,e.getAttribute("aria-checked")])),
+    assert.equal(await page.evaluate(()=>document.querySelectorAll("#fw-unit-snap-menu").length),1);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll("#fw-unit-snap-menu button")].map(e=>[e.textContent,e.getAttribute("aria-checked")])),
       [["±1倍","false"],["±2倍","true"],["±4倍","false"],["±8倍","false"]]);
     await page.click("#fw-unit-snap-menu button:nth-child(4)");
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),8);
@@ -223,7 +222,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.$eval("#low-thumb",el=>el.dispatchEvent(new MouseEvent("contextmenu",{
       bubbles:true,cancelable:true,clientX:60,clientY:120
     })));
-    assert.equal(await page.$eval("#fw-unit-snap-menu button",els=>els.length),1);
+    assert.equal(await page.evaluate(()=>document.querySelectorAll("#fw-unit-snap-menu button").length),1);
     assert.equal(await page.$eval("#fw-unit-snap-menu button",el=>el.getAttribute("role")),"menuitemcheckbox");
     await page.keyboard.press("Escape");
     console.log("U05_SHARED_CONTEXT_MENU radio/right-click/keyboard/hold/cancel/dispose/snap singleton PASS");
