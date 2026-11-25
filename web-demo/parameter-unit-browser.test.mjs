@@ -167,6 +167,65 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
     await page.$eval("#fw-unit-snap-menu button",el=>el.click());
     assert.equal(await page.$eval("#low",el=>el.dataset.fwSnap),"on");
+    // The same singleton now serves radio choices without replacing the snap
+    // adapter. The caller owns its value, and holding never invokes its tap.
+    await page.evaluate(async()=>{
+      const {attachParameterContextMenu}=await import("./parameter-context-menu.mjs");
+      const target=document.createElement("button");target.id="shared-menu-probe";
+      target.textContent="Range probe";target.style.cssText="position:fixed;top:8px;left:8px;z-index:2999";
+      document.body.append(target);
+      const probe={range:2,taps:0,target};
+      target.addEventListener("click",()=>probe.taps++);
+      probe.control=attachParameterContextMenu({doc:document,targets:[target],
+        suppressClickAfterHold:true,getItems:()=>[1,2,4,8].map(value=>({
+          label:"±"+value+"倍",role:"menuitemradio",checked:probe.range===value,
+          onSelect:()=>{probe.range=value;}
+        }))});
+      window.__sharedMenuProbe=probe;
+    });
+    await page.click("#shared-menu-probe",{button:"right"});
+    assert.equal(await page.evaluate(()=>document.querySelectorAll("#fw-unit-snap-menu").length),1);
+    assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll("#fw-unit-snap-menu button")].map(e=>[e.textContent,e.getAttribute("aria-checked")])),
+      [["±1倍","false"],["±2倍","true"],["±4倍","false"],["±8倍","false"]]);
+    await page.click("#fw-unit-snap-menu button:nth-child(4)");
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),8);
+    await page.focus("#shared-menu-probe");
+    await page.keyboard.down("Shift");await page.keyboard.press("F10");await page.keyboard.up("Shift");
+    await page.keyboard.press("ArrowDown");await page.keyboard.press("Enter");
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),2);
+    assert.equal(await page.evaluate(()=>document.activeElement.id),"shared-menu-probe");
+    // A moving gesture cancels; a held one opens and suppresses the subsequent tap.
+    await page.$eval("#shared-menu-probe",el=>{
+      el.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,pointerId:850,pointerType:"touch",button:0,clientX:20,clientY:20}));
+      el.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,pointerId:850,pointerType:"touch",clientX:50,clientY:20}));
+    });
+    await sleep(610);
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),true);
+    await page.$eval("#shared-menu-probe",el=>el.dispatchEvent(new PointerEvent("pointerdown",{
+      bubbles:true,pointerId:851,pointerType:"touch",button:0,clientX:20,clientY:20
+    })));
+    await sleep(610);
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+    await page.$eval("#shared-menu-probe",el=>{
+      el.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,pointerId:851,pointerType:"touch",button:0}));
+      el.click();
+    });
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),0);
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),2);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),true);
+    await page.click("#shared-menu-probe");
+    assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),1);
+    await page.click("#shared-menu-probe",{button:"right"});
+    await page.evaluate(()=>{const p=window.__sharedMenuProbe;p.control.dispose();p.control.dispose();p.target.remove();delete window.__sharedMenuProbe;});
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),true);
+    await page.$eval("#low-thumb",el=>el.dispatchEvent(new MouseEvent("contextmenu",{
+      bubbles:true,cancelable:true,clientX:60,clientY:120
+    })));
+    assert.equal(await page.evaluate(()=>document.querySelectorAll("#fw-unit-snap-menu button").length),1);
+    assert.equal(await page.$eval("#fw-unit-snap-menu button",el=>el.getAttribute("role")),"menuitemcheckbox");
+    await page.keyboard.press("Escape");
+    console.log("U05_SHARED_CONTEXT_MENU radio/right-click/keyboard/hold/cancel/dispose/snap singleton PASS");
     // Holding either Ctrl or Alt bypasses snapping for that gesture only.
     for(const modifier of ["Alt","Control"]){
       await page.keyboard.down(modifier);

@@ -1,0 +1,13 @@
+/* Shared transient parameter context menu, including snap and radio options. */
+#fw-unit-snap-menu{position:fixed;z-index:2147483645;min-width:180px;
+ max-width:calc(100vw - 16px);padding:5px;border:1px solid #477e75;
+ border-radius:9px;background:#132b2f;box-shadow:0 12px 32px #000a;
+ color:#e6f8f2;font:13px/1.3 system-ui,sans-serif}
+#fw-unit-snap-menu[hidden]{display:none!important}
+#fw-unit-snap-menu button{display:block;width:100%;border:0;border-radius:6px;
+ padding:11px 14px;text-align:left;background:transparent;color:inherit;font:inherit;
+ cursor:pointer;white-space:nowrap}
+#fw-unit-snap-menu button:hover,#fw-unit-snap-menu button:focus-visible{
+ background:#315f56;outline:2px solid #8edec7;outline-offset:-2px}
+#fw-unit-snap-menu button[role=menuitemradio][aria-checked=true]{font-weight:700;background:#315f56}
+#fw-unit-snap-menu button[role=menuitemradio][aria-checked=true]::before{content:'✓ ';color:#8edec7}
