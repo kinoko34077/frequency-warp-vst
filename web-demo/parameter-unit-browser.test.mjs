@@ -213,6 +213,7 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),0);
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),2);
     await page.keyboard.press("Escape");
+    assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),true);
     // The menu may be retargeted at release on a narrow touch viewport.
     // Recreate that click at a menu button without a new pointerdown.
     await page.evaluate(()=>{
@@ -241,6 +242,28 @@ test("low Hz / note+cents / true rail% / optional snap / invalid and reset",asyn
     await page.click("#fw-unit-snap-menu button:last-child");
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),8,
       "a deliberate fresh click still selects a menu item");
+    // Actual CDP touch on the same lower-edge target must keep the menu
+    // open through release; a fresh tap remains the selection action.
+    const menuTouch=await page.createCDPSession();
+    await menuTouch.send("Emulation.setTouchEmulationEnabled",{enabled:true,maxTouchPoints:1});
+    try{
+      const point=await page.$eval("#shared-menu-probe",el=>{
+        const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2),id:1};
+      });
+      await menuTouch.send("Input.dispatchTouchEvent",{type:"touchStart",touchPoints:[point]});
+      await page.waitForSelector("#fw-unit-snap-menu:not([hidden])",{timeout:2500});
+      await menuTouch.send("Input.dispatchTouchEvent",{type:"touchEnd",touchPoints:[]});
+      await sleep(100);
+      assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),false);
+      assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.range),8);
+      assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),0);
+      await page.keyboard.press("Escape");
+      assert.equal(await page.$eval("#fw-unit-snap-menu",el=>el.hidden),true);
+    }finally{
+      await menuTouch.send("Emulation.setTouchEmulationEnabled",{enabled:false});
+      await menuTouch.detach();
+    }
+    console.log("U07_SHARED_MENU_RELEASE retargetRejected=true realTouch=true freshSelection=true");
     await page.click("#shared-menu-probe");
     assert.equal(await page.evaluate(()=>window.__sharedMenuProbe.taps),1);
     await page.click("#shared-menu-probe",{button:"right"});
