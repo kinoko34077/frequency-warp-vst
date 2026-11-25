@@ -33,7 +33,7 @@ function getMenu(doc){
   },true);
   return menu;
 }
-function showMenu(doc,menu,owner,node,x,y,items,keyboard){
+function showMenu(doc,menu,owner,node,x,y,items,keyboard,avoidHeldPoint=false){
   const element=menu.element;
   const container=node.closest("dialog[open]")||doc.body;
   if(element.parentNode!==container)container.append(element);
@@ -56,7 +56,11 @@ function showMenu(doc,menu,owner,node,x,y,items,keyboard){
   const view=doc.defaultView||window;
   const width=element.offsetWidth||180,height=element.offsetHeight||48;
   element.style.left=Math.max(8,Math.min(view.innerWidth-width-8,x))+"px";
-  element.style.top=Math.max(8,Math.min(view.innerHeight-height-8,y))+"px";
+  // Do not put the newly opened menu underneath the held finger. Near
+  // the lower edge, prefer the space above rather than clamping onto it.
+  const preferredY=avoidHeldPoint?
+    (y+12+height<=view.innerHeight-8?y+12:y-height-12):y;
+  element.style.top=Math.max(8,Math.min(view.innerHeight-height-8,preferredY))+"px";
   if(keyboard)element.querySelector("button:not([disabled])")?.focus();
 }
 export function attachParameterContextMenu({doc,targets,getItems,suppressClickAfterHold=false}){
@@ -72,18 +76,18 @@ export function attachParameterContextMenu({doc,targets,getItems,suppressClickAf
     if(pending?.timer!==null&&pending?.timer!==undefined)clearTimeout(pending.timer);
     pending=null;
   };
-  const open=(node,x,y,keyboard=false)=>{
+  const open=(node,x,y,keyboard=false,avoidHeldPoint=false)=>{
     if(disposed||node.disabled)return;
     const items=getItems(node);
     if(!Array.isArray(items)||!items.length)return;
-    showMenu(doc,menu,owner,node,x,y,items,keyboard);
+    showMenu(doc,menu,owner,node,x,y,items,keyboard,avoidHeldPoint);
   };
   for(const node of targets){
     on(node,"contextmenu",event=>{
       event.preventDefault();event.stopPropagation();
-      if(suppressClickAfterHold&&(pending?.node===node||["touch","pen"].includes(event.pointerType)))
-        suppressTarget=node;
-      cancel();open(node,event.clientX,event.clientY);
+      const heldPoint=pending?.node===node||["touch","pen"].includes(event.pointerType);
+      if(suppressClickAfterHold&&heldPoint)suppressTarget=node;
+      cancel();open(node,event.clientX,event.clientY,false,heldPoint);
     });
     on(node,"keydown",event=>{
       if(event.key!=="ContextMenu"&&!(event.shiftKey&&event.key==="F10"))return;
@@ -100,12 +104,23 @@ export function attachParameterContextMenu({doc,targets,getItems,suppressClickAf
         if(disposed||pending!==point)return;
         pending=null;
         if(suppressClickAfterHold)suppressTarget=node;
-        open(node,point.x,point.y);
+        open(node,point.x,point.y,false,true);
       },550);
     });
-    if(suppressClickAfterHold)on(node,"click",event=>{
-      if(suppressTarget!==node)return;
-      suppressTarget=null;event.preventDefault();event.stopImmediatePropagation();
+  }
+  if(suppressClickAfterHold){
+    // A release-generated click can be retargeted to a menu item which
+    // appeared during the hold. Guard at the document, not only the old
+    // target. A fresh pointerdown or keyboard gesture is a deliberate action.
+    on(doc,"pointerdown",()=>{suppressTarget=null;},true);
+    on(doc,"keydown",()=>{suppressTarget=null;},true);
+    on(doc,"click",event=>{
+      if(!suppressTarget)return;
+      const trigger=suppressTarget;
+      suppressTarget=null;
+      if(!trigger.contains(event.target)&&
+        !(menu.owner===owner&&menu.element.contains(event.target)&&event.detail!==0))return;
+      event.preventDefault();event.stopImmediatePropagation();
     },true);
   }
   // Observe one active gesture per controller, not per target.
