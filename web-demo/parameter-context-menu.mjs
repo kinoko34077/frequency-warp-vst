@@ -123,3 +123,60 @@ export function attachParameterContextMenu({doc,targets,getItems,suppressClickAf
     if(menu.owner===owner)closeMenu(menu);
   }});
 }
+
+// Modifier bypass is gesture-scoped; it never changes the saved ON/OFF state.
+const held={alt:false,ctrl:false};
+if(typeof window!=="undefined"){
+  window.addEventListener("keydown",event=>{held.alt=event.altKey;held.ctrl=event.ctrlKey;},true);
+  window.addEventListener("keyup",event=>{held.alt=event.altKey;held.ctrl=event.ctrlKey;},true);
+  window.addEventListener("blur",()=>{held.alt=false;held.ctrl=false;});
+}
+/** Shared snap preference adapter; the context-menu component owns all
+ * menu rendering, placement, gestures and teardown. */
+export function attachParameterSnapControls({doc,targets,defaultEnabled=true}){
+  if(!doc||!Array.isArray(targets)||!targets.length)
+    throw new TypeError("snap controls require a document and targets");
+  let snapEnabled=Boolean(defaultEnabled),disposed=false;
+  const originals=targets.map(node=>({
+    node,title:node.title,ariaDescription:node.getAttribute("aria-description"),
+    dataSnap:node.dataset.fwSnap,hadControl:node.hasAttribute("data-fw-snap-control")
+  }));
+  const updateHints=()=>{
+    if(disposed)return;
+    for(const node of targets){
+      node.dataset.fwSnap=snapEnabled?"on":"off";
+      node.setAttribute("data-fw-snap-control","");
+      const hint="吸着: "+(snapEnabled?"ON":"OFF")+
+        "。長押し／右クリックで切替。AltまたはCtrlを押しながら操作すると一時OFF";
+      if(!node.matches("button[data-unit]"))node.title=hint;
+      node.setAttribute("aria-description",hint);
+    }
+  };
+  const setSnapEnabled=enabled=>{
+    if(disposed)return;
+    snapEnabled=Boolean(enabled);updateHints();
+  };
+  const context=attachParameterContextMenu({doc,targets,getItems:()=>[{
+    label:snapEnabled?"吸着をオフにする":"吸着をオンにする",
+    role:"menuitemcheckbox",checked:snapEnabled,onSelect:()=>setSnapEnabled(!snapEnabled)
+  }]});
+  updateHints();
+  return Object.freeze({
+    get enabled(){return snapEnabled;},
+    setEnabled:setSnapEnabled,
+    gestureEnabled:event=>!disposed&&snapEnabled&&
+      !(held.alt||held.ctrl||event?.altKey||event?.ctrlKey),
+    dispose(){
+      if(disposed)return;
+      disposed=true;context.dispose();
+      for(const {node,title,ariaDescription,dataSnap,hadControl} of originals){
+        node.title=title;
+        if(ariaDescription===null)node.removeAttribute("aria-description");
+        else node.setAttribute("aria-description",ariaDescription);
+        if(dataSnap===undefined)delete node.dataset.fwSnap;
+        else node.dataset.fwSnap=dataSnap;
+        if(!hadControl)node.removeAttribute("data-fw-snap-control");
+      }
+    }
+  });
+}
